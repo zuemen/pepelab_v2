@@ -21,7 +21,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 後端採 FastAPI + in-memory store（`backend/main.py`、`backend/store.py`）。選擇性揭露政策以 `DisclosurePolicy` 列表儲存，欄位使用 FHIR 路徑；驗證流程檢查 IAL、scope、欄位範圍與資料一致性，再交由 `InsightEngine` 輸出胃炎趨勢或領藥提醒。
 
 前端改以 React + Vite 重構（`frontend/`），提供高對比、大字體的三步驟導覽：
-1. **發行端**：填寫 FHIR Condition / MedicationDispense 欄位、設定 scope 與欄位，並將 `medssi://` payload 轉為可掃描的 QR Code。
+1. **發行端**：填寫 FHIR Condition / MedicationDispense 欄位、設定 scope 與欄位，並將 `modadigitalwallet://credential_offer?...` Deep Link 轉為可掃描的 QR Code。
 2. **病患錢包**：查詢 nonce、補齊 FHIR Payload、接受或拒絕憑證、檢視錢包列表、執行可遺忘權。
 3. **驗證端**：依照病歷或領藥情境選擇 scope，要求指定 IAL，產生 QR Code、送出 VP 並查看 AI Insight。
 
@@ -58,7 +58,9 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 - `vcUid` / `fields` 結構會自動轉換為 FHIR VC payload，同時保留 MODA 欄位別名（例如 `cond_code`、`cons_scope`），錢包與驗證端可直接沿用官方沙盒的欄位設定。
 
-> ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。
+> ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。若需暫時允許多組 Token，可在環境變數中以逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會自動接受其中任一值。
+
+> 🔧 Deep Link 與 request_uri 參數可透過環境變數調整：`MEDSSI_WALLET_SCHEME`（預設 `modadigitalwallet://`）、`MEDSSI_OID4VCI_REQUEST_BASE`、`MEDSSI_OID4VCI_CLIENT_ID`、`MEDSSI_OIDVP_REQUEST_BASE`、`MEDSSI_OIDVP_CLIENT_ID`。若需對接不同沙盒或自家 OIDC4VC 服務，可修改這些 URL 以符合實際部署。
 
 ## 快速操作
 1. **啟動後端**
@@ -87,6 +89,17 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
    3. Step 3 產生驗證 QR Code（可切換三種 scope），照欄位提示填入 VP 後送出，並觀察 AI Insight 與稽核資訊。
    4. 於 Step 2 使用「行使可遺忘權」清除資料，或在頁首按「重設沙盒資料」快速還原初始狀態。
 
+## 程式檔案總覽
+
+- `backend/main.py`：FastAPI 進入點，集中 `/v2/*` 沙盒端點與 `/api/*` MODA 相容層，並處理 Token 驗證、QR payload 產出、欄位別名
+  轉換與 Problem+JSON 錯誤格式。
+- `backend/models.py`：Pydantic 模型與列舉，覆蓋 FHIR Payload、DisclosurePolicy、VerificationSession、OIDVP 等結構。
+- `backend/store.py`：記錄憑證／Session／Presentation／驗證結果的 in-memory 儲存層，同時執行過期清除與可遺忘權統計。
+- `backend/analytics.py`：模擬 AI Insight 引擎，依據揭露欄位產生病歷、領藥、研究三種統計訊息。
+- `frontend/src/api/client.js`：封裝 axios 呼叫與錯誤格式化；其餘 React components (`IssuerPanel`, `WalletPanel`, `VerifierPanel`) 建立三
+  個角色的操作面板並渲染 QR Code。
+- `scripts/reset_sandbox.py`：簡單 CLI，可快速呼叫 `/v2/api/system/reset` 重新整理沙盒狀態。
+
 ## 身分驗證與授權對應（健保快易通 vs. MyData）
 - **雙軌身分驗證**：健保快易通提供「本人月租型手機門號 + 健保卡號末四碼」或「健保卡 / 自然人憑證裝置綁定」兩種路徑，分別對應遠端 IAL2 與接近 IAL3 的強度，呼應本系統的 `MYDATA_LIGHT` 與 `NHI_CARD_PIN` 等級設計。【F:README.md†L66-L74】
 - **MyData 雙因素註冊**：首次使用 MyData 需選擇兩種不同實名驗證工具（例如健保 IC 卡 + 簡訊 OTP 或自然人憑證 + 行動化驗證），達到政府規範的 IAL2 要求，也與 `MOICA_CERT` 等級相呼應。【F:README.md†L75-L83】
@@ -114,7 +127,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 - **零信任控制**：透過角色權限、TLS、速率限制與異常偵測落實「Never Trust, Always Verify」，並提醒前端使用者勿在公開場域暴露 Access Token 或 QR 字串。【F:README.md†L141-L146】
 
 ## QR Code 產製提醒
-後端仍回傳 `medssi://` payload，但 React 介面已透過 `qrcode.react` 即時產出可掃描圖像，方便於手機或藥局掃描示範。
+後端現在直接回傳符合數位憑證皮夾格式的 Deep Link（例如 `modadigitalwallet://credential_offer?...`、`modadigitalwallet://authorize?...`），React 介面以 `qrcode.react` 即時轉換為可掃描圖像，方便於手機或藥局實機示範。
 
 ## 安全性對齊重點
 - **Bearer Access Token**：模擬數位發展部沙盒流程，需先在 Swagger Authorize 中輸入發行端或驗證端 Access Token 才能呼叫對應 API，可透過環境變數替換預設值。

@@ -21,6 +21,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
+from urllib.parse import urlencode
 
 from .analytics import get_risk_engine
 from .models import (
@@ -69,15 +70,38 @@ app.add_middleware(
 api_v2 = APIRouter(prefix="/v2", tags=["MedSSI v2"])
 
 
-ISSUER_ACCESS_TOKEN = os.getenv(
+def _load_tokens(env_name: str, default: str) -> List[str]:
+    raw = os.getenv(env_name, default)
+    return [token.strip() for token in raw.split(",") if token.strip()]
+
+
+ISSUER_ACCESS_TOKENS = _load_tokens(
     "MEDSSI_ISSUER_TOKEN", "koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy"
 )
-VERIFIER_ACCESS_TOKEN = os.getenv(
+VERIFIER_ACCESS_TOKENS = _load_tokens(
     "MEDSSI_VERIFIER_TOKEN", "J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC"
 )
-WALLET_ACCESS_TOKEN = os.getenv("MEDSSI_WALLET_TOKEN", "wallet-sandbox-token")
+WALLET_ACCESS_TOKENS = _load_tokens("MEDSSI_WALLET_TOKEN", "wallet-sandbox-token")
 DEFAULT_ISSUER_ID = os.getenv(
     "MEDSSI_DEFAULT_ISSUER_ID", "did:example:moda-issuer"
+)
+
+WALLET_SCHEME = os.getenv("MEDSSI_WALLET_SCHEME", "modadigitalwallet://")
+OID4VCI_REQUEST_BASE = os.getenv(
+    "MEDSSI_OID4VCI_REQUEST_BASE",
+    "https://issuer-oid4vci.medssi.dev/api/credential-offer",
+)
+OID4VCI_CLIENT_ID = os.getenv(
+    "MEDSSI_OID4VCI_CLIENT_ID",
+    "https://issuer-oid4vci.medssi.dev/api/credential-offer/callback",
+)
+OIDVP_REQUEST_BASE = os.getenv(
+    "MEDSSI_OIDVP_REQUEST_BASE",
+    "https://verifier-oidvp.medssi.dev/api/oidvp/request",
+)
+OIDVP_CLIENT_ID = os.getenv(
+    "MEDSSI_OIDVP_CLIENT_ID",
+    "https://verifier-oidvp.medssi.dev/api/oidvp/authorization-response",
 )
 
 
@@ -88,7 +112,9 @@ def _raise_problem(*, status: int, type_: str, title: str, detail: str) -> None:
     )
 
 
-def _validate_token(authorization: Optional[str], expected: str, audience: str) -> None:
+def _validate_token(
+    authorization: Optional[str], expected_tokens: List[str], audience: str
+) -> None:
     if not authorization:
         _raise_problem(
             status=401,
@@ -97,6 +123,7 @@ def _validate_token(authorization: Optional[str], expected: str, audience: str) 
             detail=f"Provide Bearer token for {audience} access.",
         )
     scheme, _, token = authorization.partition(" ")
+    token = token.strip()
     if scheme.lower() != "bearer" or not token:
         _raise_problem(
             status=401,
@@ -104,7 +131,7 @@ def _validate_token(authorization: Optional[str], expected: str, audience: str) 
             title="Bearer token format required",
             detail="Authorization header must be formatted as 'Bearer <token>'.",
         )
-    if token != expected:
+    if token not in expected_tokens:
         _raise_problem(
             status=403,
             type_="https://medssi.dev/errors/token-rejected",
@@ -114,15 +141,15 @@ def _validate_token(authorization: Optional[str], expected: str, audience: str) 
 
 
 def require_issuer_token(authorization: Optional[str] = Header(None)) -> None:
-    _validate_token(authorization, ISSUER_ACCESS_TOKEN, "issuer")
+    _validate_token(authorization, ISSUER_ACCESS_TOKENS, "issuer")
 
 
 def require_verifier_token(authorization: Optional[str] = Header(None)) -> None:
-    _validate_token(authorization, VERIFIER_ACCESS_TOKEN, "verifier")
+    _validate_token(authorization, VERIFIER_ACCESS_TOKENS, "verifier")
 
 
 def require_wallet_token(authorization: Optional[str] = Header(None)) -> None:
-    _validate_token(authorization, WALLET_ACCESS_TOKEN, "wallet")
+    _validate_token(authorization, WALLET_ACCESS_TOKENS, "wallet")
 
 
 def require_any_sandbox_token(authorization: Optional[str] = Header(None)) -> None:
@@ -134,16 +161,16 @@ def require_any_sandbox_token(authorization: Optional[str] = Header(None)) -> No
             detail="Provide issuer, wallet, or verifier token.",
         )
     try:
-        _validate_token(authorization, ISSUER_ACCESS_TOKEN, "issuer")
+        _validate_token(authorization, ISSUER_ACCESS_TOKENS, "issuer")
         return
     except HTTPException:
         pass
     try:
-        _validate_token(authorization, VERIFIER_ACCESS_TOKEN, "verifier")
+        _validate_token(authorization, VERIFIER_ACCESS_TOKENS, "verifier")
         return
     except HTTPException:
         pass
-    _validate_token(authorization, WALLET_ACCESS_TOKEN, "wallet")
+    _validate_token(authorization, WALLET_ACCESS_TOKENS, "wallet")
 
 
 @app.middleware("http")
@@ -318,7 +345,34 @@ class OIDVPResultResponse(BaseModel):
         allow_population_by_field_name = True
 
 
-def _build_qr_payload(token: str, kind: str) -> str:
+def _build_qr_payload(
+    token: str,
+    kind: str,
+    *,
+    transaction_id: Optional[str] = None,
+) -> str:
+    if kind == "credential":
+        request_uri = f"{OID4VCI_REQUEST_BASE.rstrip('/')}/{token}"
+        params = {
+            "client_id_scheme": "redirect_uri",
+            "state": transaction_id or secrets.token_urlsafe(12),
+            "request_uri": request_uri,
+            "client_id": OID4VCI_CLIENT_ID,
+        }
+        return f"{WALLET_SCHEME}credential_offer?{urlencode(params)}"
+
+    if kind in {"vp-session", "oidvp"}:
+        request_uri = f"{OIDVP_REQUEST_BASE.rstrip('/')}/{token}"
+        params = {
+            "client_id_scheme": "redirect_uri",
+            "state": transaction_id or secrets.token_urlsafe(12),
+            "nonce": secrets.token_urlsafe(12),
+            "client_id": OIDVP_CLIENT_ID,
+            "request_uri": request_uri,
+            "response_mode": "direct_post",
+        }
+        return f"{WALLET_SCHEME}authorize?{urlencode(params)}"
+
     return f"medssi://{kind}?token={token}"
 
 
@@ -331,18 +385,6 @@ def _make_qr_data_uri(payload: str) -> str:
         return f"data:image/png;base64,{encoded}"
     encoded = base64.b64encode(payload.encode("utf-8")).decode("ascii")
     return f"data:text/plain;base64,{encoded}"
-
-
-def _build_deep_link(
-    token: str, *, kind: str, transaction_id: Optional[str] = None
-) -> str:
-    base_scheme = "modadigitalwallet://"
-    if kind == "credential":
-        return f"{base_scheme}credential_offer?token={token}"
-    params = [f"token={token}"]
-    if transaction_id:
-        params.append(f"transactionId={transaction_id}")
-    return f"{base_scheme}authorize?{'&'.join(params)}"
 
 
 def _normalize_vc_uid(vc_uid: str) -> str:
@@ -387,7 +429,73 @@ MODA_FIELD_TO_FHIR = {
     "med_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
     "qty_value": "medication_dispense[0].days_supply",
     "pickup_deadline": "medication_dispense[0].pickup_window_end",
+    "medication_list[0].medication_code": "medication_dispense[0].medicationCodeableConcept.coding[0].code",
+    "medication_list[0].medication_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
+    "medication_list[0].dosage": "medication_dispense[0].days_supply",
+    "pickup_info.pickup_deadline": "medication_dispense[0].pickup_window_end",
+    "condition_info.condition_code": "condition.code.coding[0].code",
+    "condition_info.condition_display": "condition.code.coding[0].display",
+    "condition_info.condition_onset": "condition.recordedDate",
 }
+
+
+MODA_FIELD_DIRECT_ALIASES = {
+    "medicationList[0].medicationCode": "medication_list[0].medication_code",
+    "medicationList[0].medicationName": "medication_list[0].medication_name",
+    "medicationList[0].dosage": "medication_list[0].dosage",
+    "pickupInfo.pickupDeadline": "pickup_info.pickup_deadline",
+    "conditionInfo.conditionCode": "condition_info.condition_code",
+    "conditionInfo.conditionDisplay": "condition_info.condition_display",
+    "conditionInfo.conditionOnset": "condition_info.condition_onset",
+}
+
+
+MODA_FIELD_LOWER_ALIASES = {
+    "condcode": "cond_code",
+    "conditioncode": "cond_code",
+    "cond_display": "cond_display",
+    "conditiondisplay": "cond_display",
+    "condonset": "cond_onset",
+    "conditiononset": "cond_onset",
+    "medcode": "med_code",
+    "medicationcode": "med_code",
+    "medname": "med_name",
+    "medicationname": "med_name",
+    "qtyvalue": "qty_value",
+    "dosage": "qty_value",
+    "qtyunit": "qty_unit",
+    "pickupdeadline": "pickup_deadline",
+    "consentscope": "cons_scope",
+    "consentpurpose": "cons_purpose",
+    "consentissuer": "cons_issuer",
+    "consentpath": "cons_path",
+    "pidhash": "pid_hash",
+    "pidname": "pid_name",
+    "pidbirth": "pid_birth",
+}
+
+
+CAMEL_TO_SNAKE = re.compile(r"(?<!^)(?=[A-Z])")
+
+
+def _canonical_alias_key(name: str) -> str:
+    if not name:
+        return ""
+    raw = name.strip()
+    if not raw:
+        return ""
+    if raw in MODA_FIELD_DIRECT_ALIASES:
+        return MODA_FIELD_DIRECT_ALIASES[raw]
+    normalized = raw.replace("-", "_").strip()
+    if normalized in MODA_FIELD_DIRECT_ALIASES:
+        return MODA_FIELD_DIRECT_ALIASES[normalized]
+    lower_key = normalized.lower()
+    if lower_key in MODA_FIELD_LOWER_ALIASES:
+        return MODA_FIELD_LOWER_ALIASES[lower_key]
+    camel_snake = CAMEL_TO_SNAKE.sub("_", normalized).lower()
+    if camel_snake in MODA_FIELD_LOWER_ALIASES:
+        return MODA_FIELD_LOWER_ALIASES[camel_snake]
+    return normalized
 
 
 MODA_SCOPE_ALIAS = {
@@ -395,6 +503,11 @@ MODA_SCOPE_ALIAS = {
     "RESEARCH": DisclosureScope.RESEARCH_ANALYTICS.value,
     "MEDICAL_INFO": DisclosureScope.MEDICAL_RECORD.value,
     "MEDICATION": DisclosureScope.MEDICATION_PICKUP.value,
+    "MEDICAL_CARD": DisclosureScope.MEDICAL_RECORD.value,
+    "MEDICALRECORD": DisclosureScope.MEDICAL_RECORD.value,
+    "MEDICAL": DisclosureScope.MEDICAL_RECORD.value,
+    "MEDICATION_CARD": DisclosureScope.MEDICATION_PICKUP.value,
+    "PRESCRIPTION": DisclosureScope.MEDICATION_PICKUP.value,
 }
 
 
@@ -730,7 +843,9 @@ def _issue_offer(
         selected_disclosures=selected_disclosures,
         external_fields=external_fields,
     )
-    qr_payload = _build_qr_payload(offer.qr_token, "credential")
+    qr_payload = _build_qr_payload(
+        offer.qr_token, "credential", transaction_id=offer.transaction_id
+    )
     return offer, qr_payload
 
 
@@ -936,9 +1051,17 @@ def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOf
     valid_minutes = request.valid_minutes or 5
     valid_minutes = max(1, min(10, valid_minutes))
 
-    alias_map = _expand_aliases(
-        {field.ename: field.content or "" for field in request.fields if field.ename}
-    )
+    raw_fields: Dict[str, str] = {}
+    canonical_fields: Dict[str, str] = {}
+    for field in request.fields:
+        if not field.ename:
+            continue
+        raw_fields[field.ename] = field.content or ""
+        key = _canonical_alias_key(field.ename)
+        if not key:
+            continue
+        canonical_fields[key] = field.content or ""
+    alias_map = _expand_aliases(canonical_fields)
     policy_fields = list(dict.fromkeys(alias_map.keys()))
     if not policy_fields:
         policy_fields = MODA_SCOPE_DEFAULT_FIELDS.get(scope, ["cond_code"])
@@ -966,7 +1089,7 @@ def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOf
         payload=payload,
         transaction_id=request.transaction_id,
         selected_disclosures=alias_map,
-        external_fields=alias_map,
+        external_fields={**raw_fields, **alias_map},
     )
 
 
@@ -1014,11 +1137,7 @@ def _build_issue_response(offer: CredentialOffer, qr_payload: str) -> GovIssueRe
         transaction_id=offer.transaction_id,
         qr_code=_make_qr_data_uri(qr_payload),
         qr_payload=qr_payload,
-        deep_link=_build_deep_link(
-            offer.qr_token,
-            kind="credential",
-            transaction_id=offer.transaction_id,
-        ),
+        deep_link=qr_payload,
         credential_id=offer.credential_id,
         expires_at=offer.expires_at,
         ial=offer.ial,
@@ -1187,15 +1306,13 @@ def gov_create_oidvp_qrcode(payload: OIDVPSessionRequest) -> OIDVPQRCodeResponse
         template_ref=payload.ref,
     )
     store.persist_verification_session(session)
-    qr_payload = _build_qr_payload(session.qr_token, "vp-session")
+    qr_payload = _build_qr_payload(
+        session.qr_token, "vp-session", transaction_id=transaction_id
+    )
     return OIDVPQRCodeResponse(
         transaction_id=transaction_id,
         qrcode_image=_make_qr_data_uri(qr_payload),
-        auth_uri=_build_deep_link(
-            session.qr_token,
-            kind="oidvp",
-            transaction_id=transaction_id,
-        ),
+        auth_uri=qr_payload,
         qr_payload=qr_payload,
         scope=session.scope,
         ial=session.required_ial,
@@ -1468,7 +1585,9 @@ def get_verification_code(
         last_polled_at=now,
     )
     store.persist_verification_session(session)
-    qr_payload = _build_qr_payload(session.qr_token, "vp-session")
+    qr_payload = _build_qr_payload(
+        session.qr_token, "vp-session", transaction_id=session.transaction_id
+    )
     return VerificationCodeResponse(session=session, qr_payload=qr_payload)
 
 
