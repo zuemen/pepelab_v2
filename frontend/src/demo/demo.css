@@ -65,3 +65,14 @@
   .grid3, .grid4 { grid-template-columns: 1fr; }
   .demo-right { margin-top: 12px; }
 }
+.navs{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
+.ghost{
+  background:transparent;border:1px solid #2a415f;color:#e7f5ff;
+  padding:10px 14px;border-radius:10px;cursor:pointer
+}
+.ghost:hover{filter:brightness(1.1)}
+.cta{
+  background:#16a34a;border:1px solid #0e7f39;color:#fff;
+  padding:10px 16px;border-radius:10px;cursor:pointer
+}
+.cta:hover{filter:brightness(1.05)}

@@ -1,7 +1,5 @@
-import "./demo.css";
-import Pager from "./components/Pager.jsx";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { DemoProvider } from "./context.jsx";
-
 import Scene01 from "./pages/Scene01_Problem.jsx";
 import Scene02 from "./pages/Scene02_SystemPain.jsx";
 import Scene03 from "./pages/Scene03_MethodMap.jsx";
@@ -11,18 +9,20 @@ import Scene06 from "./pages/Scene06_Wallet.jsx";
 import Scene07 from "./pages/Scene07_Verifier.jsx";
 
 export default function DemoApp() {
-  const pages = [Scene01, Scene02, Scene03, Scene04, Scene05, Scene06, Scene07];
-
   return (
     <DemoProvider>
-      <div className="demo-root">
-        <header className="topbar">
-          <strong>MedSSI Demo</strong>
-          <span className="sep">•</span>
-          <span aria-live="polite">分頁敘事（滑動或按 ← → 切換）</span>
-        </header>
-        <Pager pages={pages} />
-      </div>
+      <BrowserRouter basename="/demo">
+        <Routes>
+          <Route path="/" element={<Scene01 />} />
+          <Route path="/scene01" element={<Scene01 />} />
+          <Route path="/scene02" element={<Scene02 />} />
+          <Route path="/scene03" element={<Scene03 />} />
+          <Route path="/scene04" element={<Scene04 />} />
+          <Route path="/scene05" element={<Scene05 />} />
+          <Route path="/scene06" element={<Scene06 />} />
+          <Route path="/scene07" element={<Scene07 />} />
+        </Routes>
+      </BrowserRouter>
     </DemoProvider>
   );
 }
