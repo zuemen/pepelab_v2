@@ -20,7 +20,6 @@ from fastapi import (
     Query,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
 from urllib.parse import urlencode
 
@@ -47,7 +46,6 @@ from .models import (
 )
 from .store import store
 
-
 try:
     import qrcode
 except Exception:
@@ -68,7 +66,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
 api_v2 = APIRouter(prefix="/v2", tags=["MedSSI v2"])
+api_public = APIRouter(prefix="/api", tags=["MODA Sandbox compatibility"])
 
 
 def _load_tokens(env_name: str, default: str) -> List[str]:
@@ -76,16 +76,11 @@ def _load_tokens(env_name: str, default: str) -> List[str]:
     return [token.strip() for token in raw.split(",") if token.strip()]
 
 
-ISSUER_ACCESS_TOKENS = _load_tokens(
-    "MEDSSI_ISSUER_TOKEN", "issuer-sandbox-token"
-)
-VERIFIER_ACCESS_TOKENS = _load_tokens(
-    "MEDSSI_VERIFIER_TOKEN", "verifier-sandbox-token"
-)
+# 修正：使用簡單的 Token
+ISSUER_ACCESS_TOKENS = _load_tokens("MEDSSI_ISSUER_TOKEN", "issuer-sandbox-token")
+VERIFIER_ACCESS_TOKENS = _load_tokens("MEDSSI_VERIFIER_TOKEN", "verifier-sandbox-token")
 WALLET_ACCESS_TOKENS = _load_tokens("MEDSSI_WALLET_TOKEN", "wallet-sandbox-token")
-DEFAULT_ISSUER_ID = os.getenv(
-    "MEDSSI_DEFAULT_ISSUER_ID", "did:example:moda-issuer"
-)
+DEFAULT_ISSUER_ID = os.getenv("MEDSSI_DEFAULT_ISSUER_ID", "did:example:moda-issuer")
 
 WALLET_SCHEME = os.getenv("MEDSSI_WALLET_SCHEME", "modadigitalwallet://")
 OID4VCI_REQUEST_BASE = os.getenv(
@@ -213,27 +208,17 @@ async def cleanup_expired_middleware(request, call_next):
     return response
 
 
+# ==================== Pydantic Models ====================
+
 class IssuanceWithDataRequest(BaseModel):
     issuer_id: str = Field(..., alias="issuerId")
     holder_did: Optional[str] = Field(None, alias="holderDid")
-    holder_hint: Optional[str] = Field(
-        None,
-        alias="holderHint",
-        description="Optional hint shown to wallets (e.g. patient name)",
-    )
-    ial: IdentityAssuranceLevel = Field(
-        IdentityAssuranceLevel.NHI_CARD_PIN, alias="ial"
-    )
-    primary_scope: DisclosureScope = Field(
-        DisclosureScope.MEDICAL_RECORD, alias="primaryScope"
-    )
-    payload: Optional[Union[CredentialPayload, Dict[str, Any]]] = Field(
-        None, alias="payload"
-    )
+    holder_hint: Optional[str] = Field(None, alias="holderHint")
+    ial: IdentityAssuranceLevel = Field(IdentityAssuranceLevel.NHI_CARD_PIN, alias="ial")
+    primary_scope: DisclosureScope = Field(DisclosureScope.MEDICAL_RECORD, alias="primaryScope")
+    payload: Optional[Union[CredentialPayload, Dict[str, Any]]] = Field(None, alias="payload")
     disclosure_policies: Optional[List[DisclosurePolicy]] = Field(
-        default=None,
-        alias="disclosurePolicies",
-        description="Selective disclosure policies grouped by scope.",
+        default=None, alias="disclosurePolicies"
     )
     valid_for_minutes: int = Field(5, ge=1, le=5, alias="validMinutes")
     transaction_id: Optional[str] = Field(None, alias="transactionId")
@@ -244,12 +229,8 @@ class IssuanceWithDataRequest(BaseModel):
 
 class IssuanceWithoutDataRequest(BaseModel):
     issuer_id: str = Field(..., alias="issuerId")
-    ial: IdentityAssuranceLevel = Field(
-        IdentityAssuranceLevel.NHI_CARD_PIN, alias="ial"
-    )
-    primary_scope: DisclosureScope = Field(
-        DisclosureScope.MEDICAL_RECORD, alias="primaryScope"
-    )
+    ial: IdentityAssuranceLevel = Field(IdentityAssuranceLevel.NHI_CARD_PIN, alias="ial")
+    primary_scope: DisclosureScope = Field(DisclosureScope.MEDICAL_RECORD, alias="primaryScope")
     disclosure_policies: Optional[List[DisclosurePolicy]] = Field(
         default=None, alias="disclosurePolicies"
     )
@@ -258,9 +239,7 @@ class IssuanceWithoutDataRequest(BaseModel):
     holder_did: Optional[str] = Field(None, alias="holderDid")
     transaction_id: Optional[str] = Field(None, alias="transactionId")
     payload_template: Optional[Union[CredentialPayload, Dict[str, Any]]] = Field(
-        None,
-        alias="payloadTemplate",
-        description="Template describing the FHIR structure the holder must supply.",
+        None, alias="payloadTemplate"
     )
 
     class Config:
@@ -300,6 +279,7 @@ class MODAIssuanceRequest(BaseModel):
 
 
 class GovIssueResponse(BaseModel):
+    """官方格式：使用 camelCase"""
     transaction_id: str = Field(..., alias="transactionId")
     qr_code: str = Field(..., alias="qrCode")
     qr_payload: str = Field(..., alias="qrPayload")
@@ -312,6 +292,7 @@ class GovIssueResponse(BaseModel):
 
     class Config:
         allow_population_by_field_name = True
+        by_alias = True  # 重要：序列化時使用 camelCase
 
 
 class GovCredentialNonceResponse(BaseModel):
@@ -331,6 +312,7 @@ class GovCredentialNonceResponse(BaseModel):
 
     class Config:
         allow_population_by_field_name = True
+        by_alias = True
 
 
 class OIDVPSessionRequest(BaseModel):
@@ -349,6 +331,7 @@ class OIDVPSessionRequest(BaseModel):
 
 
 class OIDVPQRCodeResponse(BaseModel):
+    """官方格式：qrcodeImage, authUri"""
     transaction_id: str = Field(..., alias="transactionId")
     qrcode_image: str = Field(..., alias="qrcodeImage")
     auth_uri: str = Field(..., alias="authUri")
@@ -362,7 +345,16 @@ class OIDVPQRCodeResponse(BaseModel):
         by_alias = True
 
 
+class OIDVPResultRequest(BaseModel):
+    """官方格式：POST body 帶 transactionId"""
+    transaction_id: str = Field(..., alias="transactionId")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class OIDVPResultResponse(BaseModel):
+    """官方格式：verifyResult, resultDescription"""
     verify_result: bool = Field(..., alias="verifyResult")
     result_description: str = Field(..., alias="resultDescription")
     transaction_id: str = Field(..., alias="transactionId")
@@ -373,12 +365,9 @@ class OIDVPResultResponse(BaseModel):
         by_alias = True
 
 
-def _build_qr_payload(
-    token: str,
-    kind: str,
-    *,
-    transaction_id: Optional[str] = None,
-) -> str:
+# ==================== Helper Functions ====================
+
+def _build_qr_payload(token: str, kind: str, *, transaction_id: Optional[str] = None) -> str:
     if kind == "credential":
         request_uri = f"{OID4VCI_REQUEST_BASE.rstrip('/')}/{token}"
         params = {
@@ -428,8 +417,9 @@ MODA_VC_SCOPE_MAP = {
     "vc_pid": DisclosureScope.MEDICAL_RECORD,
     "vc_cons": DisclosureScope.RESEARCH_ANALYTICS,
     "vc_rx": DisclosureScope.MEDICATION_PICKUP,
+    "cond": DisclosureScope.MEDICAL_RECORD,
+    "rx": DisclosureScope.MEDICATION_PICKUP,
 }
-
 
 MODA_SCOPE_DEFAULT_FIELDS = {
     DisclosureScope.MEDICAL_RECORD: ["cond_code", "cond_display", "cond_onset"],
@@ -437,17 +427,10 @@ MODA_SCOPE_DEFAULT_FIELDS = {
         "med_code",
         "med_name",
         "qty_value",
-        "qty_unit",
         "pickup_deadline",
     ],
-    DisclosureScope.RESEARCH_ANALYTICS: [
-        "cons_scope",
-        "cons_purpose",
-        "cons_path",
-        "cons_issuer",
-    ],
+    DisclosureScope.RESEARCH_ANALYTICS: ["cons_scope", "cons_purpose"],
 }
-
 
 MODA_FIELD_TO_FHIR = {
     "cond_code": "condition.code.coding[0].code",
@@ -457,51 +440,7 @@ MODA_FIELD_TO_FHIR = {
     "med_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
     "qty_value": "medication_dispense[0].days_supply",
     "pickup_deadline": "medication_dispense[0].pickup_window_end",
-    "medication_list[0].medication_code": "medication_dispense[0].medicationCodeableConcept.coding[0].code",
-    "medication_list[0].medication_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
-    "medication_list[0].dosage": "medication_dispense[0].days_supply",
-    "pickup_info.pickup_deadline": "medication_dispense[0].pickup_window_end",
-    "condition_info.condition_code": "condition.code.coding[0].code",
-    "condition_info.condition_display": "condition.code.coding[0].display",
-    "condition_info.condition_onset": "condition.recordedDate",
 }
-
-
-MODA_FIELD_DIRECT_ALIASES = {
-    "medicationList[0].medicationCode": "medication_list[0].medication_code",
-    "medicationList[0].medicationName": "medication_list[0].medication_name",
-    "medicationList[0].dosage": "medication_list[0].dosage",
-    "pickupInfo.pickupDeadline": "pickup_info.pickup_deadline",
-    "conditionInfo.conditionCode": "condition_info.condition_code",
-    "conditionInfo.conditionDisplay": "condition_info.condition_display",
-    "conditionInfo.conditionOnset": "condition_info.condition_onset",
-}
-
-
-MODA_FIELD_LOWER_ALIASES = {
-    "condcode": "cond_code",
-    "conditioncode": "cond_code",
-    "cond_display": "cond_display",
-    "conditiondisplay": "cond_display",
-    "condonset": "cond_onset",
-    "conditiononset": "cond_onset",
-    "medcode": "med_code",
-    "medicationcode": "med_code",
-    "medname": "med_name",
-    "medicationname": "med_name",
-    "qtyvalue": "qty_value",
-    "dosage": "qty_value",
-    "qtyunit": "qty_unit",
-    "pickupdeadline": "pickup_deadline",
-    "consentscope": "cons_scope",
-    "consentpurpose": "cons_purpose",
-    "consentissuer": "cons_issuer",
-    "consentpath": "cons_path",
-    "pidhash": "pid_hash",
-    "pidname": "pid_name",
-    "pidbirth": "pid_birth",
-}
-
 
 CAMEL_TO_SNAKE = re.compile(r"(?<!^)(?=[A-Z])")
 
@@ -512,31 +451,30 @@ def _canonical_alias_key(name: str) -> str:
     raw = name.strip()
     if not raw:
         return ""
-    if raw in MODA_FIELD_DIRECT_ALIASES:
-        return MODA_FIELD_DIRECT_ALIASES[raw]
     normalized = raw.replace("-", "_").strip()
-    if normalized in MODA_FIELD_DIRECT_ALIASES:
-        return MODA_FIELD_DIRECT_ALIASES[normalized]
     lower_key = normalized.lower()
-    if lower_key in MODA_FIELD_LOWER_ALIASES:
-        return MODA_FIELD_LOWER_ALIASES[lower_key]
+    
+    # 直接映射
+    alias_map = {
+        "condcode": "cond_code",
+        "conditioncode": "cond_code",
+        "conddisplay": "cond_display",
+        "condonset": "cond_onset",
+        "medcode": "med_code",
+        "medname": "med_name",
+        "qtyvalue": "qty_value",
+        "pickupdeadline": "pickup_deadline",
+    }
+    
+    if lower_key in alias_map:
+        return alias_map[lower_key]
+    
+    # camelCase 轉 snake_case
     camel_snake = CAMEL_TO_SNAKE.sub("_", normalized).lower()
-    if camel_snake in MODA_FIELD_LOWER_ALIASES:
-        return MODA_FIELD_LOWER_ALIASES[camel_snake]
+    if camel_snake in alias_map:
+        return alias_map[camel_snake]
+    
     return normalized
-
-
-MODA_SCOPE_ALIAS = {
-    "RESEARCH_INFO": DisclosureScope.RESEARCH_ANALYTICS.value,
-    "RESEARCH": DisclosureScope.RESEARCH_ANALYTICS.value,
-    "MEDICAL_INFO": DisclosureScope.MEDICAL_RECORD.value,
-    "MEDICATION": DisclosureScope.MEDICATION_PICKUP.value,
-    "MEDICAL_CARD": DisclosureScope.MEDICAL_RECORD.value,
-    "MEDICALRECORD": DisclosureScope.MEDICAL_RECORD.value,
-    "MEDICAL": DisclosureScope.MEDICAL_RECORD.value,
-    "MEDICATION_CARD": DisclosureScope.MEDICATION_PICKUP.value,
-    "PRESCRIPTION": DisclosureScope.MEDICATION_PICKUP.value,
-}
 
 
 def _mock_credential_jwt(offer: CredentialOffer) -> str:
@@ -572,7 +510,7 @@ def _default_disclosure_policies() -> List[DisclosurePolicy]:
                 "condition.recordedDate",
                 "managing_organization.value",
             ],
-            description="跨院病歷摘要：診斷碼、紀錄日期、發卡院所",
+            description="跨院病歷摘要",
         ),
         DisclosurePolicy(
             scope=DisclosureScope.MEDICATION_PICKUP,
@@ -581,15 +519,12 @@ def _default_disclosure_policies() -> List[DisclosurePolicy]:
                 "medication_dispense[0].days_supply",
                 "medication_dispense[0].pickup_window_end",
             ],
-            description="領藥資訊：藥品代碼、給藥天數、取藥期限",
+            description="領藥資訊",
         ),
         DisclosurePolicy(
             scope=DisclosureScope.RESEARCH_ANALYTICS,
-            fields=[
-                "condition.code.coding[0].code",
-                "encounter_summary_hash",
-            ],
-            description="匿名化研究卡：以摘要雜湊與診斷碼提供研究合作",
+            fields=["condition.code.coding[0].code", "encounter_summary_hash"],
+            description="匿名化研究卡",
         ),
     ]
 
@@ -622,9 +557,7 @@ def _ensure_valid_policies(policies: List[DisclosurePolicy]) -> None:
             )
 
 
-def _resolve_policies(
-    policies: Optional[List[DisclosurePolicy]],
-) -> List[DisclosurePolicy]:
+def _resolve_policies(policies: Optional[List[DisclosurePolicy]]) -> List[DisclosurePolicy]:
     if policies:
         _ensure_valid_policies(policies)
         return policies
@@ -685,63 +618,112 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
         overrides = _deep_merge(overrides, update)
 
     if alias_map.get("cond_code"):
-        merge(
-            {
-                "condition": {
-                    "code": {
-                        "coding": [
-                            {
-                                "system": "http://hl7.org/fhir/sid/icd-10",
-                                "code": alias_map["cond_code"],
-                            }
-                        ]
-                    }
+        merge({
+            "condition": {
+                "code": {
+                    "coding": [{
+                        "system": "http://hl7.org/fhir/sid/icd-10",
+                        "code": alias_map["cond_code"],
+                    }]
                 }
             }
-        )
+        })
     if alias_map.get("cond_display"):
-        merge(
-            {
-                "condition": {
-                    "code": {
-                        "coding": [
-                            {
-                                "display": alias_map["cond_display"],
-                            }
-                        ],
-                        "text": alias_map["cond_display"],
-                    }
+        merge({
+            "condition": {
+                "code": {
+                    "coding": [{"display": alias_map["cond_display"]}],
+                    "text": alias_map["cond_display"],
                 }
             }
-        )
+        })
     if alias_map.get("cond_onset"):
         merge({"condition": {"recordedDate": alias_map["cond_onset"]}})
 
     if alias_map.get("med_code"):
-        merge(
-            {
-                "medication_dispense": [
-                    {
-                        "medicationCodeableConcept": {
-                            "coding": [
-                                {
-                                    "system": "http://www.whocc.no/atc",
-                                    "code": alias_map["med_code"],
-                                }
-                            ]
-                        }
-                    }
-                ]
-            }
-        )
+        merge({
+            "medication_dispense": [{
+                "medicationCodeableConcept": {
+                    "coding": [{
+                        "system": "http://www.whocc.no/atc",
+                        "code": alias_map["med_code"],
+                    }]
+                }
+            }]
+        })
     if alias_map.get("med_name"):
-        merge(
-            {
-                "medication_dispense": [
-                    {
-                        "medicationCodeableConcept": {
-                            "coding": [
-                                {
-                                    "display": alias_map["med_name"],
-                                }
-                            ],
+        merge({
+            "medication_dispense": [{
+                "medicationCodeableConcept": {
+                    "coding": [{"display": alias_map["med_name"]}],
+                    "text": alias_map["med_name"],
+                }
+            }]
+        })
+    
+    qty_value = alias_map.get("qty_value")
+    if qty_value:
+        try:
+            days_supply = int(qty_value)
+        except ValueError:
+            days_supply = None
+        merge({
+            "medication_dispense": [{
+                "days_supply": days_supply if days_supply is not None else qty_value,
+            }]
+        })
+    
+    if alias_map.get("pickup_deadline"):
+        merge({
+            "medication_dispense": [{
+                "pickup_window_end": alias_map["pickup_deadline"],
+            }]
+        })
+
+    return overrides or None
+
+
+def _coerce_payload(
+    payload: Optional[Union[CredentialPayload, Dict[str, Any]]]
+) -> CredentialPayload:
+    if isinstance(payload, CredentialPayload):
+        return payload
+    sample = _sample_payload()
+    if payload is None:
+        return sample
+    if isinstance(payload, dict):
+        base = sample.dict()
+        merged = _deep_merge(base, payload)
+        try:
+            return CredentialPayload.parse_obj(merged)
+        except ValidationError:
+            return sample
+    try:
+        return CredentialPayload.parse_obj(payload)
+    except ValidationError:
+        return sample
+
+
+def _issue_offer(
+    *,
+    issuer_id: str,
+    primary_scope: DisclosureScope,
+    ial: IdentityAssuranceLevel,
+    mode: IssuanceMode,
+    disclosure_policies: List[DisclosurePolicy],
+    valid_for_minutes: int,
+    holder_did: Optional[str],
+    holder_hint: Optional[str],
+    payload: Optional[CredentialPayload] = None,
+    payload_template: Optional[CredentialPayload] = None,
+    transaction_id: Optional[str] = None,
+    selected_disclosures: Optional[Dict[str, str]] = None,
+    external_fields: Optional[Dict[str, str]] = None,
+) -> Tuple[CredentialOffer, str]:
+    offer = _create_offer(
+        issuer_id=issuer_id,
+        primary_scope=primary_scope,
+        ial=ial,
+        mode=mode,
+        disclosure_policies=disclosure_policies,
+        valid_for
