@@ -140,20 +140,47 @@ def _validate_token(
         )
 
 
-def require_issuer_token(authorization: Optional[str] = Header(None)) -> None:
-    _validate_token(authorization, ISSUER_ACCESS_TOKENS, "issuer")
+def _merge_authorization(
+    authorization: Optional[str],
+    alt_token: Optional[str],
+) -> Optional[str]:
+    if authorization:
+        return authorization
+    if alt_token:
+        return f"Bearer {alt_token.strip()}"
+    return None
 
 
-def require_verifier_token(authorization: Optional[str] = Header(None)) -> None:
-    _validate_token(authorization, VERIFIER_ACCESS_TOKENS, "verifier")
+def require_issuer_token(
+    authorization: Optional[str] = Header(None),
+    access_token: Optional[str] = Header(None, alias="access-token"),
+) -> None:
+    header_value = _merge_authorization(authorization, access_token)
+    _validate_token(header_value, ISSUER_ACCESS_TOKENS, "issuer")
 
 
-def require_wallet_token(authorization: Optional[str] = Header(None)) -> None:
-    _validate_token(authorization, WALLET_ACCESS_TOKENS, "wallet")
+def require_verifier_token(
+    authorization: Optional[str] = Header(None),
+    access_token: Optional[str] = Header(None, alias="access-token"),
+) -> None:
+    header_value = _merge_authorization(authorization, access_token)
+    _validate_token(header_value, VERIFIER_ACCESS_TOKENS, "verifier")
 
 
-def require_any_sandbox_token(authorization: Optional[str] = Header(None)) -> None:
-    if authorization is None:
+def require_wallet_token(
+    authorization: Optional[str] = Header(None),
+    access_token: Optional[str] = Header(None, alias="access-token"),
+) -> None:
+    header_value = _merge_authorization(authorization, access_token)
+    _validate_token(header_value, WALLET_ACCESS_TOKENS, "wallet")
+
+
+def require_any_sandbox_token(
+    authorization: Optional[str] = Header(None),
+    access_token: Optional[str] = Header(None, alias="access-token"),
+) -> None:
+    header_value = _merge_authorization(authorization, access_token)
+    if header_value is None:
         _raise_problem(
             status=401,
             type_="https://medssi.dev/errors/missing-token",
@@ -161,16 +188,16 @@ def require_any_sandbox_token(authorization: Optional[str] = Header(None)) -> No
             detail="Provide issuer, wallet, or verifier token.",
         )
     try:
-        _validate_token(authorization, ISSUER_ACCESS_TOKENS, "issuer")
+        _validate_token(header_value, ISSUER_ACCESS_TOKENS, "issuer")
         return
     except HTTPException:
         pass
     try:
-        _validate_token(authorization, VERIFIER_ACCESS_TOKENS, "verifier")
+        _validate_token(header_value, VERIFIER_ACCESS_TOKENS, "verifier")
         return
     except HTTPException:
         pass
-    _validate_token(authorization, WALLET_ACCESS_TOKENS, "wallet")
+    _validate_token(header_value, WALLET_ACCESS_TOKENS, "wallet")
 
 
 @app.middleware("http")

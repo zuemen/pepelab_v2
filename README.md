@@ -58,7 +58,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 - `vcUid` / `fields` 結構會自動轉換為 FHIR VC payload，同時保留 MODA 欄位別名（例如 `cond_code`、`cons_scope`），錢包與驗證端可直接沿用官方沙盒的欄位設定。
 
-> ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。若需暫時允許多組 Token，可在環境變數中以逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會自動接受其中任一值。
+> ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。若需暫時允許多組 Token，可在環境變數中以逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會自動接受其中任一值。若沿用官方 sandbox 範例以 `access-token` header 傳遞，也會自動轉換為 Bearer Token 無須修改程式。
 
 > 🔧 Deep Link 與 request_uri 參數可透過環境變數調整：`MEDSSI_WALLET_SCHEME`（預設 `modadigitalwallet://`）、`MEDSSI_OID4VCI_REQUEST_BASE`、`MEDSSI_OID4VCI_CLIENT_ID`、`MEDSSI_OIDVP_REQUEST_BASE`、`MEDSSI_OIDVP_CLIENT_ID`。若需對接不同沙盒或自家 OIDC4VC 服務，可修改這些 URL 以符合實際部署。
 
