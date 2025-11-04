@@ -147,7 +147,12 @@ def _merge_authorization(
     if authorization:
         return authorization
     if alt_token:
-        return f"Bearer {alt_token.strip()}"
+        stripped = alt_token.strip()
+        if not stripped:
+            return None
+        if stripped.lower().startswith("bearer "):
+            return stripped
+        return f"Bearer {stripped}"
     return None
 
 
