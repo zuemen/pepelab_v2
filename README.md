@@ -77,6 +77,8 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
    npm install
    npm run dev -- --host
    ```
+   - 預設會在 `http://localhost:5173` 提供介面，如需更換埠號可在啟動前設定
+     `VITE_DEV_SERVER_PORT`（或 `PORT`）環境變數，例如：`VITE_DEV_SERVER_PORT=5180 npm run dev -- --host`。
    - 介面預設連向 `http://localhost:8000`，可在頁面頂部調整 API Base URL 與 Access Token。
    - React UI 內建 `qrcode.react`，即時顯示可掃描 QR 影像，方便實機驗證。
 3. **快速重設沙盒資料**
