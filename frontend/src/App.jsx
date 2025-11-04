@@ -3,6 +3,8 @@ import { IssuerPanel } from './components/IssuerPanel.jsx';
 import { WalletPanel } from './components/WalletPanel.jsx';
 import { VerifierPanel } from './components/VerifierPanel.jsx';
 import { createClient } from './api/client.js';
+import DemoApp from "./demo/DemoApp";
+
 
 const DEFAULT_BASE_URL = import.meta.env.VITE_MEDSSI_API || 'http://localhost:8000';
 
@@ -22,6 +24,11 @@ export default function App() {
       return;
     }
     setResetMessage(`已於 ${new Date(response.data.timestamp).toLocaleString()} 重設沙盒資料。`);
+  }
+  console.log("App loaded, path =", window.location.pathname); 
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/demo")) {
+    console.log("Routing to <DemoApp />");                        // ←應該要在 Console 看到
+    return <DemoApp />;
   }
 
   return (
