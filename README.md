@@ -52,7 +52,9 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 | `GET` | `/api/credential/nonce/{transactionId}` | 依交易序號取得 nonce、選擇性揭露欄位與模擬的 VC JWT。 |
 | `PUT` | `/api/credential/{cid}/revocation` | 將電子卡狀態更新為撤銷。 |
 | `POST` | `/api/oidvp/qrcode` | 生成驗證 QR Code，支援自訂 `transactionId` 與欄位清單。 |
-| `POST` | `/api/oidvp/result` | 以交易序號查詢 VP 上傳結果與揭露欄位值。 |
+| `GET` | `/api/medical/verification/code` | 與官方 `qr-code` 端點對齊的查詢式參數（`ref`、`transactionId`、`allowed_fields`）。 |
+| `POST` | `/api/oidvp/result`、`/api/medical/verification/result` | 以交易序號查詢 VP 上傳結果與揭露欄位值。 |
+| `GET` | `/api/medical/verification/session/{sessionId}` | 依 Session ID 取得允許欄位、IAL 與有效期限資訊。 |
 
 這些相容端點仍套用相同的 Bearer token、5 分鐘有效期限與 IAL 驗證，方便與 React 示範介面或外部測試工具（Postman、Swagger UI）串接。【F:README.md†L52-L90】
 
