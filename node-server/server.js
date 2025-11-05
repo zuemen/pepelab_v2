@@ -4,7 +4,6 @@ const { v4: uuidv4 } = require('uuid');
 
 let config;
 try {
-  // eslint-disable-next-line global-require, import/no-dynamic-require
   config = require('./config');
 } catch (error) {
   config = require('./config.sample');
@@ -18,6 +17,7 @@ const record = {
   pending_checkin: {}
 };
 
+// ===== 驗證端 API：產生授權請求 QR Code =====
 app.post('/getQRCode', async (req, res) => {
   const { message, scenario } = req.body || {};
   if (typeof message !== 'string' || message.trim().length === 0) {
@@ -78,10 +78,44 @@ app.post('/getQRCode', async (req, res) => {
   }
 });
 
+// ===== 發行端 API：產生發卡 QR Code =====
+app.post('/issueCard', async (req, res) => {
+  const { vcUid, fields } = req.body;
+
+  const payload = {
+    vcUid: vcUid || config.vcUid,
+    issuanceDate: new Date().toISOString().split('T')[0].replace(/-/g, ''),
+    expiredDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0].replace(/-/g, ''),
+    fields: fields || Object.entries(config.cards[vcUid] || {}).map(([ename, content]) => ({ ename, content }))
+  };
+
+  try {
+    const response = await axios.post(
+      'https://issuer-sandbox.wallet.gov.tw/api/qrcode/data',
+      payload,
+      {
+        headers: {
+          'access-token': config.apiKey,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    return res.json(response.data);
+  } catch (error) {
+    console.error('Failed to issue card:', error.response?.data || error.message);
+    return res.status(500).json({
+      error: 'Failed to issue card',
+      message: error.response?.data || error.message
+    });
+  }
+});
+
+// ===== 404 fallback =====
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
 
+// ===== Server start =====
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
