@@ -57,13 +57,21 @@ except Exception:  # pragma: no cover - fallback to text payloads
 app = FastAPI(title="MedSSI Sandbox APIs", version="0.6.0")
 allowed_origins_env = os.getenv(
     "MEDSSI_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173",
+    (
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,"
+        "http://127.0.0.1:5174,http://localhost:4173"
+    ),
 )
 ALLOWED_ORIGINS = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+allowed_origin_regex = os.getenv(
+    "MEDSSI_ALLOWED_ORIGIN_REGEX",
+    r"https?://(localhost|127\.0\.0\.1|192\.168\.[0-9]{1,3}\.[0-9]{1,3})(:[0-9]{2,5})?",
+).strip()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS or ["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=allowed_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

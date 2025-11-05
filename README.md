@@ -72,7 +72,9 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
    uvicorn backend.main:app --reload
    ```
    - 若前端與後端不在同一網域，可透過環境變數 `MEDSSI_ALLOWED_ORIGINS`
-     （以逗號分隔）設定允許的 CORS 來源，預設已涵蓋 `http://localhost:5173`。
+     （以逗號分隔）設定允許的 CORS 來源，預設已涵蓋 `http://localhost:5173`
+     與 `http://localhost:5174` 等常用開發埠；也可用 `MEDSSI_ALLOWED_ORIGIN_REGEX`
+     （預設允許 `localhost`、`127.0.0.1` 與 `192.168.*.*`）快速放行區網裝置。
 2. **開啟前端**
    ```bash
    cd frontend

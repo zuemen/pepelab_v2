@@ -12,13 +12,13 @@
 
 ## 2. 專案機密配置
 - 以 **.env**、Docker secret 或主機環境變數提供 Token，不要將真實值寫入版控。
-- `node-server/config.sample.js` 提供完整欄位樣板，可複製為 `config.js` 並填入沙盒提供的值。
+- `node-server/config.sample.js` 提供完整欄位樣板，可複製為 `config.js` 並填入沙盒提供的值（`vcId`、`vcCid`、`vcUid`、`apiKey`、`verifier_ref`、`verifier_accessToken`）。
 - `.gitignore` 已排除 `node-server/config.js`，避免不小心提交真實金鑰。
 
 ## 3. 後端驗證流程
 - FastAPI 以 `require_issuer_token`、`require_verifier_token`、`require_wallet_token` 依路由自動驗證 Token，並允許 `Authorization` 或 `access-token` 標頭。
 - `_normalize_authorization_header` 會將純 Token 自動轉換成 `Bearer <token>`，與官方 Swagger Authorize 輸出一致。
-- CORS 預設允許 `http://localhost:5173` 等開發來源，可用 `MEDSSI_ALLOWED_ORIGINS` 覆寫。
+- CORS 預設允許 `http://localhost:5173`、`http://localhost:5174` 等開發來源，可用 `MEDSSI_ALLOWED_ORIGINS` 覆寫，或藉由 `MEDSSI_ALLOWED_ORIGIN_REGEX` 允許整個區網（預設涵蓋 `localhost`、`127.0.0.1` 與 `192.168.*.*`）。
 
 ## 4. 發行端 API 檢查
 - `/api/qrcode/data`：產生含資料的 QR Code，回傳 `qrcodeImage`、`authUri`、`transactionId`。
@@ -68,7 +68,7 @@ curl -X POST "http://localhost:8000/api/oidvp/result" \
 ## 8. 常見錯誤排查
 - **403 Access token rejected**：確認是否以逗號分隔的環境變數載入了正確 Token，或是否在前端表單遺漏更新。
 - **400 Bad Request**：檢查日期格式為 `YYYYMMDD`、`fields` 為陣列且欄位名稱與樣板一致。
-- **CORS 預檢 400**：確保自建前端只呼叫本地 FastAPI，而非直接打官方域名；必要時擴充 `MEDSSI_ALLOWED_ORIGINS`。
+- **CORS 預檢 400**：確保自建前端只呼叫本地 FastAPI，而非直接打官方域名；必要時擴充 `MEDSSI_ALLOWED_ORIGINS` 或調整 `MEDSSI_ALLOWED_ORIGIN_REGEX`。
 - **QR 過期**：所有 Session 預設 5 分鐘有效，過期需重新產生。
 
 完成上述檢查後，即可確認本地沙盒環境與官方流程保持一致，避免在接軌政府系統時出現 403 或欄位格式錯誤等問題。
