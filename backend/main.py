@@ -17,6 +17,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -173,33 +174,45 @@ def _merge_authorization(
 
 
 def require_issuer_token(
+    request: Request,
     authorization: Optional[str] = Header(None),
     access_token: Optional[str] = Header(None, alias="access-token"),
 ) -> None:
+    if request.method == "OPTIONS":
+        return
     header_value = _merge_authorization(authorization, access_token)
     _validate_token(header_value, ISSUER_ACCESS_TOKENS, "issuer")
 
 
 def require_verifier_token(
+    request: Request,
     authorization: Optional[str] = Header(None),
     access_token: Optional[str] = Header(None, alias="access-token"),
 ) -> None:
+    if request.method == "OPTIONS":
+        return
     header_value = _merge_authorization(authorization, access_token)
     _validate_token(header_value, VERIFIER_ACCESS_TOKENS, "verifier")
 
 
 def require_wallet_token(
+    request: Request,
     authorization: Optional[str] = Header(None),
     access_token: Optional[str] = Header(None, alias="access-token"),
 ) -> None:
+    if request.method == "OPTIONS":
+        return
     header_value = _merge_authorization(authorization, access_token)
     _validate_token(header_value, WALLET_ACCESS_TOKENS, "wallet")
 
 
 def require_any_sandbox_token(
+    request: Request,
     authorization: Optional[str] = Header(None),
     access_token: Optional[str] = Header(None, alias="access-token"),
 ) -> None:
+    if request.method == "OPTIONS":
+        return
     header_value = _merge_authorization(authorization, access_token)
     if header_value is None:
         _raise_problem(
