@@ -71,6 +71,9 @@ class FHIRMedicationDispenseSummary(BaseModel):
     medicationCodeableConcept: FHIRCodeableConcept
     quantity_text: str = Field(..., description="Formatted quantity string, e.g. '30 tablets'")
     days_supply: int = Field(..., ge=1, description="Days of therapy covered by this dispense")
+    dose_text: Optional[str] = Field(
+        None, description="Dosage instructions mirrored to vc_rx 的 dose_text 欄位"
+    )
     performer: Optional[FHIRIdentifier] = Field(
         None, description="Pharmacist or institution identifier"
     )
@@ -94,12 +97,26 @@ class ConsentSummary(BaseModel):
     purpose: Optional[str] = Field(None, description="Purpose description")
     issuer: Optional[str] = Field(None, description="Issuing organization")
     path: Optional[str] = Field(None, description="Reference path or URI")
+    expires_on: Optional[date] = Field(
+        None, description="Consent expiry date, mapping to cons_end"
+    )
 
 
 class PatientDigest(BaseModel):
     hashed_id: Optional[str] = Field(None, description="Hashed personal identifier")
     display_name: Optional[str] = Field(None, description="Masked patient name")
     birth_date: Optional[date] = Field(None, description="Birth date in ISO format")
+    document_type: Optional[str] = Field(
+        None, description="Document type mirrored to vc_pid 的 pid_type"
+    )
+    valid_from: Optional[date] = Field(
+        None, description="Document valid-from date for pid_valid_from"
+    )
+    issuer: Optional[str] = Field(None, description="Issuing authority for pid_issuer")
+    valid_to: Optional[date] = Field(
+        None, description="Document valid-to date for pid_valid_to"
+    )
+    wallet_id: Optional[str] = Field(None, description="Wallet identifier linked to wallet_id")
 
 
 class CredentialPayload(BaseModel):

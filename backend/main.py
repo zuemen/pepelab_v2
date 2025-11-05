@@ -492,11 +492,18 @@ MODA_VC_SCOPE_MAP = {
 
 
 MODA_VC_FIELD_KEYS = {
-    "vc_pid": ["pid_hash", "pid_name", "pid_birth"],
-    "vc_cons": ["cons_scope", "cons_purpose", "cons_issuer", "cons_path"],
+    "vc_pid": [
+        "pid_hash",
+        "pid_type",
+        "pid_valid_from",
+        "pid_issuer",
+        "pid_valid_to",
+        "wallet_id",
+    ],
+    "vc_cons": ["cons_scope", "cons_purpose", "cons_end", "cons_path"],
     "vc_cond": ["cond_code", "cond_display", "cond_onset"],
     "vc_algy": ["algy_code", "algy_name", "algy_severity"],
-    "vc_rx": ["med_code", "med_name", "qty_value", "qty_unit", "pickup_deadline"],
+    "vc_rx": ["med_code", "med_name", "dose_text", "qty_value", "qty_unit"],
 }
 
 
@@ -505,15 +512,15 @@ MODA_SCOPE_DEFAULT_FIELDS = {
     DisclosureScope.MEDICATION_PICKUP: [
         "med_code",
         "med_name",
+        "dose_text",
         "qty_value",
         "qty_unit",
-        "pickup_deadline",
     ],
     DisclosureScope.RESEARCH_ANALYTICS: [
         "cons_scope",
         "cons_purpose",
+        "cons_end",
         "cons_path",
-        "cons_issuer",
     ],
 }
 
@@ -527,6 +534,7 @@ MODA_FIELD_TO_FHIR = {
     "qty_value": "medication_dispense[0].days_supply",
     "qty_unit": "medication_dispense[0].quantity_text",
     "pickup_deadline": "medication_dispense[0].pickup_window_end",
+    "dose_text": "medication_dispense[0].dose_text",
     "medication_list[0].medication_code": "medication_dispense[0].medicationCodeableConcept.coding[0].code",
     "medication_list[0].medication_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
     "medication_list[0].dosage": "medication_dispense[0].days_supply",
@@ -541,9 +549,15 @@ MODA_FIELD_TO_FHIR = {
     "cons_purpose": "consent.purpose",
     "cons_issuer": "consent.issuer",
     "cons_path": "consent.path",
+    "cons_end": "consent.expires_on",
     "pid_hash": "patient_digest.hashed_id",
     "pid_name": "patient_digest.display_name",
     "pid_birth": "patient_digest.birth_date",
+    "pid_type": "patient_digest.document_type",
+    "pid_valid_from": "patient_digest.valid_from",
+    "pid_issuer": "patient_digest.issuer",
+    "pid_valid_to": "patient_digest.valid_to",
+    "wallet_id": "patient_digest.wallet_id",
 }
 
 
@@ -551,10 +565,12 @@ MODA_FIELD_DIRECT_ALIASES = {
     "medicationList[0].medicationCode": "medication_list[0].medication_code",
     "medicationList[0].medicationName": "medication_list[0].medication_name",
     "medicationList[0].dosage": "medication_list[0].dosage",
+    "medicationList[0].doseText": "dose_text",
     "pickupInfo.pickupDeadline": "pickup_info.pickup_deadline",
     "conditionInfo.conditionCode": "condition_info.condition_code",
     "conditionInfo.conditionDisplay": "condition_info.condition_display",
     "conditionInfo.conditionOnset": "condition_info.condition_onset",
+    "consentInfo.consentEnd": "cons_end",
 }
 
 
@@ -573,13 +589,20 @@ MODA_FIELD_LOWER_ALIASES = {
     "dosage": "qty_value",
     "qtyunit": "qty_unit",
     "pickupdeadline": "pickup_deadline",
+    "dosetext": "dose_text",
     "consentscope": "cons_scope",
     "consentpurpose": "cons_purpose",
     "consentissuer": "cons_issuer",
     "consentpath": "cons_path",
+    "consentend": "cons_end",
     "pidhash": "pid_hash",
     "pidname": "pid_name",
     "pidbirth": "pid_birth",
+    "pidtype": "pid_type",
+    "pidvalidfrom": "pid_valid_from",
+    "pidissuer": "pid_issuer",
+    "pidvalidto": "pid_valid_to",
+    "walletid": "wallet_id",
     "algycode": "algy_code",
     "algyname": "algy_name",
     "algyseverity": "algy_severity",
@@ -589,12 +612,18 @@ MODA_FIELD_LOWER_ALIASES = {
 MODA_SAMPLE_FIELD_VALUES = {
     "vc_pid": {
         "pid_hash": "hash::8f4c0d1d6c1a4b67a4f9d1234567890b",
+        "pid_type": "NHI_CARD",
+        "pid_valid_from": (date.today() - timedelta(days=365)).isoformat(),
+        "pid_issuer": "衛福部中央健康保險署",
+        "pid_valid_to": (date.today() + timedelta(days=365 * 2)).isoformat(),
+        "wallet_id": "wallet-demo-001",
         "pid_name": "張小華",
         "pid_birth": "1950-07-18",
     },
     "vc_cons": {
         "cons_scope": "research_info",
         "cons_purpose": "AI 胃炎趨勢研究",
+        "cons_end": (date.today() + timedelta(days=180)).isoformat(),
         "cons_issuer": "MOHW-IRB-2025-001",
         "cons_path": "medssi://consent/irb-2025-001",
     },
@@ -606,11 +635,12 @@ MODA_SAMPLE_FIELD_VALUES = {
     "vc_algy": {
         "algy_code": "Z88.1",
         "algy_name": "Penicillin allergy",
-        "algy_severity": "high",
+        "algy_severity": "Severe",
     },
     "vc_rx": {
         "med_code": "A02BC05",
         "med_name": "Omeprazole 20mg capsule",
+        "dose_text": "Take 1 capsule twice daily before meals",
         "qty_value": "30",
         "qty_unit": "capsules",
         "pickup_deadline": (date.today() + timedelta(days=3)).isoformat(),
@@ -796,11 +826,17 @@ def _sample_payload() -> CredentialPayload:
             "purpose": "AI 胃炎趨勢研究",
             "issuer": "MOHW-IRB-2025-001",
             "path": "medssi://consent/irb-2025-001",
+            "expires_on": (today + timedelta(days=180)).isoformat(),
         },
         "patient_digest": {
             "hashed_id": "hash::8f4c0d1d6c1a4b67a4f9d1234567890b",
             "display_name": "張小華",
             "birth_date": "1950-07-18",
+            "document_type": "NHI_CARD",
+            "valid_from": (today - timedelta(days=365)).isoformat(),
+            "issuer": "衛福部中央健康保險署",
+            "valid_to": (today + timedelta(days=365 * 2)).isoformat(),
+            "wallet_id": "wallet-demo-001",
         },
     }
     return CredentialPayload.parse_obj(sample_dict)
@@ -926,6 +962,17 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
             }
         )
 
+    if alias_map.get("dose_text"):
+        merge(
+            {
+                "medication_dispense": [
+                    {
+                        "dose_text": alias_map["dose_text"],
+                    }
+                ]
+            }
+        )
+
     if alias_map.get("pickup_deadline"):
         merge(
             {
@@ -960,7 +1007,11 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
             }
         )
 
-    if any(key in alias_map for key in ("cons_scope", "cons_purpose", "cons_issuer", "cons_path")):
+    if any(
+        key
+        in alias_map
+        for key in ("cons_scope", "cons_purpose", "cons_issuer", "cons_path", "cons_end")
+    ):
         merge(
             {
                 "consent": {
@@ -968,17 +1019,36 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
                     "purpose": alias_map.get("cons_purpose"),
                     "issuer": alias_map.get("cons_issuer"),
                     "path": alias_map.get("cons_path"),
+                    "expires_on": alias_map.get("cons_end"),
                 }
             }
         )
 
-    if any(key in alias_map for key in ("pid_hash", "pid_name", "pid_birth")):
+    if any(
+        key
+        in alias_map
+        for key in (
+            "pid_hash",
+            "pid_name",
+            "pid_birth",
+            "pid_type",
+            "pid_valid_from",
+            "pid_issuer",
+            "pid_valid_to",
+            "wallet_id",
+        )
+    ):
         merge(
             {
                 "patient_digest": {
                     "hashed_id": alias_map.get("pid_hash"),
                     "display_name": alias_map.get("pid_name"),
                     "birth_date": alias_map.get("pid_birth"),
+                    "document_type": alias_map.get("pid_type"),
+                    "valid_from": alias_map.get("pid_valid_from"),
+                    "issuer": alias_map.get("pid_issuer"),
+                    "valid_to": alias_map.get("pid_valid_to"),
+                    "wallet_id": alias_map.get("wallet_id"),
                 }
             }
         )
@@ -997,13 +1067,20 @@ def _expand_aliases(alias_map: Dict[str, str]) -> Dict[str, str]:
     copy_if_missing("med_name", "medication_list[0].medication_name")
     copy_if_missing("qty_value", "medication_list[0].dosage")
     copy_if_missing("pickup_deadline", "pickup_info.pickup_deadline")
+    copy_if_missing("dose_text", "medication_list[0].dose_text")
     copy_if_missing("cons_scope", "consent.scope")
     copy_if_missing("cons_purpose", "consent.purpose")
     copy_if_missing("cons_issuer", "consent.issuer")
     copy_if_missing("cons_path", "consent.path")
+    copy_if_missing("cons_end", "consent.expires_on")
     copy_if_missing("pid_hash", "pid_info.pid_hash")
     copy_if_missing("pid_name", "pid_info.pid_name")
     copy_if_missing("pid_birth", "pid_info.pid_birth")
+    copy_if_missing("pid_type", "pid_info.pid_type")
+    copy_if_missing("pid_valid_from", "pid_info.pid_valid_from")
+    copy_if_missing("pid_issuer", "pid_info.pid_issuer")
+    copy_if_missing("pid_valid_to", "pid_info.pid_valid_to")
+    copy_if_missing("wallet_id", "pid_info.wallet_id")
 
     return expanded
 

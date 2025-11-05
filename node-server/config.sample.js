@@ -13,12 +13,18 @@ module.exports = {
   cards: {
     vc_pid: {
       pid_hash: 'hash::8f4c0d1d6c1a4b67a4f9d1234567890b',
+      pid_type: 'NHI_CARD',
+      pid_valid_from: '2024-01-01',
+      pid_issuer: '衛福部中央健康保險署',
+      pid_valid_to: '2026-12-31',
+      wallet_id: 'wallet-demo-001',
       pid_name: '張小華',
       pid_birth: '1950-07-18'
     },
     vc_cons: {
       cons_scope: 'research_info',
       cons_purpose: 'AI 胃炎趨勢研究',
+      cons_end: '2025-12-31',
       cons_issuer: 'MOHW-IRB-2025-001',
       cons_path: 'medssi://consent/irb-2025-001'
     },
@@ -30,11 +36,12 @@ module.exports = {
     vc_algy: {
       algy_code: 'Z88.1',
       algy_name: 'Penicillin allergy',
-      algy_severity: 'high'
+      algy_severity: 'Severe'
     },
     vc_rx: {
       med_code: 'A02BC05',
       med_name: 'Omeprazole 20mg capsule',
+      dose_text: 'Take 1 capsule twice daily before meals',
       qty_value: '30',
       qty_unit: 'capsules'
     }
