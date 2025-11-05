@@ -1,6 +1,8 @@
 import PageShell from "../components/PageShell";
-
+import { useNavigate } from "react-router-dom";
 export default function Scene04_Compliance() {
+ const navigate = useNavigate();
+
   return (
     <PageShell
       title="法規對齊，才值得投入"
@@ -20,6 +22,15 @@ export default function Scene04_Compliance() {
           <div className="line">日期：2025-11-01</div>
           <div className="line">院所：12345678</div>
           <div className="tag good">僅顯示必要欄位</div>
+
+          <div className="navs">
+            <button className="ghost" onClick={() => navigate("/scene03")}>
+              ← 上一頁：我們的方法
+            </button>
+            <button className="cta" onClick={() => navigate("/scene05")}>
+              下一步：發卡端簡介 →
+            </button>
+          </div>
         </div>
       }
     />
