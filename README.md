@@ -56,6 +56,8 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 | `POST` | `/api/oidvp/result`、`/api/medical/verification/result` | 以交易序號查詢 VP 上傳結果與揭露欄位值。 |
 | `GET` | `/api/medical/verification/session/{sessionId}` | 依 Session ID 取得允許欄位、IAL 與有效期限資訊。 |
 
+> 📋 若需要逐項確認環境是否符合政府沙盒要求，可參考 [`docs/SANDBOX_CHECKLIST.md`](docs/SANDBOX_CHECKLIST.md) 取得申請 Token、設定專案機密與常見錯誤排查的完整清單。
+
 這些相容端點仍套用相同的 Bearer token、5 分鐘有效期限與 IAL 驗證，方便與 React 示範介面或外部測試工具（Postman、Swagger UI）串接。【F:README.md†L52-L90】
 
 - `vcUid` / `fields` 結構會自動轉換為 FHIR VC payload，同時保留 MODA 欄位別名（例如 `cond_code`、`cons_scope`），錢包與驗證端可直接沿用官方沙盒的欄位設定。
