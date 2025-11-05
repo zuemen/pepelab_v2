@@ -15,6 +15,16 @@
 - `node-server/config.sample.js` 提供完整欄位樣板，可複製為 `config.js` 並填入沙盒提供的值（`vcId`、`vcCid`、`vcUid`、`apiKey`、`verifier_ref`、`verifier_accessToken`）。
 - `.gitignore` 已排除 `node-server/config.js`，避免不小心提交真實金鑰。
 
+## 2.1 官方 API 呼叫流程速覽
+依照政府沙盒提供的 Swagger 指引，串接時建議遵循下列順序，可確認 QR Code 與 VP 結果確實由官方服務產生：
+
+1. **前置準備** – 在發行端後台建立 VC 樣板並記下 `vcUid`／`vcId`／`vcCid`，於驗證端建立 VP 範本取得 `ref`，所有 Access Token 需透過後台換發後寫入環境變數或 `config.js`。
+2. **發行端呼叫** – 以 `POST /api/qrcode/data`（或 `/api/qrcode/nodata`）向 `https://issuer-sandbox.wallet.gov.tw` 申請 QR Code，回應中的 `transactionId` 與 `qrCode`／`deepLink` 即為官方結果；必要時再透過 `GET /api/credential/nonce/{transactionId}` 追蹤領卡狀態。
+3. **驗證端呼叫** – 使用 `GET /api/oidvp/qrcode?ref=...&transactionId=...`（或 `POST /api/oidvp/qrcode`）生成授權 QR，待民眾掃描後以 `POST /api/oidvp/result` 搭配相同 `transactionId` 查詢揭露結果。
+4. **後續管理** – 若需撤銷憑證，先由 `/api/credential/nonce/{transactionId}` 解析 JWT 取得 `jti`（CID），再呼叫 `PUT /api/credential/{cid}/revocation` 更新政府錢包中的卡片狀態。
+
+> 🔍 本專案的 `/api/*` 相容層會保留使用者提交的 `access-token` 並直接轉送到政府沙盒，只要依照上述步驟呼叫，就能驗證官方 QR Code 與授權結果是否成功生成。
+
 ## 3. 後端驗證流程
 - FastAPI 以 `require_issuer_token`、`require_verifier_token`、`require_wallet_token` 依路由自動驗證 Token，並允許 `Authorization` 或 `access-token` 標頭。
 - `_normalize_authorization_header` 會將純 Token 自動轉換成 `Bearer <token>`，與官方 Swagger Authorize 輸出一致。
