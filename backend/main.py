@@ -6,6 +6,9 @@ import json
 import os
 import re
 import secrets
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -113,6 +116,12 @@ OIDVP_CLIENT_ID = os.getenv(
     "MEDSSI_OIDVP_CLIENT_ID",
     "https://verifier-oidvp.medssi.dev/api/oidvp/authorization-response",
 )
+GOV_ISSUER_BASE = os.getenv(
+    "MEDSSI_GOV_ISSUER_BASE", "https://issuer-sandbox.wallet.gov.tw"
+)
+GOV_VERIFIER_BASE = os.getenv(
+    "MEDSSI_GOV_VERIFIER_BASE", "https://verifier-sandbox.wallet.gov.tw"
+)
 
 
 def _raise_problem(*, status: int, type_: str, title: str, detail: str) -> None:
@@ -180,6 +189,83 @@ def _merge_authorization(
     if alt_token:
         return _normalize_authorization_header(alt_token)
     return None
+
+
+def _extract_token_from_request(request: Request) -> str:
+    header_value = _merge_authorization(
+        request.headers.get("authorization"), request.headers.get("access-token")
+    )
+    if not header_value:
+        _raise_problem(
+            status=401,
+            type_="https://medssi.dev/errors/missing-token",
+            title="Token required",
+            detail="Provide issuer, wallet, or verifier token.",
+        )
+    _, _, token = header_value.partition(" ")
+    return token.strip()
+
+
+def _call_remote_api(
+    *,
+    method: str,
+    base_url: str,
+    path: str,
+    token: str,
+    payload: Optional[Dict[str, Any]] = None,
+    params: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    url = base_url.rstrip("/") + path
+    if params:
+        encoded = urllib.parse.urlencode(
+            {key: value for key, value in params.items() if value is not None}, doseq=True
+        )
+        if encoded:
+            url = f"{url}?{encoded}"
+
+    data: Optional[bytes] = None
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+
+    request = urllib.request.Request(url, data=data, method=method.upper())
+    request.add_header("Content-Type", "application/json")
+    request.add_header("access-token", token)
+
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            body = response.read()
+            if not body:
+                return {}
+            encoding = response.headers.get_content_charset() or "utf-8"
+            text = body.decode(encoding)
+            if not text:
+                return {}
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                return {"raw": text}
+    except urllib.error.HTTPError as exc:
+        detail: Any = {
+            "code": str(exc.code),
+            "message": exc.reason or "Remote service error",
+        }
+        try:
+            payload_text = exc.read().decode("utf-8")
+            if payload_text:
+                detail = json.loads(payload_text)
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+            detail = {
+                "code": str(exc.code),
+                "message": exc.reason or "Remote service error",
+            }
+        raise HTTPException(status_code=exc.code or 502, detail=detail) from None
+    except urllib.error.URLError as exc:
+        _raise_problem(
+            status=502,
+            type_="https://medssi.dev/errors/remote-unavailable",
+            title="Remote service unavailable",
+            detail=str(exc.reason) if exc.reason else "Unable to reach sandbox APIs.",
+        )
 
 
 def require_issuer_token(
@@ -1493,143 +1579,136 @@ api_public = APIRouter(prefix="/api", tags=["MODA Sandbox compatibility"])
 
 @api_public.post(
     "/qrcode/data",
-    response_model=GovIssueResponse,
+    response_model=Dict[str, Any],
     status_code=201,
     dependencies=[Depends(require_issuer_token)],
 )
-def gov_issue_with_data(payload: Dict[str, Any] = Body(...)) -> GovIssueResponse:
-    offer, qr_payload = _issue_with_data_from_payload(payload)
-    return _build_issue_response(offer, qr_payload)
+def gov_issue_with_data(
+    request: Request, payload: Dict[str, Any] = Body(...)
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    return _call_remote_api(
+        method="POST",
+        base_url=GOV_ISSUER_BASE,
+        path="/api/qrcode/data",
+        token=token,
+        payload=payload,
+    )
 
 
 @api_public.post(
     "/medical/card/issue",
-    response_model=GovIssueResponse,
+    response_model=Dict[str, Any],
     status_code=201,
     dependencies=[Depends(require_issuer_token)],
 )
-def gov_issue_medical_card(payload: Dict[str, Any] = Body(...)) -> GovIssueResponse:
-    offer, qr_payload = _issue_with_data_from_payload(payload)
-    return _build_issue_response(offer, qr_payload)
+def gov_issue_medical_card(
+    request: Request, payload: Dict[str, Any] = Body(...)
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    return _call_remote_api(
+        method="POST",
+        base_url=GOV_ISSUER_BASE,
+        path="/api/qrcode/data",
+        token=token,
+        payload=payload,
+    )
 
 
 @api_public.post(
     "/qrcode/nodata",
-    response_model=GovIssueResponse,
+    response_model=Dict[str, Any],
     status_code=201,
     dependencies=[Depends(require_issuer_token)],
 )
-def gov_issue_without_data(payload: Dict[str, Any] = Body(...)) -> GovIssueResponse:
-    offer, qr_payload = _issue_template_from_payload(payload)
-    return _build_issue_response(offer, qr_payload)
+def gov_issue_without_data(
+    request: Request, payload: Dict[str, Any] = Body(...)
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    return _call_remote_api(
+        method="POST",
+        base_url=GOV_ISSUER_BASE,
+        path="/api/qrcode/nodata",
+        token=token,
+        payload=payload,
+    )
 
 
 @api_public.get(
     "/credential/nonce/{transaction_id}",
-    response_model=GovCredentialNonceResponse,
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_wallet_token)],
 )
-def gov_get_nonce(transaction_id: str) -> GovCredentialNonceResponse:
-    offer = store.get_credential_by_transaction(transaction_id)
-    if not offer:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": "61010",
-                "message": "指定VC不存在，QR Code尚未被掃描",
-            },
-        )
-    return _build_nonce_response(offer)
+def gov_get_nonce(transaction_id: str, request: Request) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    return _call_remote_api(
+        method="GET",
+        base_url=GOV_ISSUER_BASE,
+        path=f"/api/credential/nonce/{transaction_id}",
+        token=token,
+    )
 
 
 @api_public.get(
     "/credential/nonce",
-    response_model=GovCredentialNonceResponse,
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_wallet_token)],
 )
-def gov_get_nonce_query(transactionId: str = Query(..., alias="transactionId")) -> GovCredentialNonceResponse:
-    return gov_get_nonce(transactionId)
+def gov_get_nonce_query(
+    request: Request, transactionId: str = Query(..., alias="transactionId")
+) -> Dict[str, Any]:
+    return gov_get_nonce(transactionId, request)
 
 
 @api_public.put(
     "/credential/{credential_id}/{action}",
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_issuer_token)],
 )
-def gov_update_credential(credential_id: str, action: str) -> Dict[str, Any]:
-    if action.lower() != "revocation":
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "61006", "message": "不合法的VC操作類型"},
-        )
-    try:
-        store.revoke_credential(credential_id)
-    except KeyError:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "61006", "message": "不合法的VC識別碼"},
-        ) from None
-    return {"credentialStatus": CredentialStatus.REVOKED.value, "credentialId": credential_id}
+def gov_update_credential(
+    credential_id: str, action: str, request: Request
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    return _call_remote_api(
+        method="PUT",
+        base_url=GOV_ISSUER_BASE,
+        path=f"/api/credential/{credential_id}/{action}",
+        token=token,
+        payload={},
+    )
 
 
 @api_public.post(
     "/oidvp/qrcode",
-    response_model=OIDVPQRCodeResponse,
+    response_model=Dict[str, Any],
     status_code=201,
     dependencies=[Depends(require_verifier_token)],
 )
-def gov_create_oidvp_qrcode(payload: OIDVPSessionRequest) -> OIDVPQRCodeResponse:
-    fields = payload.fields or []
-    if len(fields) == 1 and "," in fields[0]:
-        fields = [segment.strip() for segment in fields[0].split(",") if segment.strip()]
-    if not fields:
-        fallback_policy = next(
-            (
-                policy
-                for policy in _default_disclosure_policies()
-                if policy.scope == payload.scope
-            ),
-            None,
-        )
-        fields = list(fallback_policy.fields) if fallback_policy else ["condition.code.coding[0].code"]
-
-    now = datetime.utcnow()
+def gov_create_oidvp_qrcode(
+    payload: OIDVPSessionRequest, request: Request
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
     transaction_id = payload.transaction_id or str(uuid.uuid4())
-    session = VerificationSession(
-        session_id=f"sess-{uuid.uuid4().hex}",
-        transaction_id=transaction_id,
-        verifier_id=payload.verifier_id,
-        verifier_name=payload.verifier_name,
-        purpose=payload.purpose or "憑證驗證",
-        required_ial=payload.ial,
-        scope=payload.scope,
-        allowed_fields=list(dict.fromkeys(fields)),
-        qr_token=secrets.token_urlsafe(24),
-        created_at=now,
-        expires_at=now + timedelta(minutes=payload.valid_minutes),
-        last_polled_at=now,
-        template_ref=payload.ref,
-    )
-    store.persist_verification_session(session)
-    qr_payload = _build_qr_payload(
-        session.qr_token, "vp-session", transaction_id=transaction_id
-    )
-    return OIDVPQRCodeResponse(
-        transaction_id=transaction_id,
-        qrcode_image=_make_qr_data_uri(qr_payload),
-        auth_uri=qr_payload,
-        qr_payload=qr_payload,
-        scope=session.scope,
-        ial=session.required_ial,
-        expires_at=session.expires_at,
+    params = {
+        "ref": payload.ref,
+        "transactionId": transaction_id,
+    }
+    return _call_remote_api(
+        method="GET",
+        base_url=GOV_VERIFIER_BASE,
+        path="/api/oidvp/qrcode",
+        token=token,
+        params=params,
     )
 
 
 @api_public.get(
     "/medical/verification/code",
-    response_model=OIDVPQRCodeResponse,
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_verifier_token)],
 )
 def gov_get_medical_verification_code(
+    request: Request,
     ref: Optional[str] = Query(None),
     transaction_id: Optional[str] = Query(None, alias="transactionId"),
     verifier_id: str = Query("did:example:verifier", alias="verifier_id"),
@@ -1640,85 +1719,54 @@ def gov_get_medical_verification_code(
     ial: Optional[IdentityAssuranceLevel] = Query(None, alias="ial"),
     allowed_fields: Optional[List[str]] = Query(None, alias="allowed_fields"),
     valid_for_minutes: int = Query(5, alias="valid_for_minutes", ge=1, le=10),
-) -> OIDVPQRCodeResponse:
-    scope = None
-    if card_type:
-        try:
-            scope = DisclosureScope(card_type)
-        except ValueError:
-            scope = None
-    request_fields: Optional[List[str]] = None
-    if allowed_fields:
-        if len(allowed_fields) == 1 and "," in allowed_fields[0]:
-            request_fields = [
-                segment.strip() for segment in allowed_fields[0].split(",") if segment.strip()
-            ]
-        else:
-            request_fields = [field.strip() for field in allowed_fields if field.strip()]
-
-    payload = OIDVPSessionRequest(
-        verifier_id=verifier_id,
-        verifier_name=verifier_name,
-        purpose=purpose or "憑證驗證",
-        scope=scope or DisclosureScope.MEDICAL_RECORD,
-        ial=ial or IdentityAssuranceLevel.NHI_CARD_PIN,
-        fields=request_fields,
-        valid_minutes=valid_for_minutes,
-        transaction_id=transaction_id,
-        ref=ref,
+) -> Dict[str, Any]:
+    # Government API currently accepts only ref/transactionId; additional
+    # parameters are preserved locally when we fall back to the internal
+    # sandbox. Here we simply forward the request and rely on the caller to
+    # track verifier metadata.
+    transaction = transaction_id or str(uuid.uuid4())
+    params = {
+        "ref": ref,
+        "transactionId": transaction,
+    }
+    token = _extract_token_from_request(request)
+    return _call_remote_api(
+        method="GET",
+        base_url=GOV_VERIFIER_BASE,
+        path="/api/oidvp/qrcode",
+        token=token,
+        params=params,
     )
-    # Preserve role information by appending to verifier_name if provided so the
-    # UI can still reference it when rendering session details.
-    if verifier_role:
-        payload.verifier_name = f"{payload.verifier_name} ({verifier_role})"
-    return gov_create_oidvp_qrcode(payload)
 
 
 @api_public.post(
     "/oidvp/result",
-    response_model=OIDVPResultResponse,
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_verifier_token)],
 )
-def gov_fetch_oidvp_result(payload: OIDVPResultRequest) -> OIDVPResultResponse:
-    session = store.get_verification_session_by_transaction(payload.transaction_id)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "404", "message": "查無交易紀錄"},
-        )
-    result = store.latest_result_for_session(session.session_id)
-    if not result:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "400", "message": "尚未接收到使用者上傳資料"},
-        )
-    session.last_polled_at = datetime.utcnow()
-    store.persist_verification_session(session)
-    claims = [
-        {
-            "credentialType": "MedSSI.VerifiableCredential",
-            "claims": [
-                {"ename": field, "cname": field, "value": value}
-                for field, value in result.presentation.disclosed_fields.items()
-            ],
-        }
-    ]
-    description = "success" if result.verified else "failed"
-    return OIDVPResultResponse(
-        verify_result=result.verified,
-        result_description=description,
-        transaction_id=payload.transaction_id,
-        data=claims,
+def gov_fetch_oidvp_result(
+    payload: OIDVPResultRequest, request: Request
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    body = payload.dict(by_alias=True)
+    return _call_remote_api(
+        method="POST",
+        base_url=GOV_VERIFIER_BASE,
+        path="/api/oidvp/result",
+        token=token,
+        payload=body,
     )
 
 
 @api_public.post(
     "/medical/verification/result",
-    response_model=OIDVPResultResponse,
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_verifier_token)],
 )
-def gov_medical_verification_result(payload: OIDVPResultRequest) -> OIDVPResultResponse:
-    return gov_fetch_oidvp_result(payload)
+def gov_medical_verification_result(
+    payload: OIDVPResultRequest, request: Request
+) -> Dict[str, Any]:
+    return gov_fetch_oidvp_result(payload, request)
 
 @api_public.get(
     "/medical/verification/session/{session_id}",

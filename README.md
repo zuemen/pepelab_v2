@@ -71,6 +71,8 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 > ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。若需暫時允許多組 Token，可在環境變數中以逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會自動接受其中任一值。若沿用官方 sandbox 範例以 `access-token` header 傳遞，也會自動轉換為 Bearer Token 無須修改程式。
 
+> 🌐 `/api/*` MODA 相容端點現已直接呼叫政府沙盒：發卡流程會透過 `https://issuer-sandbox.wallet.gov.tw` 的 `/api/qrcode/data` / `/api/qrcode/nodata` 取得官方 QR Code，驗證流程則向 `https://verifier-sandbox.wallet.gov.tw/api/oidvp/*` 查詢。若需指向自架測試環境，可設定 `MEDSSI_GOV_ISSUER_BASE` 與 `MEDSSI_GOV_VERIFIER_BASE` 來覆寫預設網址；所有請求都會沿用使用者提交的 `access-token` 轉送給遠端沙盒，方便交叉驗證呼叫是否成功。
+
 > 🔧 Deep Link 與 request_uri 參數可透過環境變數調整：`MEDSSI_WALLET_SCHEME`（預設 `modadigitalwallet://`）、`MEDSSI_OID4VCI_REQUEST_BASE`、`MEDSSI_OID4VCI_CLIENT_ID`、`MEDSSI_OIDVP_REQUEST_BASE`、`MEDSSI_OIDVP_CLIENT_ID`。若需對接不同沙盒或自家 OIDC4VC 服務，可修改這些 URL 以符合實際部署。
 
 ## 快速操作
