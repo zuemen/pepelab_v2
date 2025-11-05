@@ -73,6 +73,17 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 > 🌐 `/api/*` MODA 相容端點現已直接呼叫政府沙盒：發卡流程會透過 `https://issuer-sandbox.wallet.gov.tw` 的 `/api/qrcode/data` / `/api/qrcode/nodata` 取得官方 QR Code，驗證流程則向 `https://verifier-sandbox.wallet.gov.tw/api/oidvp/*` 查詢。若需指向自架測試環境，可設定 `MEDSSI_GOV_ISSUER_BASE` 與 `MEDSSI_GOV_VERIFIER_BASE` 來覆寫預設網址；所有請求都會沿用使用者提交的 `access-token` 轉送給遠端沙盒，方便交叉驗證呼叫是否成功。
 
+### 官方沙盒呼叫步驟速查
+
+依照數位憑證皮夾沙盒的最新說明，整合人員可按照下列流程逐一檢查設定：
+
+1. **前置準備** – 於發行端、驗證端沙盒後台分別建立帳號並取得 `access-token`，再依樣板建立 VC (`vc_cond`、`vc_cons`、`vc_pid`、`vc_algy`、`vc_rx`) 與 VP 範本 (`ref`)。建議把憑證序號 (`vcId`)、樣板代號 (`vcCid`) 及 API Key 寫入 `config.js` 或環境變數，避免硬編碼於程式。 
+2. **發行端呼叫順序** – 以 `POST /api/qrcode/data`（或 `/api/qrcode/nodata`）取得官方 QR Code 與 `transactionId`，必要時使用 `GET /api/credential/nonce/{transactionId}` 追蹤領卡狀態，最後可藉由 `PUT /api/credential/{cid}/revocation` 撤銷卡片。 
+3. **驗證端呼叫順序** – 透過 `GET /api/oidvp/qrcode?ref=<...>&transactionId=<...>` 生成授權 QR（或使用 `POST` 版本），等待錢包完成上傳後以 `POST /api/oidvp/result` 搭配同一筆 `transactionId` 查詢揭露結果；若需要醫療流程資訊，可再呼叫 `/api/medical/verification/session/{sessionId}` 取得 IAL 與欄位紀錄。 
+4. **錯誤排查重點** – `403` 通常代表 token 未帶入或格式錯誤，`400` 則多因日期／欄位名稱未符合模板。React 示範面板與 `node-server/` 範例會自動補齊欄位及日期格式，並將 sandbox 回應逐字呈現，方便核對官方 Swagger。 
+
+完成上述檢查後，即可確認前後端確實透過官方 API 取得 QR Code 與 VP 驗證結果；若需更動測試環境，只要更新 access token 與 `MEDSSI_GOV_*` 參數即可維持相同行為。
+
 > 🔧 Deep Link 與 request_uri 參數可透過環境變數調整：`MEDSSI_WALLET_SCHEME`（預設 `modadigitalwallet://`）、`MEDSSI_OID4VCI_REQUEST_BASE`、`MEDSSI_OID4VCI_CLIENT_ID`、`MEDSSI_OIDVP_REQUEST_BASE`、`MEDSSI_OIDVP_CLIENT_ID`。若需對接不同沙盒或自家 OIDC4VC 服務，可修改這些 URL 以符合實際部署。
 
 ## 快速操作
