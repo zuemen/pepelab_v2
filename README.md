@@ -74,9 +74,12 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 2. **開啟前端**
    ```bash
    cd frontend
+   # 👀 確認此處能看到 package.json、vite.config.js 等檔案
+   ls
    npm install
    npm run dev -- --host
    ```
+   - 若命令列顯示 `ENOENT: no such file or directory, open '.../frontend/package.json'`，代表目前所在目錄錯誤（常見於誤多下了一次 `cd frontend`）；請先輸入 `pwd` 或 `dir` 確認路徑僅包含一次 `frontend/`，再重新執行上述命令。
    - 預設會在 `http://localhost:5173` 提供介面，如需更換埠號可在啟動前設定
      `VITE_DEV_SERVER_PORT`（或 `PORT`）環境變數，例如：`VITE_DEV_SERVER_PORT=5180 npm run dev -- --host`。
    - 介面預設連向 `http://localhost:8000`，可在頁面頂部調整 API Base URL 與 Access Token。
