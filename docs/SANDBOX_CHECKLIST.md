@@ -12,13 +12,20 @@
 
 ## 2. 專案機密配置
 - 以 **.env**、Docker secret 或主機環境變數提供 Token，不要將真實值寫入版控。
-- `node-server/config.sample.js` 提供完整欄位樣板，可複製為 `config.js` 並填入沙盒提供的值（`vcId`、`vcCid`、`vcUid`、`apiKey`、`verifier_ref`、`verifier_accessToken`）。
+- `node-server/config.sample.js` 提供完整欄位樣板，可複製為 `config.js` 並填入沙盒提供的值（`vcId`、`vcCid`、`vcUid`、`apiKey`、`verifier_accessToken`、`verifier_refs`）。
 - `.gitignore` 已排除 `node-server/config.js`，避免不小心提交真實金鑰。
 
 ## 2.1 官方 API 呼叫流程速覽
 依照政府沙盒提供的 Swagger 指引，串接時建議遵循下列順序，可確認 QR Code 與 VP 結果確實由官方服務產生：
 
 1. **前置準備** – 在發行端後台建立 VC 樣板並記下 `vcUid`／`vcId`／`vcCid`，於驗證端建立 VP 範本取得 `ref`，所有 Access Token 需透過後台換發後寫入環境變數或 `config.js`。
+   - 專案會依 `DisclosureScope` 自動套用政府公布的三組驗證服務代碼：
+     | Scope / 情境 | 預設 `ref` | 來源 VP |
+     | --- | --- | --- |
+     | `MEDICAL_RECORD`（授權驗證） | `00000000_vp_consent` | 匿名身分卡 + 數位同意卡 |
+     | `RESEARCH_ANALYTICS`（研究揭露） | `00000000_vp_research` | 診斷摘要卡 + 數位同意卡 + 過敏史卡 |
+     | `MEDICATION_PICKUP`（領藥驗證） | `00000000_vp_rx_pickup` | 處方領藥卡 + 過敏史卡 + 數位同意卡 |
+   - 若官方更新 `ref`，可改用環境變數 `MEDSSI_VERIFIER_REF_CONSENT`／`MEDSSI_VERIFIER_REF_RESEARCH`／`MEDSSI_VERIFIER_REF_RX` 覆蓋，或在 `node-server/config.js` 的 `verifier_refs` 逐一指定。
 2. **發行端呼叫** – 以 `POST /api/qrcode/data`（或 `/api/qrcode/nodata`）向 `https://issuer-sandbox.wallet.gov.tw` 申請 QR Code，回應中的 `transactionId` 與 `qrCode`／`deepLink` 即為官方結果；必要時再透過 `GET /api/credential/nonce/{transactionId}` 追蹤領卡狀態。
 3. **驗證端呼叫** – 使用 `GET /api/oidvp/qrcode?ref=...&transactionId=...`（或 `POST /api/oidvp/qrcode`）生成授權 QR，待民眾掃描後以 `POST /api/oidvp/result` 搭配相同 `transactionId` 查詢揭露結果。
 4. **後續管理** – 若需撤銷憑證，先由 `/api/credential/nonce/{transactionId}` 解析 JWT 取得 `jti`（CID），再呼叫 `PUT /api/credential/{cid}/revocation` 更新政府錢包中的卡片狀態。

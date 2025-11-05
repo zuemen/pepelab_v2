@@ -71,6 +71,8 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 > ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。若需暫時允許多組 Token，可在環境變數中以逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會自動接受其中任一值。若沿用官方 sandbox 範例以 `access-token` header 傳遞，也會自動轉換為 Bearer Token 無須修改程式。
 
+> 📡 驗證端會依 `DisclosureScope` 自動對應政府沙盒的 VP 範本：`MEDICAL_RECORD` → `00000000_vp_consent`（授權驗證）、`RESEARCH_ANALYTICS` → `00000000_vp_research`（研究揭露）、`MEDICATION_PICKUP` → `00000000_vp_rx_pickup`（領藥驗證）。若需替換，可設定 `MEDSSI_VERIFIER_REF_DEFAULT` 與 `MEDSSI_VERIFIER_REF_CONSENT`／`MEDSSI_VERIFIER_REF_RESEARCH`／`MEDSSI_VERIFIER_REF_RX`，或在 `node-server/config.js` 的 `verifier_refs` 指定不同 `ref`。
+
 > 🌐 `/api/*` MODA 相容端點現已直接呼叫政府沙盒：發卡流程會透過 `https://issuer-sandbox.wallet.gov.tw` 的 `/api/qrcode/data` / `/api/qrcode/nodata` 取得官方 QR Code，驗證流程則向 `https://verifier-sandbox.wallet.gov.tw/api/oidvp/*` 查詢。若需指向自架測試環境，可設定 `MEDSSI_GOV_ISSUER_BASE` 與 `MEDSSI_GOV_VERIFIER_BASE` 來覆寫預設網址；所有請求都會沿用使用者提交的 `access-token` 轉送給遠端沙盒，方便交叉驗證呼叫是否成功。
 
 ### 官方沙盒呼叫步驟速查
@@ -108,7 +110,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
      `VITE_DEV_SERVER_PORT`（或 `PORT`）環境變數，例如：`VITE_DEV_SERVER_PORT=5180 npm run dev -- --host`。
    - 介面預設連向 `http://localhost:8000`，可在頁面頂部調整 API Base URL 與 Access Token。
    - React UI 內建 `qrcode.react`，即時顯示可掃描 QR 影像，方便實機驗證。
-   - 若需以官方 Node.js 範例串接，可複製 `node-server/config.sample.js` 為 `config.js`，並填入後台取得的 `apiKey`、`verifier_accessToken` 等值；樣板內已列出五種 VC (`vc_pid`、`vc_cons`、`vc_cond`、`vc_algy`、`vc_rx`) 的預設 payload，可直接套用或覆寫。
+   - 若需以官方 Node.js 範例串接，可複製 `node-server/config.sample.js` 為 `config.js`，並填入後台取得的 `apiKey`、`verifier_accessToken` 等值；樣板內已列出五種 VC (`vc_pid`、`vc_cons`、`vc_cond`、`vc_algy`、`vc_rx`) 的預設 payload，可直接套用或覆寫，並可透過 `verifier_refs` 指定 `consent`／`research`／`pickup` 三種場景，呼叫 `/getQRCode` 時以 `scenario` 欄位選擇對應的官方 `ref`。
 3. **快速重設沙盒資料**
    ```bash
    python scripts/reset_sandbox.py

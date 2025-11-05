@@ -123,6 +123,21 @@ GOV_VERIFIER_BASE = os.getenv(
     "MEDSSI_GOV_VERIFIER_BASE", "https://verifier-sandbox.wallet.gov.tw"
 )
 
+DEFAULT_VERIFIER_REF = os.getenv(
+    "MEDSSI_VERIFIER_REF_DEFAULT", "00000000_vp_consent"
+)
+DEFAULT_SCOPE_REF_MAP = {
+    DisclosureScope.MEDICAL_RECORD: os.getenv(
+        "MEDSSI_VERIFIER_REF_CONSENT", DEFAULT_VERIFIER_REF
+    ),
+    DisclosureScope.RESEARCH_ANALYTICS: os.getenv(
+        "MEDSSI_VERIFIER_REF_RESEARCH", "00000000_vp_research"
+    ),
+    DisclosureScope.MEDICATION_PICKUP: os.getenv(
+        "MEDSSI_VERIFIER_REF_RX", "00000000_vp_rx_pickup"
+    ),
+}
+
 
 def _raise_problem(*, status: int, type_: str, title: str, detail: str) -> None:
     raise HTTPException(
@@ -266,6 +281,18 @@ def _call_remote_api(
             title="Remote service unavailable",
             detail=str(exc.reason) if exc.reason else "Unable to reach sandbox APIs.",
         )
+
+
+def _resolve_verifier_ref(
+    scope: Optional[DisclosureScope], ref: Optional[str]
+) -> str:
+    if ref:
+        return ref
+    if scope and scope in DEFAULT_SCOPE_REF_MAP:
+        mapped = DEFAULT_SCOPE_REF_MAP[scope]
+        if mapped:
+            return mapped
+    return DEFAULT_VERIFIER_REF
 
 
 def _format_gov_date(value: Optional[Union[str, date, datetime]]) -> Optional[str]:
@@ -1789,25 +1816,34 @@ def _forward_oidvp_qrcode(
     request: Request,
     ref: Optional[str],
     transaction_id: Optional[str],
+    scope: Optional[DisclosureScope] = None,
     payload: Optional[OIDVPSessionRequest] = None,
 ) -> Dict[str, Any]:
     token = _extract_token_from_request(request)
     tx_id = transaction_id
+    resolved_scope = scope
     if payload is not None:
         tx_id = payload.transaction_id or tx_id
         ref = payload.ref or ref
+        resolved_scope = payload.scope or resolved_scope
     tx_id = tx_id or str(uuid.uuid4())
+    resolved_scope = resolved_scope or DisclosureScope.MEDICAL_RECORD
+    resolved_ref = _resolve_verifier_ref(resolved_scope, ref)
     params = {
-        "ref": ref,
+        "ref": resolved_ref,
         "transactionId": tx_id,
     }
-    return _call_remote_api(
+    response = _call_remote_api(
         method="GET",
         base_url=GOV_VERIFIER_BASE,
         path="/api/oidvp/qrcode",
         token=token,
         params=params,
     )
+    if isinstance(response, dict):
+        response.setdefault("transactionId", tx_id)
+        response.setdefault("ref", resolved_ref)
+    return response
 
 
 @api_public.post(
@@ -1820,7 +1856,11 @@ def gov_create_oidvp_qrcode(
     payload: OIDVPSessionRequest, request: Request
 ) -> Dict[str, Any]:
     return _forward_oidvp_qrcode(
-        request=request, ref=None, transaction_id=None, payload=payload
+        request=request,
+        ref=None,
+        transaction_id=None,
+        scope=payload.scope,
+        payload=payload,
     )
 
 
@@ -1834,10 +1874,11 @@ def gov_create_oidvp_qrcode_get(
     ref: Optional[str] = Query(None),
     transaction_id: Optional[str] = Query(None, alias="transactionId"),
     transaction_id_snake: Optional[str] = Query(None, alias="transaction_id"),
+    scope: Optional[DisclosureScope] = Query(None, alias="scope"),
 ) -> Dict[str, Any]:
     tx_id = transaction_id or transaction_id_snake
     return _forward_oidvp_qrcode(
-        request=request, ref=ref, transaction_id=tx_id, payload=None
+        request=request, ref=ref, transaction_id=tx_id, scope=scope, payload=None
     )
 
 
@@ -1857,6 +1898,7 @@ def gov_get_medical_verification_code(
     card_type: Optional[str] = Query(None, alias="card_type"),
     ial: Optional[IdentityAssuranceLevel] = Query(None, alias="ial"),
     allowed_fields: Optional[List[str]] = Query(None, alias="allowed_fields"),
+    scope: Optional[DisclosureScope] = Query(None, alias="scope"),
     valid_for_minutes: int = Query(5, alias="valid_for_minutes", ge=1, le=10),
 ) -> Dict[str, Any]:
     # Government API currently accepts only ref/transactionId; additional
@@ -1864,18 +1906,23 @@ def gov_get_medical_verification_code(
     # sandbox. Here we simply forward the request and rely on the caller to
     # track verifier metadata.
     transaction = transaction_id or str(uuid.uuid4())
+    resolved_ref = _resolve_verifier_ref(scope, ref)
     params = {
-        "ref": ref,
+        "ref": resolved_ref,
         "transactionId": transaction,
     }
     token = _extract_token_from_request(request)
-    return _call_remote_api(
+    response = _call_remote_api(
         method="GET",
         base_url=GOV_VERIFIER_BASE,
         path="/api/oidvp/qrcode",
         token=token,
         params=params,
     )
+    if isinstance(response, dict):
+        response.setdefault("transactionId", transaction)
+        response.setdefault("ref", resolved_ref)
+    return response
 
 
 @api_public.post(

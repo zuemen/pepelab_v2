@@ -6,8 +6,13 @@ module.exports = {
   apiKey: 'YOUR_ISSUER_API_KEY',
 
   // Verifier sandbox credentials ----------------------------------------
-  verifier_ref: '27950876_vp_swaggerui_test_2',
+  verifier_ref: '00000000_vp_consent',
   verifier_accessToken: 'YOUR_VERIFIER_ACCESS_TOKEN',
+  verifier_refs: {
+    consent: '00000000_vp_consent', // 授權驗證（匿名身分卡 + 數位同意卡）
+    research: '00000000_vp_research', // 研究揭露（診斷摘要 + 同意書 + 過敏史）
+    pickup: '00000000_vp_rx_pickup', // 領藥驗證（處方 + 過敏史 + 同意書）
+  },
 
   // 預設欄位值：依官方樣板建議，可依實際資料覆寫
   cards: {
