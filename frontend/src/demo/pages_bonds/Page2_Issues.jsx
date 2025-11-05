@@ -22,7 +22,7 @@ const cards = [
 export default function Page2_Issues() {
   return (
     <BondsShell prev="/" next="/page3">
-      <h2 style={{ fontSize: 40, marginBottom: 12, fontWeight: 800 }}>
+      <h2 style={{ color: "#96b5e0ff",fontSize: 40, marginBottom: 12, fontWeight: 800 }}>
         醫療資料在流動，但信任卻在流失
       </h2>
       <p style={{ color: "#94a3b8", marginBottom: 28, maxWidth: 760 }}>
