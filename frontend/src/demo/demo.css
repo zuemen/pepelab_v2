@@ -1,3 +1,15 @@
+:root {
+  --bg-dark: #0f172a;
+  --text-main: #e2e8f0;
+  --accent-green: #16a34a;
+  --accent-red: #b91c1c;
+  --border-dark: #1e293b;
+}
+body {
+  background: var(--bg-dark);
+  color: var(--text-main);
+  font-family: "Noto Sans TC", "Segoe UI", sans-serif;
+}
 /* 容器與翻頁 */
 .demo-pager { position: relative; height: 100vh; }
 .demo-pages { height: 100%; overflow-y: auto; scroll-snap-type: y mandatory; }
