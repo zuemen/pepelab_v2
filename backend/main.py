@@ -268,6 +268,110 @@ def _call_remote_api(
         )
 
 
+def _format_gov_date(value: Optional[Union[str, date, datetime]]) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, date):
+        return value.strftime("%Y%m%d")
+    if isinstance(value, str):
+        digits = value.replace("-", "").strip()
+        if len(digits) == 8 and digits.isdigit():
+            return digits
+        return value
+    return str(value)
+
+
+def _build_moda_field_entries(request: MODAIssuanceRequest) -> List[Dict[str, str]]:
+    vc_slug = _normalize_vc_uid(request.vc_uid)
+    provided: Dict[str, str] = {}
+    for field in request.fields:
+        canonical = _canonical_alias_key(field.ename)
+        if not canonical:
+            continue
+        provided[canonical] = field.content or ""
+
+    sample_values = MODA_SAMPLE_FIELD_VALUES.get(vc_slug, {})
+    merged = {**sample_values, **provided}
+
+    required_order = MODA_VC_FIELD_KEYS.get(vc_slug)
+    if not required_order:
+        required_order = list(sample_values.keys()) or list(merged.keys())
+
+    ordered_keys: List[str] = []
+    for key in required_order:
+        if key and key not in ordered_keys:
+            ordered_keys.append(key)
+    for key in merged.keys():
+        if key and key not in ordered_keys:
+            ordered_keys.append(key)
+
+    if not ordered_keys:
+        ordered_keys = list(merged.keys())
+
+    if not ordered_keys and sample_values:
+        ordered_keys = list(sample_values.keys())
+
+    fields: List[Dict[str, str]] = []
+    for key in ordered_keys:
+        value = merged.get(key, "")
+        fields.append({"ename": key, "content": value})
+
+    return fields
+
+
+def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        moda_request = MODAIssuanceRequest.parse_obj(raw_payload)
+    except ValidationError:
+        return raw_payload
+
+    payload = dict(raw_payload)
+
+    payload["vcUid"] = moda_request.vc_uid
+    if moda_request.issuer_id:
+        payload["issuerId"] = moda_request.issuer_id
+    if moda_request.holder_did:
+        payload["holderDid"] = moda_request.holder_did
+
+    if "issuanceDate" not in payload:
+        payload["issuanceDate"] = _format_gov_date(moda_request.issuance_date) or _format_gov_date(
+            date.today()
+        )
+    else:
+        payload["issuanceDate"] = _format_gov_date(payload["issuanceDate"])
+
+    if "expiredDate" in payload:
+        payload["expiredDate"] = _format_gov_date(payload["expiredDate"])
+    elif moda_request.expired_date:
+        payload["expiredDate"] = _format_gov_date(moda_request.expired_date)
+
+    fields = _build_moda_field_entries(moda_request)
+    payload["fields"] = fields
+
+    cleaned: Dict[str, Any] = {}
+    for key, value in payload.items():
+        if value is None:
+            continue
+        if key == "fields" and isinstance(value, list):
+            cleaned_fields = []
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                ename = item.get("ename")
+                if not ename:
+                    continue
+                content = item.get("content", "")
+                cleaned_fields.append({"ename": ename, "content": content})
+            if cleaned_fields:
+                cleaned[key] = cleaned_fields
+            continue
+        cleaned[key] = value
+
+    return cleaned
+
+
 def require_issuer_token(
     request: Request,
     authorization: Optional[str] = Header(None),
@@ -1587,12 +1691,13 @@ def gov_issue_with_data(
     request: Request, payload: Dict[str, Any] = Body(...)
 ) -> Dict[str, Any]:
     token = _extract_token_from_request(request)
+    normalized = _prepare_moda_remote_payload(payload)
     return _call_remote_api(
         method="POST",
         base_url=GOV_ISSUER_BASE,
         path="/api/qrcode/data",
         token=token,
-        payload=payload,
+        payload=normalized,
     )
 
 
@@ -1606,12 +1711,13 @@ def gov_issue_medical_card(
     request: Request, payload: Dict[str, Any] = Body(...)
 ) -> Dict[str, Any]:
     token = _extract_token_from_request(request)
+    normalized = _prepare_moda_remote_payload(payload)
     return _call_remote_api(
         method="POST",
         base_url=GOV_ISSUER_BASE,
         path="/api/qrcode/data",
         token=token,
-        payload=payload,
+        payload=normalized,
     )
 
 
@@ -1678,20 +1784,22 @@ def gov_update_credential(
     )
 
 
-@api_public.post(
-    "/oidvp/qrcode",
-    response_model=Dict[str, Any],
-    status_code=201,
-    dependencies=[Depends(require_verifier_token)],
-)
-def gov_create_oidvp_qrcode(
-    payload: OIDVPSessionRequest, request: Request
+def _forward_oidvp_qrcode(
+    *,
+    request: Request,
+    ref: Optional[str],
+    transaction_id: Optional[str],
+    payload: Optional[OIDVPSessionRequest] = None,
 ) -> Dict[str, Any]:
     token = _extract_token_from_request(request)
-    transaction_id = payload.transaction_id or str(uuid.uuid4())
+    tx_id = transaction_id
+    if payload is not None:
+        tx_id = payload.transaction_id or tx_id
+        ref = payload.ref or ref
+    tx_id = tx_id or str(uuid.uuid4())
     params = {
-        "ref": payload.ref,
-        "transactionId": transaction_id,
+        "ref": ref,
+        "transactionId": tx_id,
     }
     return _call_remote_api(
         method="GET",
@@ -1699,6 +1807,37 @@ def gov_create_oidvp_qrcode(
         path="/api/oidvp/qrcode",
         token=token,
         params=params,
+    )
+
+
+@api_public.post(
+    "/oidvp/qrcode",
+    response_model=Dict[str, Any],
+    status_code=200,
+    dependencies=[Depends(require_verifier_token)],
+)
+def gov_create_oidvp_qrcode(
+    payload: OIDVPSessionRequest, request: Request
+) -> Dict[str, Any]:
+    return _forward_oidvp_qrcode(
+        request=request, ref=None, transaction_id=None, payload=payload
+    )
+
+
+@api_public.get(
+    "/oidvp/qrcode",
+    response_model=Dict[str, Any],
+    dependencies=[Depends(require_verifier_token)],
+)
+def gov_create_oidvp_qrcode_get(
+    request: Request,
+    ref: Optional[str] = Query(None),
+    transaction_id: Optional[str] = Query(None, alias="transactionId"),
+    transaction_id_snake: Optional[str] = Query(None, alias="transaction_id"),
+) -> Dict[str, Any]:
+    tx_id = transaction_id or transaction_id_snake
+    return _forward_oidvp_qrcode(
+        request=request, ref=ref, transaction_id=tx_id, payload=None
     )
 
 

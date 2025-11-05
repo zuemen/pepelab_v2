@@ -51,7 +51,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 | `POST` | `/api/qrcode/nodata` | 建立無個資 QR Code，保留 `payloadTemplate` 供錢包後補。 |
 | `GET` | `/api/credential/nonce/{transactionId}` | 依交易序號取得 nonce、選擇性揭露欄位與模擬的 VC JWT。 |
 | `PUT` | `/api/credential/{cid}/revocation` | 將電子卡狀態更新為撤銷。 |
-| `POST` | `/api/oidvp/qrcode` | 生成驗證 QR Code，支援自訂 `transactionId` 與欄位清單。 |
+| `GET` / `POST` | `/api/oidvp/qrcode` | 生成驗證 QR Code，支援自訂 `transactionId`（預設為 UUIDv4），GET 版本遵循官方沙盒參數格式。 |
 | `GET` | `/api/medical/verification/code` | 與官方 `qr-code` 端點對齊的查詢式參數（`ref`、`transactionId`、`allowed_fields`）。 |
 | `POST` | `/api/oidvp/result`、`/api/medical/verification/result` | 以交易序號查詢 VP 上傳結果與揭露欄位值。 |
 | `GET` | `/api/medical/verification/session/{sessionId}` | 依 Session ID 取得允許欄位、IAL 與有效期限資訊。 |
