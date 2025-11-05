@@ -79,6 +79,29 @@ class FHIRMedicationDispenseSummary(BaseModel):
     )
 
 
+class FHIRAllergySummary(BaseModel):
+    resourceType: Literal["AllergyIntolerance"] = "AllergyIntolerance"
+    id: str
+    code: FHIRCodeableConcept
+    criticality: Optional[str] = Field(
+        None,
+        description="FHIR criticality/severity tag for the allergy (e.g. low, high)",
+    )
+
+
+class ConsentSummary(BaseModel):
+    scope: Optional[str] = Field(None, description="Consent scope identifier")
+    purpose: Optional[str] = Field(None, description="Purpose description")
+    issuer: Optional[str] = Field(None, description="Issuing organization")
+    path: Optional[str] = Field(None, description="Reference path or URI")
+
+
+class PatientDigest(BaseModel):
+    hashed_id: Optional[str] = Field(None, description="Hashed personal identifier")
+    display_name: Optional[str] = Field(None, description="Masked patient name")
+    birth_date: Optional[date] = Field(None, description="Birth date in ISO format")
+
+
 class CredentialPayload(BaseModel):
     """FHIR-aligned payload embedded inside the verifiable credential."""
 
@@ -98,6 +121,18 @@ class CredentialPayload(BaseModel):
     medication_dispense: Optional[List[FHIRMedicationDispenseSummary]] = Field(
         default_factory=list,
         description="Optional medication dispense summaries linked to the visit",
+    )
+    allergies: Optional[List[FHIRAllergySummary]] = Field(
+        default_factory=list,
+        description="Optional allergy summaries bundled for VC compatibility",
+    )
+    consent: Optional[ConsentSummary] = Field(
+        None,
+        description="Consent metadata aligned with MODA sandbox fields",
+    )
+    patient_digest: Optional[PatientDigest] = Field(
+        None,
+        description="Masked patient identifiers for vc_pid compatibility",
     )
 
 

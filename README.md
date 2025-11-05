@@ -61,6 +61,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 這些相容端點仍套用相同的 Bearer token、5 分鐘有效期限與 IAL 驗證，方便與 React 示範介面或外部測試工具（Postman、Swagger UI）串接。【F:README.md†L52-L90】
 
 - `vcUid` / `fields` 結構會自動轉換為 FHIR VC payload，同時保留 MODA 欄位別名（例如 `cond_code`、`cons_scope`），錢包與驗證端可直接沿用官方沙盒的欄位設定。
+- 內建 `vc_pid`、`vc_cons`、`vc_cond`、`vc_algy`、`vc_rx` 等樣板欄位與範例值（依官方截圖整理），若呼叫端未傳入 `fields` 也會自動補齊對應欄位與內容，避免掃描後顯示「資料格式錯誤」。
 
 > ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。若需暫時允許多組 Token，可在環境變數中以逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會自動接受其中任一值。若沿用官方 sandbox 範例以 `access-token` header 傳遞，也會自動轉換為 Bearer Token 無須修改程式。
 
@@ -88,6 +89,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
      `VITE_DEV_SERVER_PORT`（或 `PORT`）環境變數，例如：`VITE_DEV_SERVER_PORT=5180 npm run dev -- --host`。
    - 介面預設連向 `http://localhost:8000`，可在頁面頂部調整 API Base URL 與 Access Token。
    - React UI 內建 `qrcode.react`，即時顯示可掃描 QR 影像，方便實機驗證。
+   - 若需以官方 Node.js 範例串接，可複製 `node-server/config.sample.js` 為 `config.js`，並填入後台取得的 `apiKey`、`verifier_accessToken` 等值；樣板內已列出五種 VC (`vc_pid`、`vc_cons`、`vc_cond`、`vc_algy`、`vc_rx`) 的預設 payload，可直接套用或覆寫。
 3. **快速重設沙盒資料**
    ```bash
    python scripts/reset_sandbox.py

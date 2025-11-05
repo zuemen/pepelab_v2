@@ -491,6 +491,15 @@ MODA_VC_SCOPE_MAP = {
 }
 
 
+MODA_VC_FIELD_KEYS = {
+    "vc_pid": ["pid_hash", "pid_name", "pid_birth"],
+    "vc_cons": ["cons_scope", "cons_purpose", "cons_issuer", "cons_path"],
+    "vc_cond": ["cond_code", "cond_display", "cond_onset"],
+    "vc_algy": ["algy_code", "algy_name", "algy_severity"],
+    "vc_rx": ["med_code", "med_name", "qty_value", "qty_unit", "pickup_deadline"],
+}
+
+
 MODA_SCOPE_DEFAULT_FIELDS = {
     DisclosureScope.MEDICAL_RECORD: ["cond_code", "cond_display", "cond_onset"],
     DisclosureScope.MEDICATION_PICKUP: [
@@ -516,6 +525,7 @@ MODA_FIELD_TO_FHIR = {
     "med_code": "medication_dispense[0].medicationCodeableConcept.coding[0].code",
     "med_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
     "qty_value": "medication_dispense[0].days_supply",
+    "qty_unit": "medication_dispense[0].quantity_text",
     "pickup_deadline": "medication_dispense[0].pickup_window_end",
     "medication_list[0].medication_code": "medication_dispense[0].medicationCodeableConcept.coding[0].code",
     "medication_list[0].medication_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
@@ -524,6 +534,16 @@ MODA_FIELD_TO_FHIR = {
     "condition_info.condition_code": "condition.code.coding[0].code",
     "condition_info.condition_display": "condition.code.coding[0].display",
     "condition_info.condition_onset": "condition.recordedDate",
+    "algy_code": "allergies[0].code.coding[0].code",
+    "algy_name": "allergies[0].code.coding[0].display",
+    "algy_severity": "allergies[0].criticality",
+    "cons_scope": "consent.scope",
+    "cons_purpose": "consent.purpose",
+    "cons_issuer": "consent.issuer",
+    "cons_path": "consent.path",
+    "pid_hash": "patient_digest.hashed_id",
+    "pid_name": "patient_digest.display_name",
+    "pid_birth": "patient_digest.birth_date",
 }
 
 
@@ -560,6 +580,41 @@ MODA_FIELD_LOWER_ALIASES = {
     "pidhash": "pid_hash",
     "pidname": "pid_name",
     "pidbirth": "pid_birth",
+    "algycode": "algy_code",
+    "algyname": "algy_name",
+    "algyseverity": "algy_severity",
+}
+
+
+MODA_SAMPLE_FIELD_VALUES = {
+    "vc_pid": {
+        "pid_hash": "hash::8f4c0d1d6c1a4b67a4f9d1234567890b",
+        "pid_name": "張小華",
+        "pid_birth": "1950-07-18",
+    },
+    "vc_cons": {
+        "cons_scope": "research_info",
+        "cons_purpose": "AI 胃炎趨勢研究",
+        "cons_issuer": "MOHW-IRB-2025-001",
+        "cons_path": "medssi://consent/irb-2025-001",
+    },
+    "vc_cond": {
+        "cond_code": "K29.70",
+        "cond_display": "慢性胃炎（未特指）",
+        "cond_onset": "2025-02-12",
+    },
+    "vc_algy": {
+        "algy_code": "Z88.1",
+        "algy_name": "Penicillin allergy",
+        "algy_severity": "high",
+    },
+    "vc_rx": {
+        "med_code": "A02BC05",
+        "med_name": "Omeprazole 20mg capsule",
+        "qty_value": "30",
+        "qty_unit": "capsules",
+        "pickup_deadline": (date.today() + timedelta(days=3)).isoformat(),
+    },
 }
 
 
@@ -719,6 +774,34 @@ def _sample_payload() -> CredentialPayload:
         "issued_on": today.isoformat(),
         "consent_expires_on": None,
         "medication_dispense": [],
+        "allergies": [
+            {
+                "resourceType": "AllergyIntolerance",
+                "id": "algy-sample",
+                "code": {
+                    "coding": [
+                        {
+                            "system": "http://hl7.org/fhir/sid/icd-10",
+                            "code": "Z88.1",
+                            "display": "Penicillin allergy",
+                        }
+                    ],
+                    "text": "Penicillin allergy",
+                },
+                "criticality": "high",
+            }
+        ],
+        "consent": {
+            "scope": "research_info",
+            "purpose": "AI 胃炎趨勢研究",
+            "issuer": "MOHW-IRB-2025-001",
+            "path": "medssi://consent/irb-2025-001",
+        },
+        "patient_digest": {
+            "hashed_id": "hash::8f4c0d1d6c1a4b67a4f9d1234567890b",
+            "display_name": "張小華",
+            "birth_date": "1950-07-18",
+        },
     }
     return CredentialPayload.parse_obj(sample_dict)
 
@@ -851,6 +934,52 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
                         "pickup_window_end": alias_map["pickup_deadline"],
                     }
                 ]
+            }
+        )
+
+    if any(key in alias_map for key in ("algy_code", "algy_name", "algy_severity")):
+        merge(
+            {
+                "allergies": [
+                    {
+                        "resourceType": "AllergyIntolerance",
+                        "id": "algy-from-alias",
+                        "code": {
+                            "coding": [
+                                {
+                                    "system": "http://hl7.org/fhir/sid/icd-10",
+                                    "code": alias_map.get("algy_code", "Z88.1"),
+                                    "display": alias_map.get("algy_name", "Penicillin allergy"),
+                                }
+                            ],
+                            "text": alias_map.get("algy_name", "Penicillin allergy"),
+                        },
+                        "criticality": alias_map.get("algy_severity", "high"),
+                    }
+                ]
+            }
+        )
+
+    if any(key in alias_map for key in ("cons_scope", "cons_purpose", "cons_issuer", "cons_path")):
+        merge(
+            {
+                "consent": {
+                    "scope": alias_map.get("cons_scope"),
+                    "purpose": alias_map.get("cons_purpose"),
+                    "issuer": alias_map.get("cons_issuer"),
+                    "path": alias_map.get("cons_path"),
+                }
+            }
+        )
+
+    if any(key in alias_map for key in ("pid_hash", "pid_name", "pid_birth")):
+        merge(
+            {
+                "patient_digest": {
+                    "hashed_id": alias_map.get("pid_hash"),
+                    "display_name": alias_map.get("pid_name"),
+                    "birth_date": alias_map.get("pid_birth"),
+                }
             }
         )
 
@@ -1133,6 +1262,7 @@ def _scope_for_moda_vc(vc_uid: str) -> DisclosureScope:
 
 def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOffer, str]:
     scope = _scope_for_moda_vc(request.vc_uid)
+    vc_slug = _normalize_vc_uid(request.vc_uid)
     ial = request.ial or IdentityAssuranceLevel.NHI_CARD_PIN
     holder_did = request.holder_did or "did:example:patient-demo"
     issuer_id = request.issuer_id or DEFAULT_ISSUER_ID
@@ -1150,9 +1280,18 @@ def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOf
             continue
         canonical_fields[key] = field.content or ""
     alias_map = _expand_aliases(canonical_fields)
-    policy_fields = list(dict.fromkeys(alias_map.keys()))
+
+    sample_values = MODA_SAMPLE_FIELD_VALUES.get(vc_slug, {})
+    alias_map = {**sample_values, **alias_map}
+    raw_fields = {**sample_values, **raw_fields}
+
+    policy_fields = list(
+        dict.fromkeys(list(raw_fields.keys()) + list(alias_map.keys()))
+    )
     if not policy_fields:
-        policy_fields = MODA_SCOPE_DEFAULT_FIELDS.get(scope, ["cond_code"])
+        policy_fields = MODA_VC_FIELD_KEYS.get(vc_slug) or MODA_SCOPE_DEFAULT_FIELDS.get(
+            scope, ["cond_code"]
+        )
 
     payload_overrides = _payload_overrides_from_alias(alias_map)
     payload = _coerce_payload(payload_overrides)
@@ -1177,7 +1316,7 @@ def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOf
         payload=payload,
         transaction_id=request.transaction_id,
         selected_disclosures=alias_map,
-        external_fields={**raw_fields, **alias_map},
+        external_fields={**sample_values, **raw_fields, **alias_map},
     )
 
 

@@ -3,8 +3,6 @@ import { IssuerPanel } from './components/IssuerPanel.jsx';
 import { WalletPanel } from './components/WalletPanel.jsx';
 import { VerifierPanel } from './components/VerifierPanel.jsx';
 import { createClient } from './api/client.js';
-import DemoApp from "./demo/DemoApp.jsx";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 const DEFAULT_BASE_URL = import.meta.env.VITE_MEDSSI_API || 'http://localhost:8000';
 
@@ -25,11 +23,6 @@ export default function App() {
     }
     setResetMessage(`已於 ${new Date(response.data.timestamp).toLocaleString()} 重設沙盒資料。`);
   }
-   if (typeof window !== "undefined" && window.location.pathname.startsWith("/demo")) {
-    return <DemoApp />;
-  
-  }
-  
 
   return (
     <div>
