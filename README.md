@@ -52,7 +52,9 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 | `GET` | `/api/credential/nonce/{transactionId}` | 依交易序號取得 nonce、選擇性揭露欄位與模擬的 VC JWT。 |
 | `PUT` | `/api/credential/{cid}/revocation` | 將電子卡狀態更新為撤銷。 |
 | `POST` | `/api/oidvp/qrcode` | 生成驗證 QR Code，支援自訂 `transactionId` 與欄位清單。 |
-| `POST` | `/api/oidvp/result` | 以交易序號查詢 VP 上傳結果與揭露欄位值。 |
+| `GET` | `/api/medical/verification/code` | 與官方 `qr-code` 端點對齊的查詢式參數（`ref`、`transactionId`、`allowed_fields`）。 |
+| `POST` | `/api/oidvp/result`、`/api/medical/verification/result` | 以交易序號查詢 VP 上傳結果與揭露欄位值。 |
+| `GET` | `/api/medical/verification/session/{sessionId}` | 依 Session ID 取得允許欄位、IAL 與有效期限資訊。 |
 
 這些相容端點仍套用相同的 Bearer token、5 分鐘有效期限與 IAL 驗證，方便與 React 示範介面或外部測試工具（Postman、Swagger UI）串接。【F:README.md†L52-L90】
 
@@ -72,9 +74,14 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 2. **開啟前端**
    ```bash
    cd frontend
+   # 👀 確認此處能看到 package.json、vite.config.js 等檔案
+   ls
    npm install
    npm run dev -- --host
    ```
+   - 若命令列顯示 `ENOENT: no such file or directory, open '.../frontend/package.json'`，代表目前所在目錄錯誤（常見於誤多下了一次 `cd frontend`）；請先輸入 `pwd` 或 `dir` 確認路徑僅包含一次 `frontend/`，再重新執行上述命令。
+   - 預設會在 `http://localhost:5173` 提供介面，如需更換埠號可在啟動前設定
+     `VITE_DEV_SERVER_PORT`（或 `PORT`）環境變數，例如：`VITE_DEV_SERVER_PORT=5180 npm run dev -- --host`。
    - 介面預設連向 `http://localhost:8000`，可在頁面頂部調整 API Base URL 與 Access Token。
    - React UI 內建 `qrcode.react`，即時顯示可掃描 QR 影像，方便實機驗證。
 3. **快速重設沙盒資料**
