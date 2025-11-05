@@ -19,6 +19,13 @@
 依照政府沙盒提供的 Swagger 指引，串接時建議遵循下列順序，可確認 QR Code 與 VP 結果確實由官方服務產生：
 
 1. **前置準備** – 在發行端後台建立 VC 樣板並記下 `vcUid`／`vcId`／`vcCid`，於驗證端建立 VP 範本取得 `ref`，所有 Access Token 需透過後台換發後寫入環境變數或 `config.js`。
+   - 若需統一管理多張卡片的識別碼，可在 FastAPI 啟動前設定 `MEDSSI_MODA_VC_IDENTIFIERS`，以 JSON 指定各模板的 `vcUid`、`vcId`、`vcCid`、`apiKey`：
+
+     ```bash
+     export MEDSSI_MODA_VC_IDENTIFIERS='{"vc_pid":{"vcUid":"00000000_vc_pid","vcCid":"vc_pid","vcId":"YOUR_PID_CARD"}}'
+     ```
+
+     未提供時會採用原始樣板的 `vcUid`／`vcCid` 預設值，其餘欄位留空，避免誤將真實序號硬編碼於程式碼中。
    - 專案會依 `DisclosureScope` 自動套用政府公布的三組驗證服務代碼：
      | Scope / 情境 | 預設 `ref` | 來源 VP |
      | --- | --- | --- |

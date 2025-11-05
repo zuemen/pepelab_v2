@@ -79,7 +79,14 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 依照數位憑證皮夾沙盒的最新說明，整合人員可按照下列流程逐一檢查設定：
 
-1. **前置準備** – 於發行端、驗證端沙盒後台分別建立帳號並取得 `access-token`，再依樣板建立 VC (`vc_cond`、`vc_cons`、`vc_pid`、`vc_algy`、`vc_rx`) 與 VP 範本 (`ref`)。建議把憑證序號 (`vcId`)、樣板代號 (`vcCid`) 及 API Key 寫入 `config.js` 或環境變數，避免硬編碼於程式。 
+1. **前置準備** – 於發行端、驗證端沙盒後台分別建立帳號並取得 `access-token`，再依樣板建立 VC (`vc_cond`、`vc_cons`、`vc_pid`、`vc_algy`、`vc_rx`) 與 VP 範本 (`ref`)。建議把憑證序號 (`vcId`)、樣板代號 (`vcCid`) 及 API Key 寫入 `config.js` 或環境變數，避免硬編碼於程式。
+   - 後端已內建 `MEDSSI_MODA_VC_IDENTIFIERS` 環境變數，可用 JSON 指定各模板的 `vcUid`／`vcId`／`vcCid`／`apiKey`，例如：
+
+     ```bash
+     export MEDSSI_MODA_VC_IDENTIFIERS='{"vc_cond":{"vcUid":"00000000_vc_cond","vcCid":"vc_cond","vcId":"YOUR_VC_ID"}}'
+     ```
+
+     未設定時會套用 README 上方列出的預設 `vcUid` / `vcCid`，其餘欄位則維持空白，確保送往政府 API 的 payload 與官方樣板一致。
 2. **發行端呼叫順序** – 以 `POST /api/qrcode/data`（或 `/api/qrcode/nodata`）取得官方 QR Code 與 `transactionId`，必要時使用 `GET /api/credential/nonce/{transactionId}` 追蹤領卡狀態，最後可藉由 `PUT /api/credential/{cid}/revocation` 撤銷卡片。 
 3. **驗證端呼叫順序** – 透過 `GET /api/oidvp/qrcode?ref=<...>&transactionId=<...>` 生成授權 QR（或使用 `POST` 版本），等待錢包完成上傳後以 `POST /api/oidvp/result` 搭配同一筆 `transactionId` 查詢揭露結果；若需要醫療流程資訊，可再呼叫 `/api/medical/verification/session/{sessionId}` 取得 IAL 與欄位紀錄。 
 4. **錯誤排查重點** – `403` 通常代表 token 未帶入或格式錯誤，`400` 則多因日期／欄位名稱未符合模板。React 示範面板與 `node-server/` 範例會自動補齊欄位及日期格式，並將 sandbox 回應逐字呈現，方便核對官方 Swagger。 

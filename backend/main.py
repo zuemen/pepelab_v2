@@ -123,6 +123,55 @@ GOV_VERIFIER_BASE = os.getenv(
     "MEDSSI_GOV_VERIFIER_BASE", "https://verifier-sandbox.wallet.gov.tw"
 )
 
+
+def _normalize_identifier_slug(value: str) -> str:
+    slug = (value or "").strip().lower()
+    if "_" in slug:
+        slug = slug.split("_")[-1]
+    return slug
+
+
+DEFAULT_MODA_VC_IDENTIFIERS: Dict[str, Dict[str, str]] = {
+    "vc_pid": {"vcUid": "00000000_vc_pid", "vcCid": "vc_pid"},
+    "vc_cons": {"vcUid": "00000000_vc_cons", "vcCid": "vc_cons"},
+    "vc_cond": {"vcUid": "00000000_vc_cond", "vcCid": "vc_cond"},
+    "vc_algy": {"vcUid": "00000000_vc_algy", "vcCid": "vc_algy"},
+    "vc_rx": {"vcUid": "00000000_vc_rx", "vcCid": "vc_rx"},
+}
+
+
+def _load_moda_identifier_config() -> Dict[str, Dict[str, str]]:
+    config = {slug: dict(values) for slug, values in DEFAULT_MODA_VC_IDENTIFIERS.items()}
+    raw = os.getenv("MEDSSI_MODA_VC_IDENTIFIERS", "").strip()
+    if not raw:
+        return config
+    try:
+        overrides = json.loads(raw)
+    except json.JSONDecodeError:
+        return config
+    if not isinstance(overrides, dict):
+        return config
+    for key, value in overrides.items():
+        slug = _normalize_identifier_slug(str(key))
+        if not slug:
+            continue
+        if not isinstance(value, dict):
+            continue
+        target = config.setdefault(slug, {})
+        for field_key, field_value in value.items():
+            if field_key not in {"vcUid", "vcId", "vcCid", "apiKey"}:
+                continue
+            if field_value is None:
+                continue
+            text = str(field_value).strip()
+            if not text:
+                continue
+            target[field_key] = text
+    return config
+
+
+MODA_VC_IDENTIFIERS = _load_moda_identifier_config()
+
 DEFAULT_VERIFIER_REF = os.getenv(
     "MEDSSI_VERIFIER_REF_DEFAULT", "00000000_vp_consent"
 )
@@ -356,7 +405,24 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
 
     payload = dict(raw_payload)
 
-    payload["vcUid"] = moda_request.vc_uid
+    slug = _normalize_vc_uid(moda_request.vc_uid)
+    identifiers = MODA_VC_IDENTIFIERS.get(slug, {})
+
+    payload["vcUid"] = moda_request.vc_uid or identifiers.get("vcUid")
+    if not payload.get("vcUid") and identifiers.get("vcUid"):
+        payload["vcUid"] = identifiers["vcUid"]
+    if moda_request.vc_id:
+        payload["vcId"] = moda_request.vc_id
+    elif not payload.get("vcId") and identifiers.get("vcId"):
+        payload["vcId"] = identifiers["vcId"]
+    if moda_request.vc_cid:
+        payload["vcCid"] = moda_request.vc_cid
+    elif not payload.get("vcCid") and identifiers.get("vcCid"):
+        payload["vcCid"] = identifiers["vcCid"]
+    if moda_request.api_key:
+        payload["apiKey"] = moda_request.api_key
+    elif not payload.get("apiKey") and identifiers.get("apiKey"):
+        payload["apiKey"] = identifiers["apiKey"]
     if moda_request.issuer_id:
         payload["issuerId"] = moda_request.issuer_id
     if moda_request.holder_did:
@@ -540,6 +606,9 @@ class MODAIssuanceField(BaseModel):
 
 class MODAIssuanceRequest(BaseModel):
     vc_uid: str = Field(..., alias="vcUid")
+    vc_id: Optional[str] = Field(None, alias="vcId")
+    vc_cid: Optional[str] = Field(None, alias="vcCid")
+    api_key: Optional[str] = Field(None, alias="apiKey")
     issuance_date: Optional[date] = Field(None, alias="issuanceDate")
     expired_date: Optional[date] = Field(None, alias="expiredDate")
     fields: List[MODAIssuanceField] = Field(default_factory=list, alias="fields")
@@ -693,10 +762,7 @@ def _make_qr_data_uri(payload: str) -> str:
 
 
 def _normalize_vc_uid(vc_uid: str) -> str:
-    slug = vc_uid.lower()
-    if "_" in slug:
-        slug = slug.split("_")[-1]
-    return slug
+    return _normalize_identifier_slug(vc_uid)
 
 
 MODA_VC_SCOPE_MAP = {
