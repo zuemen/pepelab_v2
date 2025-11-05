@@ -36,6 +36,16 @@ export function createClient(baseUrl) {
             }
           : undefined,
       }),
+
+    // ✅ 政府官方 API（無 /v2，使用 access-token）
+    issueWithDataGov: (payload, token) =>
+      request({
+        url: `/api/qrcode/data`,
+        method: 'POST',
+        data: payload,
+        headers: token ? { 'access-token': token } : undefined,
+      }),
+
     issueWithoutData: (payload, token) =>
       request({
         url: `${prefix}/api/qrcode/nodata`,
