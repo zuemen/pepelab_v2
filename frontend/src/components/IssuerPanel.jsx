@@ -89,8 +89,8 @@ const DEFAULT_CARD_IDENTIFIERS = {
 const INITIAL_CONDITION = {
   id: `cond-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://hl7.org/fhir/sid/icd-10',
-  code: 'K29.7',
-  display: 'Gastritis, unspecified',
+  code: 'K2970',
+  display: '慢性胃炎',
   recordedDate: dayjs().format('YYYY-MM-DD'),
   encounter: 'enc-001',
   subject: 'did:example:patient-001',
@@ -111,18 +111,18 @@ const INITIAL_MEDICATION = {
 const INITIAL_ALLERGY = {
   id: `algy-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://hl7.org/fhir/sid/icd-10',
-  code: 'Z88.1',
-  display: 'Penicillin allergy',
-  severity: 'Severe',
+  code: 'Z881',
+  display: '盤尼西林過敏',
+  severity: '2',
 };
 
 const INITIAL_IDENTITY = {
-  hash: 'hash::8f4c0d1d6c1a4b67a4f9d1234567890b',
-  type: 'NHI_CARD',
-  version: 'v1.0',
-  issuer: '衛福部中央健康保險署',
+  hash: '12345678',
+  type: '01',
+  version: '1',
+  issuer: '3567',
   validTo: dayjs().add(2, 'year').format('YYYY-MM-DD'),
-  walletId: 'wallet-demo-001',
+  walletId: '10000001',
   name: '張小華',
   birth: '1950-07-18',
 };
@@ -294,6 +294,51 @@ function resolveExpiry(scope, consentExpiry, medication, identity) {
   }
 }
 
+function normalizeDigits(value, { fallback = '', length } = {}) {
+  const digits = String(value ?? '')
+    .replace(/[^0-9]/g, '')
+    .trim();
+  if (length) {
+    if (!digits) {
+      return fallback ? fallback.padEnd(length, '0').slice(0, length) : ''.padEnd(length, '0');
+    }
+    return digits.padEnd(length, '0').slice(0, length);
+  }
+  return digits || fallback;
+}
+
+function normalizeAlphaNumUpper(value, fallback = '') {
+  const cleaned = String(value ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .trim();
+  return cleaned || fallback;
+}
+
+function normalizeCnEnText(value, fallback = '') {
+  const cleaned = String(value ?? '')
+    .replace(/[^0-9A-Za-z\u4e00-\u9fff\s]/g, '')
+    .trim();
+  return cleaned || fallback;
+}
+
+function normalizeDate(value, fallbackMoment) {
+  const parsed = dayjs(value);
+  if (parsed.isValid()) {
+    return parsed.format('YYYY-MM-DD');
+  }
+  const fb = fallbackMoment && fallbackMoment.isValid() ? fallbackMoment : dayjs();
+  return fb.format('YYYY-MM-DD');
+}
+
+function normalizePath(value, fallback = 'CONSENT_001') {
+  const cleaned = String(value ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, '')
+    .trim();
+  return cleaned || fallback;
+}
+
 function convertToGovFormat({
   payload,
   scope,
@@ -324,63 +369,79 @@ function convertToGovFormat({
 
   if (scope === 'MEDICAL_RECORD' && payload?.condition) {
     const coding = payload.condition.code?.coding?.[0] ?? {};
+    const codeValue = normalizeAlphaNumUpper(coding.code, 'K2970');
+    const displayValue = normalizeCnEnText(
+      coding.display || payload.condition.code?.text,
+      '慢性胃炎'
+    );
+    const onsetValue = normalizeDate(payload.condition.recordedDate, expiry);
     fields.push(
-      { ename: 'cond_code', content: coding.code || '' },
-      { ename: 'cond_display', content: coding.display || payload.condition.code?.text || '' },
-      { ename: 'cond_onset', content: payload.condition.recordedDate || '' }
+      { ename: 'cond_code', content: codeValue },
+      { ename: 'cond_display', content: displayValue },
+      { ename: 'cond_onset', content: onsetValue }
     );
   }
 
   if (scope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
+    const medCode = normalizeAlphaNumUpper(medication.code, 'RX0001');
+    const medName = normalizeCnEnText(medication.display, '胃藥膠囊');
+    const doseText = normalizeCnEnText(
+      medication.quantityText || `${medication.display || ''} ${medication.daysSupply || ''}`,
+      '每日三次10毫升'
+    );
+    const qtyValue = normalizeDigits(quantityParts.value || medication.daysSupply, {
+      fallback: '30',
+    });
+    const qtyUnit = normalizeCnEnText(quantityParts.unit || '粒', '粒');
     fields.push(
-      { ename: 'med_code', content: medication.code || '' },
-      { ename: 'med_name', content: medication.display || '' },
-      {
-        ename: 'dose_text',
-        content: medication.quantityText || `${medication.display || ''} ${medication.daysSupply || ''}`.trim(),
-      },
-      {
-        ename: 'qty_value',
-        content: quantityParts.value || (medication.daysSupply ? String(medication.daysSupply) : ''),
-      },
-      { ename: 'qty_unit', content: quantityParts.unit || '日份' }
+      { ename: 'med_code', content: medCode },
+      { ename: 'med_name', content: medName },
+      { ename: 'dose_text', content: doseText },
+      { ename: 'qty_value', content: qtyValue },
+      { ename: 'qty_unit', content: qtyUnit }
     );
   }
 
   if (scope === 'RESEARCH_ANALYTICS') {
+    const normalizedScope = normalizeCnEnText(consentScope, 'MEDSSI研究');
+    const normalizedPurpose = normalizeCnEnText(consentPurpose, '胃炎風險分析');
+    const normalizedEnd = normalizeDate(expiry, expiry);
+    const normalizedPath = normalizePath(consentPath);
     fields.push(
-      { ename: 'cons_scope', content: consentScope || 'MEDSSI_RESEARCH' },
-      { ename: 'cons_purpose', content: consentPurpose || '胃炎風險研究' },
-      { ename: 'cons_end', content: expiry.format('YYYY-MM-DD') }
+      { ename: 'cons_scope', content: normalizedScope },
+      { ename: 'cons_purpose', content: normalizedPurpose },
+      { ename: 'cons_end', content: normalizedEnd },
+      { ename: 'cons_path', content: normalizedPath }
     );
-    if (consentPath) {
-      fields.push({ ename: 'cons_path', content: consentPath });
-    }
-    if (consentIssuer) {
-      fields.push({ ename: 'cons_issuer', content: consentIssuer });
-    }
   }
 
   if (scope === 'ALLERGY_CARD') {
+    const algyCode = normalizeAlphaNumUpper(allergy?.code, 'ALG001');
+    const algyName = normalizeCnEnText(allergy?.display, '常見過敏原');
+    const algySeverity = normalizeDigits(allergy?.severity, { fallback: '2' });
     fields.push(
-      { ename: 'algy_code', content: allergy?.code || '' },
-      { ename: 'algy_name', content: allergy?.display || '' },
-      { ename: 'algy_severity', content: allergy?.severity || '' }
+      { ename: 'algy_code', content: algyCode },
+      { ename: 'algy_name', content: algyName },
+      { ename: 'algy_severity', content: algySeverity }
     );
   }
 
   if (scope === 'IDENTITY_CARD') {
+    const pidHash = normalizeDigits(identity?.hash, { fallback: '12345678', length: 8 });
+    const pidType = normalizeDigits(identity?.type, { fallback: '01' });
+    const pidVer = normalizeDigits(identity?.version, { fallback: '1' });
+    const pidIssuer = normalizeDigits(identity?.issuer, { fallback: '3567' });
+    const pidValidTo = normalizeDate(identity?.validTo, expiry);
+    const walletId = normalizeDigits(identity?.walletId, { fallback: '10000001' });
     fields.push(
-      { ename: 'pid_hash', content: identity?.hash || '' },
-      { ename: 'pid_type', content: identity?.type || '' },
-      { ename: 'pid_ver', content: identity?.version || '' },
-      { ename: 'pid_issuer', content: identity?.issuer || '' },
-      { ename: 'pid_valid_to', content: identity?.validTo || expiry.format('YYYY-MM-DD') }
+      { ename: 'pid_hash', content: pidHash },
+      { ename: 'pid_type', content: pidType },
+      { ename: 'pid_ver', content: pidVer },
+      { ename: 'pid_issuer', content: pidIssuer },
+      { ename: 'pid_valid_to', content: pidValidTo },
+      { ename: 'wallet_id', content: walletId }
     );
-    if (identity?.walletId) {
-      fields.push({ ename: 'wallet_id', content: identity.walletId });
-    }
   }
 
   const filtered = fields.filter(
