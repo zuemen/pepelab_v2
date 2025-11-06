@@ -15,6 +15,7 @@ const DEFAULT_DISCLOSURES = {
   ],
   CONSENT_CARD: ['consent.scope', 'consent.purpose', 'consent.expires_on'],
   ALLERGY_CARD: ['allergies[0].code.coding[0].code', 'allergies[0].criticality'],
+  IDENTITY_CARD: ['identity.pid_hash', 'identity.wallet_id', 'identity.pid_valid_to'],
 };
 
 const PRIMARY_SCOPE_OPTIONS = [
@@ -34,6 +35,10 @@ const PRIMARY_SCOPE_OPTIONS = [
     value: 'ALLERGY_CARD',
     label: '過敏資訊卡（vc_algy）－預設 3 年效期',
   },
+  {
+    value: 'IDENTITY_CARD',
+    label: '匿名身分卡（vc_pid）－預設 10 年效期',
+  },
 ];
 
 const SCOPE_TO_VC_UID = {
@@ -41,6 +46,7 @@ const SCOPE_TO_VC_UID = {
   MEDICATION_PICKUP: '00000000_vc_rx',
   CONSENT_CARD: '00000000_vc_cons',
   ALLERGY_CARD: '00000000_vc_algy',
+  IDENTITY_CARD: '00000000_vc_pid',
 };
 
 const DEFAULT_CARD_IDENTIFIERS = {
@@ -68,13 +74,19 @@ const DEFAULT_CARD_IDENTIFIERS = {
     vcId: '',
     apiKey: '',
   },
+  IDENTITY_CARD: {
+    vcUid: '00000000_vc_pid',
+    vcCid: 'vc_pid',
+    vcId: '',
+    apiKey: '',
+  },
 };
 
 const INITIAL_CONDITION = {
   id: `cond-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://hl7.org/fhir/sid/icd-10',
   code: 'K2970',
-  display: '慢性胃炎',
+  display: 'CHRONICGASTRITIS',
   recordedDate: dayjs().format('YYYY-MM-DD'),
   encounter: 'enc-001',
   subject: 'did:example:patient-001',
@@ -86,8 +98,8 @@ const INITIAL_MEDICATION = {
   system: 'http://www.whocc.no/atc',
   code: 'A02BC05',
   display: 'OMEPRAZOLE20MG',
-  quantityText: '30粒',
-  doseText: '每日2次10毫升',
+  quantityText: '30TABLET',
+  doseText: 'BID10ML',
   daysSupply: 30,
   pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
@@ -97,8 +109,17 @@ const INITIAL_ALLERGY = {
   id: `algy-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://hl7.org/fhir/sid/icd-10',
   code: 'Z881',
-  display: '盤尼西林過敏',
+  display: 'PENICILLIN',
   severity: '2',
+};
+
+const INITIAL_IDENTITY = {
+  pidHash: '12345678',
+  pidType: '01',
+  pidVer: '01',
+  pidIssuer: '886',
+  pidValidTo: dayjs().add(10, 'year').format('YYYY-MM-DD'),
+  walletId: '10000001',
 };
 
 function buildPayload({
@@ -112,6 +133,7 @@ function buildPayload({
   consentPurpose,
   consentPath,
   allergy,
+  identity,
 }) {
   return {
     fhir_profile: 'https://profiles.iisigroup.com.tw/StructureDefinition/medssi-bundle',
@@ -202,6 +224,18 @@ function buildPayload({
             },
           ]
         : [],
+    identity:
+      identity &&
+      (identity.pidHash || identity.pidType || identity.pidVer || identity.pidIssuer || identity.pidValidTo || identity.walletId)
+        ? {
+            pid_hash: identity.pidHash || undefined,
+            pid_type: identity.pidType || undefined,
+            pid_ver: identity.pidVer || undefined,
+            pid_issuer: identity.pidIssuer || undefined,
+            pid_valid_to: identity.pidValidTo || undefined,
+            wallet_id: identity.walletId || undefined,
+          }
+        : undefined,
   };
 }
 
@@ -238,6 +272,8 @@ function resolveExpiry(scope, consentExpiry, medication) {
       return dayjs().add(180, 'day');
     case 'ALLERGY_CARD':
       return dayjs().add(3, 'year');
+    case 'IDENTITY_CARD':
+      return dayjs().add(10, 'year');
     default:
       return dayjs().add(7, 'day');
   }
@@ -266,7 +302,8 @@ function normalizeAlphaNumUpper(value, fallback = '') {
 
 function normalizeCnEnText(value, fallback = '') {
   const cleaned = String(value ?? '')
-    .replace(/[^0-9A-Za-z\u4e00-\u9fff\s]/g, '')
+    .toUpperCase()
+    .replace(/[^0-9A-Z\u4E00-\u9FFF]/g, '')
     .trim();
   return cleaned || fallback;
 }
@@ -297,6 +334,7 @@ function convertToGovFormat({
   consentPath,
   consentExpiry,
   allergy,
+  identity,
   identifiers = {},
 }) {
   const issuanceDate = dayjs().format('YYYYMMDD');
@@ -319,7 +357,7 @@ function convertToGovFormat({
     const codeValue = normalizeAlphaNumUpper(coding.code, 'K2970');
     const displayValue = normalizeCnEnText(
       coding.display || payload.condition.code?.text,
-      '慢性胃炎'
+      'CHRONICGASTRITIS'
     );
     const onsetValue = normalizeDate(payload.condition.recordedDate, expiry);
     fields.push(
@@ -332,15 +370,15 @@ function convertToGovFormat({
   if (scope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
     const medCode = normalizeAlphaNumUpper(medication.code, 'RX0001');
-    const medName = normalizeCnEnText(medication.display, '胃藥膠囊').toUpperCase();
+    const medName = normalizeCnEnText(medication.display, 'OMEPRAZOLE');
     const doseText = normalizeCnEnText(
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      '每日2次10毫升'
+      'BID10ML'
     );
     const qtyValue = normalizeDigits(quantityParts.value || medication.daysSupply, {
       fallback: '30',
     });
-    const qtyUnit = normalizeCnEnText(quantityParts.unit || '粒', '粒');
+    const qtyUnit = normalizeCnEnText(quantityParts.unit || 'TABLET', 'TABLET');
     fields.push(
       { ename: 'med_code', content: medCode },
       { ename: 'med_name', content: medName },
@@ -351,8 +389,8 @@ function convertToGovFormat({
   }
 
   if (scope === 'CONSENT_CARD') {
-    const normalizedScope = normalizeCnEnText(consentScope, 'MEDSSI研究');
-    const normalizedPurpose = normalizeCnEnText(consentPurpose, '胃炎風險分析');
+    const normalizedScope = normalizeCnEnText(consentScope, 'MEDSSI01');
+    const normalizedPurpose = normalizeCnEnText(consentPurpose, 'MEDDATARESEARCH');
     const normalizedEnd = normalizeDate(expiry, expiry);
     const normalizedPath = normalizePath(consentPath);
     fields.push(
@@ -365,12 +403,29 @@ function convertToGovFormat({
 
   if (scope === 'ALLERGY_CARD') {
     const algyCode = normalizeAlphaNumUpper(allergy?.code, 'ALG001');
-    const algyName = normalizeCnEnText(allergy?.display, '常見過敏原');
+    const algyName = normalizeCnEnText(allergy?.display, 'PENICILLIN');
     const algySeverity = normalizeDigits(allergy?.severity, { fallback: '2' });
     fields.push(
       { ename: 'algy_code', content: algyCode },
       { ename: 'algy_name', content: algyName },
       { ename: 'algy_severity', content: algySeverity }
+    );
+  }
+
+  if (scope === 'IDENTITY_CARD') {
+    const pidHash = normalizeDigits(identity?.pidHash, { fallback: '12345678', length: 8 });
+    const pidType = normalizeDigits(identity?.pidType, { fallback: '01' });
+    const pidVer = normalizeDigits(identity?.pidVer, { fallback: '01' });
+    const pidIssuer = normalizeDigits(identity?.pidIssuer, { fallback: '886' });
+    const pidValidTo = normalizeDate(identity?.pidValidTo, expiry);
+    const walletId = normalizeDigits(identity?.walletId, { fallback: '10000001' });
+    fields.push(
+      { ename: 'pid_hash', content: pidHash },
+      { ename: 'pid_type', content: pidType },
+      { ename: 'pid_ver', content: pidVer },
+      { ename: 'pid_issuer', content: pidIssuer },
+      { ename: 'pid_valid_to', content: pidValidTo },
+      { ename: 'wallet_id', content: walletId }
     );
   }
 
@@ -418,7 +473,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
   );
   const [consentExpiry, setConsentExpiry] = useState('');
   const [consentScopeCode, setConsentScopeCode] = useState('MEDSSI01');
-  const [consentPurpose, setConsentPurpose] = useState('AI胃炎研究');
+  const [consentPurpose, setConsentPurpose] = useState('MEDDATARESEARCH');
   const [consentPath, setConsentPath] = useState('IRB_2025_001');
   const [medicalFields, setMedicalFields] = useState(
     DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', ')
@@ -430,6 +485,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     DEFAULT_DISCLOSURES.CONSENT_CARD.join(', ')
   );
   const [allergyInfo, setAllergyInfo] = useState(INITIAL_ALLERGY);
+  const [identityInfo, setIdentityInfo] = useState(INITIAL_IDENTITY);
   const [mode, setMode] = useState('WITH_DATA');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -460,6 +516,10 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
         ALLERGY_CARD: {
           ...DEFAULT_CARD_IDENTIFIERS.ALLERGY_CARD,
           ...(parsed.ALLERGY_CARD || {}),
+        },
+        IDENTITY_CARD: {
+          ...DEFAULT_CARD_IDENTIFIERS.IDENTITY_CARD,
+          ...(parsed.IDENTITY_CARD || {}),
         },
       };
     } catch (err) {
@@ -498,6 +558,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       ['MEDICATION_PICKUP', medicationFields],
       ['CONSENT_CARD', consentFields],
       ['ALLERGY_CARD', DEFAULT_DISCLOSURES.ALLERGY_CARD.join(', ')],
+      ['IDENTITY_CARD', DEFAULT_DISCLOSURES.IDENTITY_CARD.join(', ')],
     ];
     return entries
       .map(([scope, value]) => ({
@@ -523,6 +584,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
         consentPurpose,
         consentPath,
         allergy: allergyInfo,
+        identity: identityInfo,
       }),
     [
       condition,
@@ -535,6 +597,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       consentPurpose,
       consentPath,
       allergyInfo,
+      identityInfo,
     ]
   );
 
@@ -548,6 +611,10 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
 
   function updateAllergy(field, value) {
     setAllergyInfo((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function updateIdentity(field, value) {
+    setIdentityInfo((prev) => ({ ...prev, [field]: value }));
   }
 
   async function submit() {
@@ -565,6 +632,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       consentPath,
       consentExpiry,
       allergy: allergyInfo,
+      identity: identityInfo,
       identifiers: currentIdentifiers,
     });
 
@@ -579,7 +647,15 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       if (mode === 'WITH_DATA') {
         response = await client.issueWithData(govPayload, issuerToken);
       } else {
-        const { fields: _ignoredFields, ...metaOnly } = govPayload;
+        if (!govPayload.vcUid) {
+          throw new Error('缺少 vcUid，無法呼叫無個資發卡 API');
+        }
+        const metaOnly = { vcUid: govPayload.vcUid };
+        ['vcCid', 'vcId', 'apiKey'].forEach((key) => {
+          if (govPayload[key]) {
+            metaOnly[key] = govPayload[key];
+          }
+        });
         response = await client.issueWithoutData(metaOnly, issuerToken);
       }
       setLoading(false);
@@ -612,12 +688,16 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setEncounterHash('urn:sha256:3a1f0c98c5d4a4efed2d4dfe58e8');
     setConsentExpiry(dayjs().add(90, 'day').format('YYYY-MM-DD'));
     setConsentScopeCode('MEDSSI01');
-    setConsentPurpose('AI胃炎研究');
+    setConsentPurpose('MEDDATARESEARCH');
     setConsentPath('IRB_2025_001');
     setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
     setMedicationFields(DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', '));
     setConsentFields(DEFAULT_DISCLOSURES.CONSENT_CARD.join(', '));
     setAllergyInfo(INITIAL_ALLERGY);
+    setIdentityInfo({
+      ...INITIAL_IDENTITY,
+      pidValidTo: dayjs().add(10, 'year').format('YYYY-MM-DD'),
+    });
   }
 
   const qrSource = success?.qrCode || success?.deepLink || '';
@@ -937,6 +1017,49 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
             </fieldset>
           )}
 
+          {primaryScope === 'IDENTITY_CARD' && (
+            <fieldset>
+              <legend>匿名身分資訊（vc_pid）</legend>
+              <label htmlFor="pid-hash">識別碼雜湊（pid_hash，8 位數字）</label>
+              <input
+                id="pid-hash"
+                value={identityInfo.pidHash}
+                onChange={(event) => updateIdentity('pidHash', event.target.value)}
+              />
+              <label htmlFor="pid-type">識別碼類型（pid_type）</label>
+              <input
+                id="pid-type"
+                value={identityInfo.pidType}
+                onChange={(event) => updateIdentity('pidType', event.target.value)}
+              />
+              <label htmlFor="pid-ver">識別碼版本（pid_ver）</label>
+              <input
+                id="pid-ver"
+                value={identityInfo.pidVer}
+                onChange={(event) => updateIdentity('pidVer', event.target.value)}
+              />
+              <label htmlFor="pid-issuer">發行者代碼（pid_issuer）</label>
+              <input
+                id="pid-issuer"
+                value={identityInfo.pidIssuer}
+                onChange={(event) => updateIdentity('pidIssuer', event.target.value)}
+              />
+              <label htmlFor="pid-valid">有效期限（pid_valid_to）</label>
+              <input
+                id="pid-valid"
+                type="date"
+                value={identityInfo.pidValidTo}
+                onChange={(event) => updateIdentity('pidValidTo', event.target.value)}
+              />
+              <label htmlFor="wallet-id">錢包識別碼（wallet_id）</label>
+              <input
+                id="wallet-id"
+                value={identityInfo.walletId}
+                onChange={(event) => updateIdentity('walletId', event.target.value)}
+              />
+            </fieldset>
+          )}
+
           <fieldset>
             <legend>選擇性揭露欄位</legend>
             <label htmlFor="medical-fields">跨院病歷欄位 (MEDICAL_RECORD)</label>
@@ -956,6 +1079,13 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
               id="consent-fields"
               value={consentFields}
               onChange={(event) => setConsentFields(event.target.value)}
+            />
+            <label htmlFor="identity-fields">身分卡欄位 (IDENTITY_CARD)</label>
+            <textarea
+              id="identity-fields"
+              value={DEFAULT_DISCLOSURES.IDENTITY_CARD.join(', ')}
+              readOnly
+              aria-readonly="true"
             />
           </fieldset>
         </div>

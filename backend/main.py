@@ -139,6 +139,7 @@ DEFAULT_MODA_VC_IDENTIFIERS: Dict[str, Dict[str, str]] = {
     "vc_cond": {"vcUid": "00000000_vc_cond", "vcCid": "vc_cond"},
     "vc_algy": {"vcUid": "00000000_vc_algy", "vcCid": "vc_algy"},
     "vc_rx": {"vcUid": "00000000_vc_rx", "vcCid": "vc_rx"},
+    "vc_pid": {"vcUid": "00000000_vc_pid", "vcCid": "vc_pid"},
 }
 
 
@@ -772,6 +773,7 @@ MODA_VC_SCOPE_MAP = {
     "vc_algy": DisclosureScope.MEDICAL_RECORD,
     "vc_cons": DisclosureScope.RESEARCH_ANALYTICS,
     "vc_rx": DisclosureScope.MEDICATION_PICKUP,
+    "vc_pid": DisclosureScope.RESEARCH_ANALYTICS,
 }
 
 
@@ -780,6 +782,14 @@ MODA_VC_FIELD_KEYS = {
     "vc_cond": ["cond_code", "cond_display", "cond_onset"],
     "vc_algy": ["algy_code", "algy_name", "algy_severity"],
     "vc_rx": ["med_code", "med_name", "dose_text", "qty_value", "qty_unit"],
+    "vc_pid": [
+        "pid_hash",
+        "pid_type",
+        "pid_ver",
+        "pid_issuer",
+        "pid_valid_to",
+        "wallet_id",
+    ],
 }
 
 
@@ -797,6 +807,12 @@ MODA_SCOPE_DEFAULT_FIELDS = {
         "cons_purpose",
         "cons_end",
         "cons_path",
+        "pid_hash",
+        "pid_type",
+        "pid_ver",
+        "pid_issuer",
+        "pid_valid_to",
+        "wallet_id",
     ],
 }
 
@@ -822,6 +838,12 @@ MODA_FIELD_TO_FHIR = {
     "cons_scope": "consent.scope",
     "cons_purpose": "consent.purpose",
     "cons_path": "consent.path",
+    "pid_hash": "identity.pid_hash",
+    "pid_type": "identity.pid_type",
+    "pid_ver": "identity.pid_ver",
+    "pid_issuer": "identity.pid_issuer",
+    "pid_valid_to": "identity.pid_valid_to",
+    "wallet_id": "identity.wallet_id",
 }
 
 
@@ -835,6 +857,12 @@ MODA_FIELD_DIRECT_ALIASES = {
     "conditionInfo.conditionDisplay": "condition_info.condition_display",
     "conditionInfo.conditionOnset": "condition_info.condition_onset",
     "consentInfo.consentEnd": "cons_end",
+    "identityInfo.pidHash": "pid_hash",
+    "identityInfo.pidType": "pid_type",
+    "identityInfo.pidVer": "pid_ver",
+    "identityInfo.pidIssuer": "pid_issuer",
+    "identityInfo.pidValidTo": "pid_valid_to",
+    "identityInfo.walletId": "wallet_id",
 }
 
 
@@ -860,32 +888,46 @@ MODA_FIELD_LOWER_ALIASES = {
     "algycode": "algy_code",
     "algyname": "algy_name",
     "algyseverity": "algy_severity",
+    "pidhash": "pid_hash",
+    "pidtype": "pid_type",
+    "pidver": "pid_ver",
+    "pidissuer": "pid_issuer",
+    "pidvalidto": "pid_valid_to",
+    "walletid": "wallet_id",
 }
 
 
 MODA_SAMPLE_FIELD_VALUES = {
     "vc_cons": {
         "cons_scope": "MEDSSI01",
-        "cons_purpose": "AI胃炎研究",
+        "cons_purpose": "MEDDATARESEARCH",
         "cons_end": (date.today() + timedelta(days=180)).isoformat(),
         "cons_path": "IRB_2025_001",
     },
     "vc_cond": {
         "cond_code": "K2970",
-        "cond_display": "慢性胃炎",
+        "cond_display": "CHRONICGASTRITIS",
         "cond_onset": "2025-02-12",
     },
     "vc_algy": {
         "algy_code": "ALG001",
-        "algy_name": "海鮮過敏",
+        "algy_name": "PENICILLIN",
         "algy_severity": "2",
     },
     "vc_rx": {
         "med_code": "A02BC05",
-        "med_name": "OMEPRAZOLE20MG",
-        "dose_text": "每日2次10毫升",
+        "med_name": "OMEPRAZOLE",
+        "dose_text": "BID10ML",
         "qty_value": "30",
-        "qty_unit": "粒",
+        "qty_unit": "TABLET",
+    },
+    "vc_pid": {
+        "pid_hash": "12345678",
+        "pid_type": "01",
+        "pid_ver": "01",
+        "pid_issuer": "886",
+        "pid_valid_to": (date.today() + timedelta(days=3650)).isoformat(),
+        "wallet_id": "10000001",
     },
 }
 
@@ -1263,6 +1305,23 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
             }
         )
 
+    if any(
+        key in alias_map
+        for key in ("pid_hash", "pid_type", "pid_ver", "pid_issuer", "pid_valid_to", "wallet_id")
+    ):
+        merge(
+            {
+                "identity": {
+                    "pid_hash": alias_map.get("pid_hash"),
+                    "pid_type": alias_map.get("pid_type"),
+                    "pid_ver": alias_map.get("pid_ver"),
+                    "pid_issuer": alias_map.get("pid_issuer"),
+                    "pid_valid_to": alias_map.get("pid_valid_to"),
+                    "wallet_id": alias_map.get("wallet_id"),
+                }
+            }
+        )
+
     return overrides or None
 
 
@@ -1282,6 +1341,12 @@ def _expand_aliases(alias_map: Dict[str, str]) -> Dict[str, str]:
     copy_if_missing("cons_purpose", "consent.purpose")
     copy_if_missing("cons_path", "consent.path")
     copy_if_missing("cons_end", "consent.expires_on")
+    copy_if_missing("pid_hash", "identity.pid_hash")
+    copy_if_missing("pid_type", "identity.pid_type")
+    copy_if_missing("pid_ver", "identity.pid_ver")
+    copy_if_missing("pid_issuer", "identity.pid_issuer")
+    copy_if_missing("pid_valid_to", "identity.pid_valid_to")
+    copy_if_missing("wallet_id", "identity.wallet_id")
 
     return expanded
 

@@ -1,7 +1,7 @@
 module.exports = {
   // Issuer sandbox credentials -------------------------------------------
   vcId: '00000000_vc_cond', // 胃炎病歷卡樣板序號
-  vcCid: '646005', // 對應後台樣板代號
+  vcCid: 'vc_cond', // 對應後台樣板代號
   vcUid: '00000000_vc_cond',
   apiKey: 'YOUR_ISSUER_API_KEY',
 
@@ -17,27 +17,35 @@ module.exports = {
   // 預設欄位值：依官方樣板建議，可依實際資料覆寫
   cards: {
     vc_cons: {
-      cons_scope: 'RESEARCH01',
-      cons_purpose: 'AI胃炎趨勢研究',
+      cons_scope: 'MEDSSI01',
+      cons_purpose: 'MEDDATARESEARCH',
       cons_end: '2025-12-31',
       cons_path: 'IRB_2025_001'
     },
     vc_cond: {
       cond_code: 'K2970',
-      cond_display: '慢性胃炎',
+      cond_display: 'CHRONICGASTRITIS',
       cond_onset: '2025-02-12'
     },
     vc_algy: {
       algy_code: 'ALG001',
-      algy_name: '盤尼西林過敏',
+      algy_name: 'PENICILLIN',
       algy_severity: '2'
     },
     vc_rx: {
       med_code: 'A02BC05',
-      med_name: 'OMEPRAZOLE20MG',
-      dose_text: '每日2次1顆',
+      med_name: 'OMEPRAZOLE',
+      dose_text: 'BID10ML',
       qty_value: '30',
-      qty_unit: '顆'
+      qty_unit: 'TABLET'
+    },
+    vc_pid: {
+      pid_hash: '12345678',
+      pid_type: '01',
+      pid_ver: '01',
+      pid_issuer: '886',
+      pid_valid_to: '2035-12-31',
+      wallet_id: '10000001'
     }
   }
 };
