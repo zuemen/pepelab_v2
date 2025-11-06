@@ -107,16 +107,20 @@ class PatientDigest(BaseModel):
     display_name: Optional[str] = Field(None, description="Masked patient name")
     birth_date: Optional[date] = Field(None, description="Birth date in ISO format")
     document_type: Optional[str] = Field(
-        None, description="Document type mirrored to vc_pid 的 pid_type"
+        None, description="Document type reserved for 未來身份識別憑證"
     )
     document_version: Optional[str] = Field(
-        None, description="Document version mirrored to vc_pid 的 pid_ver"
+        None, description="Document version reserved for 未來身份識別憑證"
     )
-    issuer: Optional[str] = Field(None, description="Issuing authority for pid_issuer")
+    issuer: Optional[str] = Field(
+        None, description="Issuing authority reserved for 身份憑證"
+    )
     valid_to: Optional[date] = Field(
-        None, description="Document valid-to date for pid_valid_to"
+        None, description="Document valid-to date reserved for 身份憑證"
     )
-    wallet_id: Optional[str] = Field(None, description="Wallet identifier linked to wallet_id")
+    wallet_id: Optional[str] = Field(
+        None, description="Wallet identifier reserved for 身份憑證擴充"
+    )
 
 
 class CredentialPayload(BaseModel):
@@ -149,7 +153,7 @@ class CredentialPayload(BaseModel):
     )
     patient_digest: Optional[PatientDigest] = Field(
         None,
-        description="Masked patient identifiers for vc_pid compatibility",
+        description="Masked patient identifiers（保留未來身份卡擴充使用）",
     )
 
 

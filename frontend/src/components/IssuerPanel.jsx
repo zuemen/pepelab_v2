@@ -111,7 +111,6 @@ function buildPayload({
   consentScope,
   consentPurpose,
   consentPath,
-  consentIssuer,
   allergy,
 }) {
   return {
@@ -147,12 +146,11 @@ function buildPayload({
     issued_on: issuedOn,
     consent_expires_on: consentExpiry || undefined,
     consent:
-      consentScope || consentPurpose || consentPath || consentIssuer
+      consentScope || consentPurpose || consentPath
         ? {
             scope: consentScope || undefined,
             purpose: consentPurpose || undefined,
             path: consentPath || undefined,
-            issuer: consentIssuer || undefined,
             expires_on: consentExpiry || undefined,
           }
         : undefined,
@@ -297,7 +295,6 @@ function convertToGovFormat({
   consentScope,
   consentPurpose,
   consentPath,
-  consentIssuer,
   consentExpiry,
   allergy,
   identifiers = {},
@@ -423,7 +420,6 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
   const [consentScopeCode, setConsentScopeCode] = useState('MEDSSI01');
   const [consentPurpose, setConsentPurpose] = useState('AI胃炎研究');
   const [consentPath, setConsentPath] = useState('IRB_2025_001');
-  const [consentIssuer, setConsentIssuer] = useState('MOHW-IRB-2025-001');
   const [medicalFields, setMedicalFields] = useState(
     DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', ')
   );
@@ -526,7 +522,6 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
         consentScope: consentScopeCode,
         consentPurpose,
         consentPath,
-        consentIssuer,
         allergy: allergyInfo,
       }),
     [
@@ -539,7 +534,6 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       consentScopeCode,
       consentPurpose,
       consentPath,
-      consentIssuer,
       allergyInfo,
     ]
   );
@@ -569,7 +563,6 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       consentScope: consentScopeCode,
       consentPurpose,
       consentPath,
-      consentIssuer,
       consentExpiry,
       allergy: allergyInfo,
       identifiers: currentIdentifiers,
@@ -621,7 +614,6 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setConsentScopeCode('MEDSSI01');
     setConsentPurpose('AI胃炎研究');
     setConsentPath('IRB_2025_001');
-    setConsentIssuer('MOHW-IRB-2025-001');
     setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
     setMedicationFields(DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', '));
     setConsentFields(DEFAULT_DISCLOSURES.CONSENT_CARD.join(', '));
@@ -814,12 +806,6 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
                   id="consent-path"
                   value={consentPath}
                   onChange={(event) => setConsentPath(event.target.value)}
-                />
-                <label htmlFor="consent-issuer">核發單位（cons_issuer，可空白）</label>
-                <input
-                  id="consent-issuer"
-                  value={consentIssuer}
-                  onChange={(event) => setConsentIssuer(event.target.value)}
                 />
               </>
             )}

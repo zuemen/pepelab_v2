@@ -17,28 +17,27 @@ module.exports = {
   // 預設欄位值：依官方樣板建議，可依實際資料覆寫
   cards: {
     vc_cons: {
-      cons_scope: 'research_info',
-      cons_purpose: 'AI 胃炎趨勢研究',
+      cons_scope: 'RESEARCH01',
+      cons_purpose: 'AI胃炎趨勢研究',
       cons_end: '2025-12-31',
-      cons_issuer: 'MOHW-IRB-2025-001',
-      cons_path: 'medssi://consent/irb-2025-001'
+      cons_path: 'IRB_2025_001'
     },
     vc_cond: {
-      cond_code: 'K29.70',
-      cond_display: '慢性胃炎（未特指）',
+      cond_code: 'K2970',
+      cond_display: '慢性胃炎',
       cond_onset: '2025-02-12'
     },
     vc_algy: {
-      algy_code: 'Z88.1',
-      algy_name: 'Penicillin allergy',
-      algy_severity: 'Severe'
+      algy_code: 'ALG001',
+      algy_name: '盤尼西林過敏',
+      algy_severity: '2'
     },
     vc_rx: {
       med_code: 'A02BC05',
-      med_name: 'Omeprazole 20mg capsule',
-      dose_text: 'Take 1 capsule twice daily before meals',
+      med_name: 'OMEPRAZOLE20MG',
+      dose_text: '每日2次1顆',
       qty_value: '30',
-      qty_unit: 'capsules'
+      qty_unit: '顆'
     }
   }
 };

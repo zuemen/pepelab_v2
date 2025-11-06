@@ -135,7 +135,6 @@ def _normalize_identifier_slug(value: str) -> str:
 
 
 DEFAULT_MODA_VC_IDENTIFIERS: Dict[str, Dict[str, str]] = {
-    "vc_pid": {"vcUid": "00000000_vc_pid", "vcCid": "vc_pid"},
     "vc_cons": {"vcUid": "00000000_vc_cons", "vcCid": "vc_cons"},
     "vc_cond": {"vcUid": "00000000_vc_cond", "vcCid": "vc_cond"},
     "vc_algy": {"vcUid": "00000000_vc_algy", "vcCid": "vc_algy"},
@@ -771,21 +770,12 @@ def _normalize_vc_uid(vc_uid: str) -> str:
 MODA_VC_SCOPE_MAP = {
     "vc_cond": DisclosureScope.MEDICAL_RECORD,
     "vc_algy": DisclosureScope.MEDICAL_RECORD,
-    "vc_pid": DisclosureScope.MEDICAL_RECORD,
     "vc_cons": DisclosureScope.RESEARCH_ANALYTICS,
     "vc_rx": DisclosureScope.MEDICATION_PICKUP,
 }
 
 
 MODA_VC_FIELD_KEYS = {
-    "vc_pid": [
-        "pid_hash",
-        "pid_type",
-        "pid_ver",
-        "pid_issuer",
-        "pid_valid_to",
-        "wallet_id",
-    ],
     "vc_cons": ["cons_scope", "cons_purpose", "cons_end", "cons_path"],
     "vc_cond": ["cond_code", "cond_display", "cond_onset"],
     "vc_algy": ["algy_code", "algy_name", "algy_severity"],
@@ -831,18 +821,7 @@ MODA_FIELD_TO_FHIR = {
     "algy_severity": "allergies[0].criticality",
     "cons_scope": "consent.scope",
     "cons_purpose": "consent.purpose",
-    "cons_issuer": "consent.issuer",
     "cons_path": "consent.path",
-    "cons_end": "consent.expires_on",
-    "pid_hash": "patient_digest.hashed_id",
-    "pid_name": "patient_digest.display_name",
-    "pid_birth": "patient_digest.birth_date",
-    "pid_type": "patient_digest.document_type",
-    "pid_ver": "patient_digest.document_version",
-    "pid_issuer": "patient_digest.issuer",
-    "pid_valid_to": "patient_digest.valid_to",
-    "wallet_id": "patient_digest.wallet_id",
-    "pid_info.pid_ver": "patient_digest.document_version",
 }
 
 
@@ -856,7 +835,6 @@ MODA_FIELD_DIRECT_ALIASES = {
     "conditionInfo.conditionDisplay": "condition_info.condition_display",
     "conditionInfo.conditionOnset": "condition_info.condition_onset",
     "consentInfo.consentEnd": "cons_end",
-    "pidInfo.pidVer": "pid_info.pid_ver",
 }
 
 
@@ -877,17 +855,8 @@ MODA_FIELD_LOWER_ALIASES = {
     "dosetext": "dose_text",
     "consentscope": "cons_scope",
     "consentpurpose": "cons_purpose",
-    "consentissuer": "cons_issuer",
     "consentpath": "cons_path",
     "consentend": "cons_end",
-    "pidhash": "pid_hash",
-    "pidname": "pid_name",
-    "pidbirth": "pid_birth",
-    "pidtype": "pid_type",
-    "pidver": "pid_ver",
-    "pidissuer": "pid_issuer",
-    "pidvalidto": "pid_valid_to",
-    "walletid": "wallet_id",
     "algycode": "algy_code",
     "algyname": "algy_name",
     "algyseverity": "algy_severity",
@@ -895,14 +864,6 @@ MODA_FIELD_LOWER_ALIASES = {
 
 
 MODA_SAMPLE_FIELD_VALUES = {
-    "vc_pid": {
-        "pid_hash": "12345678",
-        "pid_type": "01",
-        "pid_ver": "01",
-        "pid_issuer": "3567",
-        "pid_valid_to": (date.today() + timedelta(days=365 * 2)).isoformat(),
-        "wallet_id": "10000001",
-    },
     "vc_cons": {
         "cons_scope": "MEDSSI01",
         "cons_purpose": "AI胃炎研究",
@@ -910,7 +871,7 @@ MODA_SAMPLE_FIELD_VALUES = {
         "cons_path": "IRB_2025_001",
     },
     "vc_cond": {
-        "cond_code": "K29.70",
+        "cond_code": "K2970",
         "cond_display": "慢性胃炎",
         "cond_onset": "2025-02-12",
     },
@@ -922,7 +883,7 @@ MODA_SAMPLE_FIELD_VALUES = {
     "vc_rx": {
         "med_code": "A02BC05",
         "med_name": "OMEPRAZOLE20MG",
-        "dose_text": "每天2次10毫升",
+        "dose_text": "每日2次10毫升",
         "qty_value": "30",
         "qty_unit": "粒",
     },
@@ -1289,47 +1250,15 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
         )
 
     if any(
-        key
-        in alias_map
-        for key in ("cons_scope", "cons_purpose", "cons_issuer", "cons_path", "cons_end")
+        key in alias_map for key in ("cons_scope", "cons_purpose", "cons_path", "cons_end")
     ):
         merge(
             {
                 "consent": {
                     "scope": alias_map.get("cons_scope"),
                     "purpose": alias_map.get("cons_purpose"),
-                    "issuer": alias_map.get("cons_issuer"),
                     "path": alias_map.get("cons_path"),
                     "expires_on": alias_map.get("cons_end"),
-                }
-            }
-        )
-
-    if any(
-        key
-        in alias_map
-        for key in (
-            "pid_hash",
-            "pid_name",
-            "pid_birth",
-            "pid_type",
-            "pid_ver",
-            "pid_issuer",
-            "pid_valid_to",
-            "wallet_id",
-        )
-    ):
-        merge(
-            {
-                "patient_digest": {
-                    "hashed_id": alias_map.get("pid_hash"),
-                    "display_name": alias_map.get("pid_name"),
-                    "birth_date": alias_map.get("pid_birth"),
-                    "document_type": alias_map.get("pid_type"),
-                    "document_version": alias_map.get("pid_ver"),
-                    "issuer": alias_map.get("pid_issuer"),
-                    "valid_to": alias_map.get("pid_valid_to"),
-                    "wallet_id": alias_map.get("wallet_id"),
                 }
             }
         )
@@ -1351,17 +1280,8 @@ def _expand_aliases(alias_map: Dict[str, str]) -> Dict[str, str]:
     copy_if_missing("dose_text", "medication_list[0].dose_text")
     copy_if_missing("cons_scope", "consent.scope")
     copy_if_missing("cons_purpose", "consent.purpose")
-    copy_if_missing("cons_issuer", "consent.issuer")
     copy_if_missing("cons_path", "consent.path")
     copy_if_missing("cons_end", "consent.expires_on")
-    copy_if_missing("pid_hash", "pid_info.pid_hash")
-    copy_if_missing("pid_name", "pid_info.pid_name")
-    copy_if_missing("pid_birth", "pid_info.pid_birth")
-    copy_if_missing("pid_type", "pid_info.pid_type")
-    copy_if_missing("pid_ver", "pid_info.pid_ver")
-    copy_if_missing("pid_issuer", "pid_info.pid_issuer")
-    copy_if_missing("pid_valid_to", "pid_info.pid_valid_to")
-    copy_if_missing("wallet_id", "pid_info.wallet_id")
 
     return expanded
 

@@ -63,10 +63,10 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 - `vcUid` / `fields` 結構會自動轉換為 FHIR VC payload，同時保留 MODA 欄位別名（例如 `cond_code`、`cons_scope`），錢包與驗證端可直接沿用官方沙盒的欄位設定。
 - 內建 `vc_cons`、`vc_cond`、`vc_algy`、`vc_rx` 等樣板欄位與範例值（依官方截圖整理），若呼叫端未傳入 `fields` 也會自動補齊對應欄位與內容，避免掃描後顯示「資料格式錯誤」。
 - 欄位會對照政府沙盒公布的模板規格：
-  - **vc_cons**：輸出 `cons_scope`、`cons_purpose`、`cons_end` 及可選的 `cons_path`，對應授權範圍、目的與到期日。
-  - **vc_cond**：維持 `cond_code`、`cond_display`、`cond_onset` 做為診斷摘要必填欄位。
-  - **vc_algy**：提供 `algy_code`、`algy_name`、`algy_severity` 以描述過敏原與嚴重程度。
-  - **vc_rx**：產生 `med_code`、`med_name`、`dose_text`、`qty_value`、`qty_unit` 等處方資訊。
+  - **vc_cons**：輸出 `cons_scope`、`cons_purpose`、`cons_end` 及可選的 `cons_path`，欄位僅接受中英文與數字、日期需為 `YYYY-MM-DD`，`cons_path` 會自動限制為大寫英數與底線／短橫線。
+  - **vc_cond**：維持 `cond_code`、`cond_display`、`cond_onset` 做為診斷摘要必填欄位，`cond_code` 會強制轉為大寫英數避免出現 `.` 等不符規範字元。
+  - **vc_algy**：提供 `algy_code`、`algy_name`、`algy_severity` 以描述過敏原與嚴重程度，後端預設以數字（1–3）回填嚴重度。
+  - **vc_rx**：產生 `med_code`、`med_name`、`dose_text`、`qty_value`、`qty_unit` 等處方資訊，藥品代碼與名稱會轉成大寫英數，`qty_value` 僅保留數字、`qty_unit` 允許中英文單位。
 
 > ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。若需暫時允許多組 Token，可在環境變數中以逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會自動接受其中任一值。若沿用官方 sandbox 範例以 `access-token` header 傳遞，也會自動轉換為 Bearer Token 無須修改程式。
 
