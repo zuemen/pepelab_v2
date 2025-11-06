@@ -834,7 +834,7 @@ MODA_VC_FIELD_KEYS = {
     "vc_pid": [
         "pid_hash",
         "pid_type",
-        "pid_valid_from",
+        "pid_ver",
         "pid_issuer",
         "pid_valid_to",
         "wallet_id",
@@ -858,7 +858,7 @@ MODA_SCOPE_DEFAULT_FIELDS = {
         "cons_path",
         "pid_hash",
         "pid_type",
-        "pid_valid_from",
+        "pid_ver",
         "pid_issuer",
         "pid_valid_to",
         "wallet_id",
@@ -889,7 +889,7 @@ MODA_FIELD_TO_FHIR = {
     "cons_path": "consent.path",
     "pid_hash": "patient_digest.hashed_id",
     "pid_type": "patient_digest.document_type",
-    "pid_valid_from": "patient_digest.valid_from",
+    "pid_ver": "patient_digest.document_version",
     "pid_issuer": "patient_digest.issuer",
     "pid_valid_to": "patient_digest.valid_to",
     "wallet_id": "patient_digest.wallet_id",
@@ -908,7 +908,7 @@ MODA_FIELD_DIRECT_ALIASES = {
     "consentInfo.consentEnd": "cons_end",
     "identityInfo.pidHash": "pid_hash",
     "identityInfo.pidType": "pid_type",
-    "identityInfo.pidValidFrom": "pid_valid_from",
+    "identityInfo.pidVer": "pid_ver",
     "identityInfo.pidIssuer": "pid_issuer",
     "identityInfo.pidValidTo": "pid_valid_to",
     "identityInfo.walletId": "wallet_id",
@@ -939,7 +939,7 @@ MODA_FIELD_LOWER_ALIASES = {
     "algyseverity": "algy_severity",
     "pidhash": "pid_hash",
     "pidtype": "pid_type",
-    "pidvalidfrom": "pid_valid_from",
+    "pidver": "pid_ver",
     "pidissuer": "pid_issuer",
     "pidvalidto": "pid_valid_to",
     "walletid": "wallet_id",
@@ -973,7 +973,7 @@ MODA_SAMPLE_FIELD_VALUES = {
     "vc_pid": {
         "pid_hash": "12345678",
         "pid_type": "01",
-        "pid_valid_from": "2024-01-01",
+        "pid_ver": "01",
         "pid_issuer": "886",
         "pid_valid_to": (date.today() + timedelta(days=3650)).isoformat(),
         "wallet_id": "10000001",
@@ -1359,7 +1359,7 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
         for key in (
             "pid_hash",
             "pid_type",
-            "pid_valid_from",
+            "pid_ver",
             "pid_issuer",
             "pid_valid_to",
             "wallet_id",
@@ -1370,7 +1370,7 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
                 "patient_digest": {
                     "hashed_id": alias_map.get("pid_hash"),
                     "document_type": alias_map.get("pid_type"),
-                    "valid_from": alias_map.get("pid_valid_from"),
+                    "document_version": alias_map.get("pid_ver"),
                     "issuer": alias_map.get("pid_issuer"),
                     "valid_to": alias_map.get("pid_valid_to"),
                     "wallet_id": alias_map.get("wallet_id"),
@@ -1399,7 +1399,7 @@ def _expand_aliases(alias_map: Dict[str, str]) -> Dict[str, str]:
     copy_if_missing("cons_end", "consent.expires_on")
     copy_if_missing("pid_hash", "pid_info.pid_hash")
     copy_if_missing("pid_type", "pid_info.pid_type")
-    copy_if_missing("pid_valid_from", "pid_info.pid_valid_from")
+    copy_if_missing("pid_ver", "pid_info.pid_ver")
     copy_if_missing("pid_issuer", "pid_info.pid_issuer")
     copy_if_missing("pid_valid_to", "pid_info.pid_valid_to")
     copy_if_missing("wallet_id", "pid_info.wallet_id")

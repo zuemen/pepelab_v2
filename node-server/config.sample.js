@@ -42,7 +42,7 @@ module.exports = {
     vc_pid: {
       pid_hash: '12345678',
       pid_type: '01',
-      pid_valid_from: '2024-01-01',
+      pid_ver: '01',
       pid_issuer: '886',
       pid_valid_to: '2035-12-31',
       wallet_id: '10000001'
