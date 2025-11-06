@@ -48,8 +48,8 @@ export default function Page4_Scenario() {
 
         {/* 技術流程入口（可選） */}
         <div className="btn-row" style={{ marginTop: 28 }}>
-          <button className="blue" onClick={() => navigate("/scene01")}>
-            看全技術流程（Scene01–07）
+          <button className="blue" onClick={() => navigate("/page1")}>
+            回首頁
           </button>
         </div>
       </div>
