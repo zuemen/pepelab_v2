@@ -33,7 +33,7 @@
      | `RESEARCH_ANALYTICS`（研究揭露） | `00000000_vp_research` | 診斷摘要卡 + 數位同意卡 + 過敏史卡 |
      | `MEDICATION_PICKUP`（領藥驗證） | `00000000_vp_rx_pickup` | 處方領藥卡 + 過敏史卡 + 數位同意卡 |
    - 若官方更新 `ref`，可改用環境變數 `MEDSSI_VERIFIER_REF_CONSENT`／`MEDSSI_VERIFIER_REF_RESEARCH`／`MEDSSI_VERIFIER_REF_RX` 覆蓋，或在 `node-server/config.js` 的 `verifier_refs` 逐一指定。
-2. **發行端呼叫** – 以 `POST /api/qrcode/data`（或 `/api/qrcode/nodata`）向 `https://issuer-sandbox.wallet.gov.tw` 申請 QR Code，回應中的 `transactionId` 與 `qrCode`／`deepLink` 即為官方結果；必要時再透過 `GET /api/credential/nonce/{transactionId}` 追蹤領卡狀態。
+2. **發行端呼叫** – 以 `POST /api/qrcode/data` 向 `https://issuer-sandbox.wallet.gov.tw` 申請 QR Code，回應中的 `transactionId` 與 `qrCode`／`deepLink` 即為官方結果；必要時再透過 `GET /api/credential/nonce/{transactionId}` 追蹤領卡狀態。（`/api/qrcode/nodata` 僅供本地模擬，官方沙盒會回傳 `400`。）
 3. **驗證端呼叫** – 使用 `GET /api/oidvp/qrcode?ref=...&transactionId=...`（或 `POST /api/oidvp/qrcode`）生成授權 QR，待民眾掃描後以 `POST /api/oidvp/result` 搭配相同 `transactionId` 查詢揭露結果。
 4. **後續管理** – 若需撤銷憑證，先由 `/api/credential/nonce/{transactionId}` 解析 JWT 取得 `jti`（CID），再呼叫 `PUT /api/credential/{cid}/revocation` 更新政府錢包中的卡片狀態。
 
@@ -46,7 +46,7 @@
 
 ## 4. 發行端 API 檢查
 - `/api/qrcode/data`：產生含資料的 QR Code，回傳 `qrcodeImage`、`authUri`、`transactionId`。
-- `/api/qrcode/nodata`：發出無個資 QR，用於流程測試。
+- `/api/qrcode/nodata`：本地模擬無個資 QR（官方沙盒未開放）。
 - `/api/credential/nonce/{transactionId}`：在 Holder 掃描後提供 nonce 與模擬 VC JWT。
 - `/api/credential/{cid}/revocation`：撤銷指定憑證。
 - 所有請求必須帶上 Issuer Token，否則伺服器會回傳 401/403。
@@ -64,7 +64,7 @@
 
 ## 7. 快速驗證指令
 ```bash
-# 發行端 - 無個資
+# 發行端 - 無個資（僅供本地模擬；官方沙盒會回傳 400）
 curl -X POST "http://localhost:8000/api/qrcode/nodata" \
   -H "access-token: <ISSUER_TOKEN>" \
   -H "Content-Type: application/json" \

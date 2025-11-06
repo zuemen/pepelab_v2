@@ -29,7 +29,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 | Method | Path | 說明 |
 | --- | --- | --- |
 | `POST` | `/v2/api/qrcode/data` | 發行含 FHIR 資料的憑證，需指定 `primary_scope` 與 disclosure policies。 |
-| `POST` | `/v2/api/qrcode/nodata` | 發行空白憑證（僅含 scope 與欄位），供錢包後補資料；可附帶 payload template。 |
+| `POST` | `/v2/api/qrcode/nodata` | （開發模式）產生空白憑證範本供本地測試；官方沙盒目前未開放無個資發卡。 |
 | `GET` | `/v2/api/credential/nonce?transactionId=...` | 錢包以交易 ID 取得 nonce、模式、揭露欄位與（若提供）FHIR template。 |
 | `PUT` | `/v2/api/credential/{credential_id}/action` | 錢包接受、拒絕、撤銷或更新憑證資料，可一併送出選擇性揭露欄位。 |
 | `GET` | `/v2/api/wallet/{holder_did}/credentials` | 查詢某 Holder DID 持有的憑證列表。 |
@@ -48,7 +48,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 | Method | Path | 說明 |
 | --- | --- | --- |
 | `POST` | `/api/qrcode/data`、`/api/medical/card/issue` | 發卡並回傳可直接放入 `<img>` 的 QR Code Data URI、`deepLink` 與 `qrPayload`。 |
-| `POST` | `/api/qrcode/nodata` | 建立無個資 QR Code，保留 `payloadTemplate` 供錢包後補。 |
+| `POST` | `/api/qrcode/nodata` | 本地模擬無個資 QR（官方沙盒尚未提供）；若呼叫政府端將回傳 `400`。 |
 | `GET` | `/api/credential/nonce/{transactionId}` | 依交易序號取得 nonce、選擇性揭露欄位與模擬的 VC JWT。 |
 | `PUT` | `/api/credential/{cid}/revocation` | 將電子卡狀態更新為撤銷。 |
 | `GET` / `POST` | `/api/oidvp/qrcode` | 生成驗證 QR Code，支援自訂 `transactionId`（預設為 UUIDv4），GET 版本遵循官方沙盒參數格式。 |
@@ -73,7 +73,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 > 📡 驗證端會依 `DisclosureScope` 自動對應政府沙盒的 VP 範本：`MEDICAL_RECORD` → `00000000_vp_consent`（授權驗證，聚焦 `vc_cond` + `vc_cons`）、`RESEARCH_ANALYTICS` → `00000000_vp_research`（研究揭露）、`MEDICATION_PICKUP` → `00000000_vp_rx_pickup`（領藥驗證）。若需替換，可設定 `MEDSSI_VERIFIER_REF_DEFAULT` 與 `MEDSSI_VERIFIER_REF_CONSENT`／`MEDSSI_VERIFIER_REF_RESEARCH`／`MEDSSI_VERIFIER_REF_RX`，或在 `node-server/config.js` 的 `verifier_refs` 指定不同 `ref`。
 
-> 🌐 `/api/*` MODA 相容端點現已直接呼叫政府沙盒：發卡流程會透過 `https://issuer-sandbox.wallet.gov.tw` 的 `/api/qrcode/data` / `/api/qrcode/nodata` 取得官方 QR Code，驗證流程則向 `https://verifier-sandbox.wallet.gov.tw/api/oidvp/*` 查詢。若需指向自架測試環境，可設定 `MEDSSI_GOV_ISSUER_BASE` 與 `MEDSSI_GOV_VERIFIER_BASE` 來覆寫預設網址；所有請求都會沿用使用者提交的 `access-token` 轉送給遠端沙盒，方便交叉驗證呼叫是否成功。
+> 🌐 `/api/*` MODA 相容端點現已直接呼叫政府沙盒：發卡流程會透過 `https://issuer-sandbox.wallet.gov.tw` 的 `/api/qrcode/data` 取得官方 QR Code（`/api/qrcode/nodata` 僅供本地模擬），驗證流程則向 `https://verifier-sandbox.wallet.gov.tw/api/oidvp/*` 查詢。若需指向自架測試環境，可設定 `MEDSSI_GOV_ISSUER_BASE` 與 `MEDSSI_GOV_VERIFIER_BASE` 來覆寫預設網址；所有請求都會沿用使用者提交的 `access-token` 轉送給遠端沙盒，方便交叉驗證呼叫是否成功。
 
 ### 官方沙盒呼叫步驟速查
 
@@ -87,7 +87,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
      ```
 
      未設定時會套用 README 上方列出的預設 `vcUid` / `vcCid`，其餘欄位則維持空白，確保送往政府 API 的 payload 與官方樣板一致。
-2. **發行端呼叫順序** – 以 `POST /api/qrcode/data`（或 `/api/qrcode/nodata`）取得官方 QR Code 與 `transactionId`，必要時使用 `GET /api/credential/nonce/{transactionId}` 追蹤領卡狀態，最後可藉由 `PUT /api/credential/{cid}/revocation` 撤銷卡片。 
+2. **發行端呼叫順序** – 以 `POST /api/qrcode/data` 取得官方 QR Code 與 `transactionId`（無個資發卡僅能於本地模擬），必要時使用 `GET /api/credential/nonce/{transactionId}` 追蹤領卡狀態，最後可藉由 `PUT /api/credential/{cid}/revocation` 撤銷卡片。
 3. **驗證端呼叫順序** – 透過 `GET /api/oidvp/qrcode?ref=<...>&transactionId=<...>` 生成授權 QR（或使用 `POST` 版本），等待錢包完成上傳後以 `POST /api/oidvp/result` 搭配同一筆 `transactionId` 查詢揭露結果；若需要醫療流程資訊，可再呼叫 `/api/medical/verification/session/{sessionId}` 取得 IAL 與欄位紀錄。 
 4. **錯誤排查重點** – `403` 通常代表 token 未帶入或格式錯誤，`400` 則多因日期／欄位名稱未符合模板。React 示範面板與 `node-server/` 範例會自動補齊欄位及日期格式，並將 sandbox 回應逐字呈現，方便核對官方 Swagger。 
 

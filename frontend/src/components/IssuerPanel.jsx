@@ -21,15 +21,15 @@ const DEFAULT_DISCLOSURES = {
 const PRIMARY_SCOPE_OPTIONS = [
   {
     value: 'MEDICAL_RECORD',
-    label: '病歷卡（MEDICAL_RECORD）－7 天後自動封存',
+    label: '病況卡（vc_cond）－7 天後自動封存',
   },
   {
     value: 'MEDICATION_PICKUP',
-    label: '領藥卡（MEDICATION_PICKUP）－3 天後自動刪除',
+    label: '處方領藥卡（vc_rx）－3 天後自動刪除',
   },
   {
     value: 'CONSENT_CARD',
-    label: '同意卡（vc_cons）－180 天授權保留',
+    label: '數據同意卡（vc_cons）－180 天授權保留',
   },
   {
     value: 'ALLERGY_CARD',
@@ -280,16 +280,21 @@ function resolveExpiry(scope, consentExpiry, medication) {
 }
 
 function normalizeDigits(value, { fallback = '', length } = {}) {
+  const fallbackDigits = String(fallback ?? '').replace(/[^0-9]/g, '');
   const digits = String(value ?? '')
     .replace(/[^0-9]/g, '')
     .trim();
   if (length) {
-    if (!digits) {
-      return fallback ? fallback.padEnd(length, '0').slice(0, length) : ''.padEnd(length, '0');
+    const source = digits || fallbackDigits;
+    if (!source) {
+      return ''.padStart(length, '0');
     }
-    return digits.padEnd(length, '0').slice(0, length);
+    if (source.length >= length) {
+      return source.slice(0, length);
+    }
+    return source.padStart(length, '0');
   }
-  return digits || fallback;
+  return digits || fallbackDigits;
 }
 
 function normalizeAlphaNumUpper(value, fallback = '') {
@@ -486,7 +491,6 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
   );
   const [allergyInfo, setAllergyInfo] = useState(INITIAL_ALLERGY);
   const [identityInfo, setIdentityInfo] = useState(INITIAL_IDENTITY);
-  const [mode, setMode] = useState('WITH_DATA');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -636,28 +640,14 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       identifiers: currentIdentifiers,
     });
 
-    if (!govPayload.fields.length && mode === 'WITH_DATA') {
+    if (!govPayload.fields.length) {
       setLoading(false);
       setError('缺少必要欄位，請確認診斷／領藥或同意書欄位是否完整。');
       return;
     }
 
     try {
-      let response;
-      if (mode === 'WITH_DATA') {
-        response = await client.issueWithData(govPayload, issuerToken);
-      } else {
-        if (!govPayload.vcUid) {
-          throw new Error('缺少 vcUid，無法呼叫無個資發卡 API');
-        }
-        const metaOnly = { vcUid: govPayload.vcUid };
-        ['vcCid', 'vcId', 'apiKey'].forEach((key) => {
-          if (govPayload[key]) {
-            metaOnly[key] = govPayload[key];
-          }
-        });
-        response = await client.issueWithoutData(metaOnly, issuerToken);
-      }
+      const response = await client.issueWithData(govPayload, issuerToken);
       setLoading(false);
 
       if (!response.ok) {
@@ -771,36 +761,12 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
             onChange={(event) => setValidMinutes(event.target.value)}
           />
 
-          <div className="stack" role="radiogroup" aria-labelledby="mode-label">
-            <span id="mode-label">發卡模式</span>
-            <label>
-              <input
-                type="radio"
-                name="mode"
-                value="WITH_DATA"
-                checked={mode === 'WITH_DATA'}
-                onChange={() => setMode('WITH_DATA')}
-              />
-              含資料：醫院直接提供 FHIR 病歷摘要
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="mode"
-                value="WITHOUT_DATA"
-                checked={mode === 'WITHOUT_DATA'}
-                onChange={() => setMode('WITHOUT_DATA')}
-              />
-              無資料：僅定義欄位，由錢包補齊
-            </label>
+          <div className="alert warning">
+            MODA 沙盒僅支援「含資料」發卡流程，空白樣板目前無法在官方系統測試。
           </div>
 
           <button type="button" onClick={submit} disabled={loading}>
-            {loading
-              ? '發卡中…'
-              : mode === 'WITH_DATA'
-              ? '建立含資料 QR Code'
-              : '建立空白 QR Code'}
+            {loading ? '發卡中…' : '建立含資料 QR Code'}
           </button>
           <button type="button" className="secondary" onClick={loadSample} disabled={loading}>
             載入示例資料
