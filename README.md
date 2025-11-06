@@ -116,7 +116,9 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
    - 預設會在 `http://localhost:5173` 提供介面，如需更換埠號可在啟動前設定
      `VITE_DEV_SERVER_PORT`（或 `PORT`）環境變數，例如：`VITE_DEV_SERVER_PORT=5180 npm run dev -- --host`。
    - 介面預設連向 `http://localhost:8000`，可在頁面頂部調整 API Base URL 與 Access Token。
-   - React UI 內建 `qrcode.react`，即時顯示可掃描 QR 影像，方便實機驗證。
+- React UI 內建 `qrcode.react`，即時顯示可掃描 QR 影像，方便實機驗證。
+- 發卡面板提供「政府 vcUid / vcId / vcCid / API Key」欄位，可輸入發行端沙盒後台提供的模板資訊；系統會暫存於瀏覽器 localStorage，
+  並自動帶入官方 API 需要的欄位，避免因缺少卡片序號而得到 `400` 回應。
    - 若需以官方 Node.js 範例串接，可複製 `node-server/config.sample.js` 為 `config.js`，並填入後台取得的 `apiKey`、`verifier_accessToken` 等值；樣板內已列出五種 VC (`vc_pid`、`vc_cons`、`vc_cond`、`vc_algy`、`vc_rx`) 的預設 payload，可直接套用或覆寫，並可透過 `verifier_refs` 指定 `consent`／`research`／`pickup` 三種場景，呼叫 `/getQRCode` 時以 `scenario` 欄位選擇對應的官方 `ref`。
 3. **快速重設沙盒資料**
    ```bash

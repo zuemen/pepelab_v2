@@ -37,6 +37,27 @@ const SCOPE_TO_VC_UID = {
   RESEARCH_ANALYTICS: '00000000_vc_cons',
 };
 
+const DEFAULT_CARD_IDENTIFIERS = {
+  MEDICAL_RECORD: {
+    vcUid: '00000000_vc_cond',
+    vcCid: 'vc_cond',
+    vcId: '',
+    apiKey: '',
+  },
+  MEDICATION_PICKUP: {
+    vcUid: '00000000_vc_rx',
+    vcCid: 'vc_rx',
+    vcId: '',
+    apiKey: '',
+  },
+  RESEARCH_ANALYTICS: {
+    vcUid: '00000000_vc_cons',
+    vcCid: 'vc_cons',
+    vcId: '',
+    apiKey: '',
+  },
+};
+
 const INITIAL_CONDITION = {
   id: `cond-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://hl7.org/fhir/sid/icd-10',
@@ -164,13 +185,20 @@ function convertToGovFormat({
   consentScope,
   consentPurpose,
   consentExpiry,
+  identifiers = {},
 }) {
-  const vcUid = SCOPE_TO_VC_UID[scope] || '00000000_vc_cond';
   const issuanceDate = dayjs().format('YYYYMMDD');
   const expiry = resolveExpiry(scope, consentExpiry);
   const expiredDate = expiry.isValid()
     ? expiry.format('YYYYMMDD')
     : dayjs().add(90, 'day').format('YYYYMMDD');
+
+  const normalizedIdentifiers = {
+    vcUid: identifiers.vcUid || SCOPE_TO_VC_UID[scope] || '00000000_vc_cond',
+    vcCid: identifiers.vcCid || '',
+    vcId: identifiers.vcId || '',
+    apiKey: identifiers.apiKey || '',
+  };
 
   const fields = [];
 
@@ -196,7 +224,8 @@ function convertToGovFormat({
         ename: 'qty_value',
         content: quantityParts.value || (medication.daysSupply ? String(medication.daysSupply) : ''),
       },
-      { ename: 'qty_unit', content: quantityParts.unit || '日份' }
+      { ename: 'qty_unit', content: quantityParts.unit || '日份' },
+      { ename: 'pickup_deadline', content: medication.pickupWindowEnd || '' }
     );
   }
 
@@ -208,12 +237,31 @@ function convertToGovFormat({
     );
   }
 
-  const filtered = fields.filter((field) => field.content !== undefined && field.content !== null && field.content !== '');
+  const filtered = fields.filter(
+    (field) => field.content !== undefined && field.content !== null && String(field.content).trim() !== ''
+  );
 
-  return {
-    vcUid,
+  const payloadBase = {
+    vcUid: normalizedIdentifiers.vcUid,
     issuanceDate,
     expiredDate,
+  };
+
+  const assignIfPresent = (key, value) => {
+    if (value !== undefined && value !== null) {
+      const text = String(value).trim();
+      if (text) {
+        payloadBase[key] = text;
+      }
+    }
+  };
+
+  assignIfPresent('vcCid', normalizedIdentifiers.vcCid);
+  assignIfPresent('vcId', normalizedIdentifiers.vcId);
+  assignIfPresent('apiKey', normalizedIdentifiers.apiKey);
+
+  return {
+    ...payloadBase,
     fields: filtered,
   };
 }
@@ -247,12 +295,59 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [govIdentifiers, setGovIdentifiers] = useState(() => {
+    if (typeof window === 'undefined') {
+      return DEFAULT_CARD_IDENTIFIERS;
+    }
+    try {
+      const stored = window.localStorage.getItem('medssi.govIdentifiers');
+      if (!stored) {
+        return DEFAULT_CARD_IDENTIFIERS;
+      }
+      const parsed = JSON.parse(stored);
+      return {
+        MEDICAL_RECORD: {
+          ...DEFAULT_CARD_IDENTIFIERS.MEDICAL_RECORD,
+          ...(parsed.MEDICAL_RECORD || {}),
+        },
+        MEDICATION_PICKUP: {
+          ...DEFAULT_CARD_IDENTIFIERS.MEDICATION_PICKUP,
+          ...(parsed.MEDICATION_PICKUP || {}),
+        },
+        RESEARCH_ANALYTICS: {
+          ...DEFAULT_CARD_IDENTIFIERS.RESEARCH_ANALYTICS,
+          ...(parsed.RESEARCH_ANALYTICS || {}),
+        },
+      };
+    } catch (err) {
+      console.warn('Unable to restore government VC identifiers', err);
+      return DEFAULT_CARD_IDENTIFIERS;
+    }
+  });
 
   useEffect(() => {
     if (primaryScope === 'MEDICATION_PICKUP' && !includeMedication) {
       setIncludeMedication(true);
     }
   }, [primaryScope, includeMedication]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('medssi.govIdentifiers', JSON.stringify(govIdentifiers));
+    }
+  }, [govIdentifiers]);
+
+  const currentIdentifiers = govIdentifiers[primaryScope] || DEFAULT_CARD_IDENTIFIERS[primaryScope];
+
+  const updateIdentifier = (key, value) => {
+    setGovIdentifiers((previous) => ({
+      ...previous,
+      [primaryScope]: {
+        ...(previous[primaryScope] || {}),
+        [key]: value,
+      },
+    }));
+  };
 
   const disclosurePolicies = useMemo(() => {
     const entries = [
@@ -312,6 +407,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       consentScope: consentScopeCode,
       consentPurpose,
       consentExpiry,
+      identifiers: currentIdentifiers,
     });
 
     if (!govPayload.fields.length && mode === 'WITH_DATA') {
@@ -325,10 +421,8 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       if (mode === 'WITH_DATA') {
         response = await client.issueWithData(govPayload, issuerToken);
       } else {
-        response = await client.issueWithoutData(
-          { vcUid: govPayload.vcUid },
-          issuerToken
-        );
+        const { fields: _ignoredFields, ...metaOnly } = govPayload;
+        response = await client.issueWithoutData(metaOnly, issuerToken);
       }
       setLoading(false);
 
@@ -545,9 +639,46 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
               value={consentPurpose}
               onChange={(event) => setConsentPurpose(event.target.value)}
             />
-          </fieldset>
+            <div className="grid four">
+              <div>
+                <label htmlFor="gov-vc-uid">政府 vcUid</label>
+                <input
+                  id="gov-vc-uid"
+                  value={currentIdentifiers?.vcUid || ''}
+                  onChange={(event) => updateIdentifier('vcUid', event.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="gov-vc-id">vcId（卡片序號）</label>
+                <input
+                  id="gov-vc-id"
+                  value={currentIdentifiers?.vcId || ''}
+                  onChange={(event) => updateIdentifier('vcId', event.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="gov-vc-cid">vcCid（樣板代號）</label>
+                <input
+                  id="gov-vc-cid"
+                  value={currentIdentifiers?.vcCid || ''}
+                  onChange={(event) => updateIdentifier('vcCid', event.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="gov-api-key">API Key（可選）</label>
+                <input
+                  id="gov-api-key"
+                  value={currentIdentifiers?.apiKey || ''}
+                  onChange={(event) => updateIdentifier('apiKey', event.target.value)}
+                />
+              </div>
+            </div>
+            <p className="hint">
+              ※ 請填入發行端沙盒後台顯示的卡片序號與樣板代號。值會暫存於瀏覽器 localStorage，便於多次測試。
+            </p>
+      </fieldset>
 
-          <fieldset>
+      <fieldset>
             <legend>
               領藥摘要
               <span className="helper" style={{ display: 'block' }}>

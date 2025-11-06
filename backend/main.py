@@ -1827,12 +1827,13 @@ def gov_issue_without_data(
     request: Request, payload: Dict[str, Any] = Body(...)
 ) -> Dict[str, Any]:
     token = _extract_token_from_request(request)
+    normalized = _prepare_moda_remote_payload(payload)
     return _call_remote_api(
         method="POST",
         base_url=GOV_ISSUER_BASE,
         path="/api/qrcode/nodata",
         token=token,
-        payload=payload,
+        payload=normalized,
     )
 
 
