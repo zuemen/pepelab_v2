@@ -9,23 +9,13 @@ module.exports = {
   verifier_ref: '00000000_vp_consent',
   verifier_accessToken: 'YOUR_VERIFIER_ACCESS_TOKEN',
   verifier_refs: {
-    consent: '00000000_vp_consent', // 授權驗證（匿名身分卡 + 數位同意卡）
+    consent: '00000000_vp_consent', // 授權驗證（診斷摘要 + 數位同意卡）
     research: '00000000_vp_research', // 研究揭露（診斷摘要 + 同意書 + 過敏史）
     pickup: '00000000_vp_rx_pickup', // 領藥驗證（處方 + 過敏史 + 同意書）
   },
 
   // 預設欄位值：依官方樣板建議，可依實際資料覆寫
   cards: {
-    vc_pid: {
-      pid_hash: 'hash::8f4c0d1d6c1a4b67a4f9d1234567890b',
-      pid_type: 'NHI_CARD',
-      pid_ver: 'v1.0',
-      pid_issuer: '衛福部中央健康保險署',
-      pid_valid_to: '2026-12-31',
-      wallet_id: 'wallet-demo-001',
-      pid_name: '張小華',
-      pid_birth: '1950-07-18'
-    },
     vc_cons: {
       cons_scope: 'research_info',
       cons_purpose: 'AI 胃炎趨勢研究',

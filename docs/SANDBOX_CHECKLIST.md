@@ -22,14 +22,14 @@
    - 若需統一管理多張卡片的識別碼，可在 FastAPI 啟動前設定 `MEDSSI_MODA_VC_IDENTIFIERS`，以 JSON 指定各模板的 `vcUid`、`vcId`、`vcCid`、`apiKey`：
 
      ```bash
-     export MEDSSI_MODA_VC_IDENTIFIERS='{"vc_pid":{"vcUid":"00000000_vc_pid","vcCid":"vc_pid","vcId":"YOUR_PID_CARD"}}'
+     export MEDSSI_MODA_VC_IDENTIFIERS='{"vc_cond":{"vcUid":"00000000_vc_cond","vcCid":"vc_cond","vcId":"YOUR_COND_CARD"}}'
      ```
 
      未提供時會採用原始樣板的 `vcUid`／`vcCid` 預設值，其餘欄位留空，避免誤將真實序號硬編碼於程式碼中。
    - 專案會依 `DisclosureScope` 自動套用政府公布的三組驗證服務代碼：
      | Scope / 情境 | 預設 `ref` | 來源 VP |
      | --- | --- | --- |
-     | `MEDICAL_RECORD`（授權驗證） | `00000000_vp_consent` | 匿名身分卡 + 數位同意卡 |
+     | `MEDICAL_RECORD`（授權驗證） | `00000000_vp_consent` | 診斷摘要卡 + 數位同意卡 |
      | `RESEARCH_ANALYTICS`（研究揭露） | `00000000_vp_research` | 診斷摘要卡 + 數位同意卡 + 過敏史卡 |
      | `MEDICATION_PICKUP`（領藥驗證） | `00000000_vp_rx_pickup` | 處方領藥卡 + 過敏史卡 + 數位同意卡 |
    - 若官方更新 `ref`，可改用環境變數 `MEDSSI_VERIFIER_REF_CONSENT`／`MEDSSI_VERIFIER_REF_RESEARCH`／`MEDSSI_VERIFIER_REF_RX` 覆蓋，或在 `node-server/config.js` 的 `verifier_refs` 逐一指定。

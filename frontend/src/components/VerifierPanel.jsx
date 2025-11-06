@@ -145,7 +145,7 @@ export function VerifierPanel({ client, verifierToken }) {
 
           <label htmlFor="scope">驗證範圍</label>
           <select id="scope" value={scope} onChange={(event) => setScope(event.target.value)}>
-            <option value="MEDICAL_RECORD">授權驗證（vc_pid + vc_cons）</option>
+            <option value="MEDICAL_RECORD">授權驗證（vc_cond + vc_cons）</option>
             <option value="MEDICATION_PICKUP">領藥驗證（vc_rx + vc_algy）</option>
             <option value="RESEARCH_ANALYTICS">研究揭露（vc_cond + vc_cons + vc_algy）</option>
           </select>

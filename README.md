@@ -4,7 +4,7 @@
 
 - **身份保證等級（IAL）貼近 MyData / 健保規範**：提供 `MYDATA_LIGHT`、`NHI_CARD_PIN`、`MOICA_CERT` 三個層級，不再使用生物辨識。
 - **FHIR 結構化 Payload**：Credential 內含 `Condition`、`MedicationDispense` 與匿名研究摘要，並以 FHIR path 定義選擇性揭露欄位。
-- **流程分流**：後端以 `DisclosureScope`（`MEDICAL_RECORD`、`MEDICATION_PICKUP`、`RESEARCH_ANALYTICS`）區分主要情境，前端額外提供 `vc_algy` 過敏卡與 `vc_pid` 身分卡切換，完整涵蓋官方沙盒的五種 VC 模板。
+- **流程分流**：後端以 `DisclosureScope`（`MEDICAL_RECORD`、`MEDICATION_PICKUP`、`RESEARCH_ANALYTICS`）區分主要情境，前端提供 `vc_cond`、`vc_cons`、`vc_algy`、`vc_rx` 四種卡片切換，完整涵蓋官方沙盒目前開放的 VC 模板。
 - **可遺忘權、Session 與沙盒重設**：錢包可呼叫 `/v2/api/wallet/{holder_did}/forget` 清除資料，驗證端可刪除 session，並新增 `/v2/api/system/reset` 快速還原沙盒。
 - **長者友善介面**：分步驟面板、示例按鈕、自動填入日期與 ARIA live 區域，降低操作複雜度並方便陪同家屬示範。
 - **Access Token 與 5 分鐘 QR 有效期**：所有發行端／錢包／驗證端 API 需附帶 `Authorization: Bearer <token>`，並強制 5 分鐘內使用 QR code。
@@ -61,9 +61,8 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 這些相容端點仍套用相同的 Bearer token、5 分鐘有效期限與 IAL 驗證，方便與 React 示範介面或外部測試工具（Postman、Swagger UI）串接。【F:README.md†L52-L90】
 
 - `vcUid` / `fields` 結構會自動轉換為 FHIR VC payload，同時保留 MODA 欄位別名（例如 `cond_code`、`cons_scope`），錢包與驗證端可直接沿用官方沙盒的欄位設定。
-- 內建 `vc_pid`、`vc_cons`、`vc_cond`、`vc_algy`、`vc_rx` 等樣板欄位與範例值（依官方截圖整理），若呼叫端未傳入 `fields` 也會自動補齊對應欄位與內容，避免掃描後顯示「資料格式錯誤」。
+- 內建 `vc_cons`、`vc_cond`、`vc_algy`、`vc_rx` 等樣板欄位與範例值（依官方截圖整理），若呼叫端未傳入 `fields` 也會自動補齊對應欄位與內容，避免掃描後顯示「資料格式錯誤」。
 - 欄位會對照政府沙盒公布的模板規格：
-  - **vc_pid**：補齊 `pid_hash`、`pid_type`、`pid_ver`、`pid_issuer`、`pid_valid_to` 與可選 `wallet_id`，同時保留示範姓名與生日作為遮罩資訊。
   - **vc_cons**：輸出 `cons_scope`、`cons_purpose`、`cons_end` 及可選的 `cons_path`，對應授權範圍、目的與到期日。
   - **vc_cond**：維持 `cond_code`、`cond_display`、`cond_onset` 做為診斷摘要必填欄位。
   - **vc_algy**：提供 `algy_code`、`algy_name`、`algy_severity` 以描述過敏原與嚴重程度。
@@ -71,7 +70,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 > ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。若需暫時允許多組 Token，可在環境變數中以逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會自動接受其中任一值。若沿用官方 sandbox 範例以 `access-token` header 傳遞，也會自動轉換為 Bearer Token 無須修改程式。
 
-> 📡 驗證端會依 `DisclosureScope` 自動對應政府沙盒的 VP 範本：`MEDICAL_RECORD` → `00000000_vp_consent`（授權驗證）、`RESEARCH_ANALYTICS` → `00000000_vp_research`（研究揭露）、`MEDICATION_PICKUP` → `00000000_vp_rx_pickup`（領藥驗證）。若需替換，可設定 `MEDSSI_VERIFIER_REF_DEFAULT` 與 `MEDSSI_VERIFIER_REF_CONSENT`／`MEDSSI_VERIFIER_REF_RESEARCH`／`MEDSSI_VERIFIER_REF_RX`，或在 `node-server/config.js` 的 `verifier_refs` 指定不同 `ref`。
+> 📡 驗證端會依 `DisclosureScope` 自動對應政府沙盒的 VP 範本：`MEDICAL_RECORD` → `00000000_vp_consent`（授權驗證，聚焦 `vc_cond` + `vc_cons`）、`RESEARCH_ANALYTICS` → `00000000_vp_research`（研究揭露）、`MEDICATION_PICKUP` → `00000000_vp_rx_pickup`（領藥驗證）。若需替換，可設定 `MEDSSI_VERIFIER_REF_DEFAULT` 與 `MEDSSI_VERIFIER_REF_CONSENT`／`MEDSSI_VERIFIER_REF_RESEARCH`／`MEDSSI_VERIFIER_REF_RX`，或在 `node-server/config.js` 的 `verifier_refs` 指定不同 `ref`。
 
 > 🌐 `/api/*` MODA 相容端點現已直接呼叫政府沙盒：發卡流程會透過 `https://issuer-sandbox.wallet.gov.tw` 的 `/api/qrcode/data` / `/api/qrcode/nodata` 取得官方 QR Code，驗證流程則向 `https://verifier-sandbox.wallet.gov.tw/api/oidvp/*` 查詢。若需指向自架測試環境，可設定 `MEDSSI_GOV_ISSUER_BASE` 與 `MEDSSI_GOV_VERIFIER_BASE` 來覆寫預設網址；所有請求都會沿用使用者提交的 `access-token` 轉送給遠端沙盒，方便交叉驗證呼叫是否成功。
 
@@ -79,7 +78,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 依照數位憑證皮夾沙盒的最新說明，整合人員可按照下列流程逐一檢查設定：
 
-1. **前置準備** – 於發行端、驗證端沙盒後台分別建立帳號並取得 `access-token`，再依樣板建立 VC (`vc_cond`、`vc_cons`、`vc_pid`、`vc_algy`、`vc_rx`) 與 VP 範本 (`ref`)。建議把憑證序號 (`vcId`)、樣板代號 (`vcCid`) 及 API Key 寫入 `config.js` 或環境變數，避免硬編碼於程式。
+1. **前置準備** – 於發行端、驗證端沙盒後台分別建立帳號並取得 `access-token`，再依樣板建立 VC (`vc_cond`、`vc_cons`、`vc_algy`、`vc_rx`) 與 VP 範本 (`ref`)。建議把憑證序號 (`vcId`)、樣板代號 (`vcCid`) 及 API Key 寫入 `config.js` 或環境變數，避免硬編碼於程式。
    - 後端已內建 `MEDSSI_MODA_VC_IDENTIFIERS` 環境變數，可用 JSON 指定各模板的 `vcUid`／`vcId`／`vcCid`／`apiKey`，例如：
 
      ```bash
@@ -119,7 +118,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 - React UI 內建 `qrcode.react`，即時顯示可掃描 QR 影像，方便實機驗證。
 - 發卡面板提供「政府 vcUid / vcId / vcCid / API Key」欄位，可輸入發行端沙盒後台提供的模板資訊；系統會暫存於瀏覽器 localStorage，
   並自動帶入官方 API 需要的欄位，避免因缺少卡片序號而得到 `400` 回應。
-   - 若需以官方 Node.js 範例串接，可複製 `node-server/config.sample.js` 為 `config.js`，並填入後台取得的 `apiKey`、`verifier_accessToken` 等值；樣板內已列出五種 VC (`vc_pid`、`vc_cons`、`vc_cond`、`vc_algy`、`vc_rx`) 的預設 payload，可直接套用或覆寫，並可透過 `verifier_refs` 指定 `consent`／`research`／`pickup` 三種場景，呼叫 `/getQRCode` 時以 `scenario` 欄位選擇對應的官方 `ref`。
+  - 若需以官方 Node.js 範例串接，可複製 `node-server/config.sample.js` 為 `config.js`，並填入後台取得的 `apiKey`、`verifier_accessToken` 等值；樣板內已列出四種 VC (`vc_cons`、`vc_cond`、`vc_algy`、`vc_rx`) 的預設 payload，可直接套用或覆寫，並可透過 `verifier_refs` 指定 `consent`／`research`／`pickup` 三種場景，呼叫 `/getQRCode` 時以 `scenario` 欄位選擇對應的官方 `ref`。
 3. **快速重設沙盒資料**
    ```bash
    python scripts/reset_sandbox.py
