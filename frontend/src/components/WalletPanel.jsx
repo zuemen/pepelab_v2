@@ -41,6 +41,35 @@ function resolvePath(source, path) {
   return String(current);
 }
 
+function decodeJwt(token) {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) {
+      return null;
+    }
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+    let binary;
+    if (typeof window !== 'undefined' && window.atob) {
+      binary = window.atob(padded);
+    } else if (typeof Buffer !== 'undefined') {
+      binary = Buffer.from(padded, 'base64').toString('binary');
+    } else {
+      return null;
+    }
+    const json = decodeURIComponent(
+      Array.from(binary)
+        .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`)
+        .join('')
+    );
+    return JSON.parse(json);
+  } catch (error) {
+    console.error('Failed to decode JWT', error);
+    return null;
+  }
+}
+
 export function WalletPanel({ client, baseUrl, walletToken }) {
   const [transactionId, setTransactionId] = useState('');
   const [nonceInfo, setNonceInfo] = useState(null);
@@ -70,7 +99,21 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
       setNonceError(`(${response.status}) ${response.detail}`);
       return;
     }
-    setNonceInfo(response.data);
+    const data = response.data || {};
+    if (data.credential) {
+      const parsed = decodeJwt(data.credential);
+      const parsedId = parsed?.jti
+        ? parsed.jti.split('/').pop() || parsed.jti.split(':').pop() || ''
+        : '';
+      setNonceInfo({
+        credential_id: parsedId,
+        credential_jwt: data.credential,
+        parsed,
+        mode: 'GOVERNMENT',
+      });
+      return;
+    }
+    setNonceInfo(data);
   }
 
   function parsePayloadDraft() {
@@ -86,6 +129,10 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
   }
 
   async function runAction() {
+    if (nonceInfo?.mode === 'GOVERNMENT') {
+      setActionError('政府沙盒憑證請透過官方數位皮夾操作，無法在此頁面進行。');
+      return;
+    }
     if (!credentialId) {
       setActionError('請先取得 nonce');
       return;
@@ -201,7 +248,9 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
 
           {nonceInfo ? (
             <div className="alert success" role="status">
-              已取得憑證 {nonceInfo.credential_id}，狀態：{nonceInfo.status}
+              {nonceInfo.mode === 'GOVERNMENT'
+                ? `已取得政府沙盒憑證 ${nonceInfo.credential_id || ''}`
+                : `已取得憑證 ${nonceInfo.credential_id}，狀態：${nonceInfo.status ?? '未知'}`}
             </div>
           ) : null}
 
@@ -251,27 +300,46 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
         <div className="card">
           <h3>揭露政策與範例</h3>
           {nonceInfo ? (
-            <>
-              <p>模式：{nonceInfo.mode}</p>
-              <p>身份保證等級：{nonceInfo.ial}</p>
-              <p>到期：{new Date(nonceInfo.expires_at).toLocaleString()}</p>
-              {nonceInfo.disclosure_policies.map((policy) => (
-                <div key={policy.scope} className="alert info">
-                  <strong>{policy.scope}</strong>
-                  <ul>
-                    {policy.fields.map((field) => (
-                      <li key={field}>{field}</li>
-                    ))}
-                  </ul>
+            nonceInfo.mode === 'GOVERNMENT' ? (
+              <>
+                <p>模式：政府沙盒憑證</p>
+                {nonceInfo.credential_id ? (
+                  <p>Credential ID：{nonceInfo.credential_id}</p>
+                ) : null}
+                <p>JWT：{nonceInfo.credential_jwt?.slice(0, 48)}...</p>
+                {nonceInfo.parsed ? (
+                  <>
+                    <h4>解碼後 Payload</h4>
+                    <pre>{JSON.stringify(nonceInfo.parsed, null, 2)}</pre>
+                  </>
+                ) : null}
+                <div className="alert warning">
+                  政府憑證需透過 MODA 數位皮夾 App 操作，無法在此頁面接受或更新。
                 </div>
-              ))}
-              {nonceInfo.payload_template ? (
-                <details>
-                  <summary>發行端提供的 FHIR Template</summary>
-                  <pre>{JSON.stringify(nonceInfo.payload_template, null, 2)}</pre>
-                </details>
-              ) : null}
-            </>
+              </>
+            ) : (
+              <>
+                <p>模式：{nonceInfo.mode}</p>
+                <p>身份保證等級：{nonceInfo.ial}</p>
+                <p>到期：{nonceInfo.expires_at ? new Date(nonceInfo.expires_at).toLocaleString() : '未提供'}</p>
+                {(nonceInfo.disclosure_policies || []).map((policy) => (
+                  <div key={policy.scope} className="alert info">
+                    <strong>{policy.scope}</strong>
+                    <ul>
+                      {policy.fields.map((field) => (
+                        <li key={field}>{field}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+                {nonceInfo.payload_template ? (
+                  <details>
+                    <summary>發行端提供的 FHIR Template</summary>
+                    <pre>{JSON.stringify(nonceInfo.payload_template, null, 2)}</pre>
+                  </details>
+                ) : null}
+              </>
+            )
           ) : (
             <p>請先輸入交易編號取得 nonce。</p>
           )}
@@ -288,8 +356,8 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
           <ul>
             {credentials.map((credential) => (
               <li key={credential.credential_id}>
-                <strong>{credential.credential_id}</strong> – 狀態：{credential.status} –
-                主用途：{credential.primary_scope}
+                <strong>{credential.credential_id}</strong> – 狀態：{credential.status} – 主用途：
+                {credential.primary_scope}
               </li>
             ))}
           </ul>
@@ -299,9 +367,7 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
         <button type="button" className="secondary" onClick={forgetHolderData}>
           行使可遺忘權（清除錢包資料）
         </button>
-        {forgetResult ? (
-          <pre>{JSON.stringify(forgetResult, null, 2)}</pre>
-        ) : null}
+        {forgetResult ? <pre>{JSON.stringify(forgetResult, null, 2)}</pre> : null}
       </div>
     </section>
   );

@@ -124,6 +124,9 @@ GOV_VERIFIER_BASE = os.getenv(
 )
 
 
+print(f"🌐 Gov issuer base: {GOV_ISSUER_BASE}")
+print(f"🌐 Gov verifier base: {GOV_VERIFIER_BASE}")
+
 def _normalize_identifier_slug(value: str) -> str:
     slug = (value or "").strip().lower()
     if "_" in slug:

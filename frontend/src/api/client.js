@@ -22,144 +22,99 @@ export function createClient(baseUrl) {
     }
   }
 
-  const prefix = '/v2';
+  const sandboxPrefix = '/v2';
+
+  const accessTokenHeader = (token) =>
+    token
+      ? {
+          'access-token': token,
+        }
+      : undefined;
+
+  const bearerHeader = (token) =>
+    token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : undefined;
 
   return {
     issueWithData: (payload, token) =>
       request({
-        url: `${prefix}/api/qrcode/data`,
+        url: '/api/qrcode/data',
         method: 'POST',
         data: payload,
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
+        headers: accessTokenHeader(token),
       }),
-
-    // ✅ 政府官方 API（無 /v2，使用 access-token）
-    issueWithDataGov: (payload, token) =>
-      request({
-        url: `/api/qrcode/data`,
-        method: 'POST',
-        data: payload,
-        headers: token ? { 'access-token': token } : undefined,
-      }),
-
     issueWithoutData: (payload, token) =>
       request({
-        url: `${prefix}/api/qrcode/nodata`,
+        url: '/api/qrcode/nodata',
         method: 'POST',
         data: payload,
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
+        headers: accessTokenHeader(token),
       }),
     getNonce: (transactionId, token) =>
       request({
-        url: `${prefix}/api/credential/nonce`,
+        url: `/api/credential/nonce/${encodeURIComponent(transactionId)}`,
         method: 'GET',
-        params: { transactionId },
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
-      }),
-    actOnCredential: (credentialId, actionPayload, token) =>
-      request({
-        url: `${prefix}/api/credential/${credentialId}/action`,
-        method: 'PUT',
-        data: actionPayload,
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
-      }),
-    revokeCredential: (credentialId, token) =>
-      request({
-        url: `${prefix}/api/credentials/${credentialId}/revoke`,
-        method: 'POST',
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
-      }),
-    deleteCredential: (credentialId, token) =>
-      request({
-        url: `${prefix}/api/credentials/${credentialId}`,
-        method: 'DELETE',
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
-      }),
-    listHolderCredentials: (holderDid, token) =>
-      request({
-        url: `${prefix}/api/wallet/${encodeURIComponent(holderDid)}/credentials`,
-        method: 'GET',
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
-      }),
-    forgetHolder: (holderDid, token) =>
-      request({
-        url: `${prefix}/api/wallet/${encodeURIComponent(holderDid)}/forget`,
-        method: 'DELETE',
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
+        headers: accessTokenHeader(token),
       }),
     createVerificationCode: (params, token) =>
       request({
-        url: `${prefix}/api/did/vp/code`,
+        url: '/api/oidvp/qrcode',
         method: 'GET',
         params,
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
+        headers: accessTokenHeader(token),
       }),
     submitPresentation: (payload, token) =>
       request({
-        url: `${prefix}/api/did/vp/result`,
+        url: '/api/oidvp/result',
         method: 'POST',
         data: payload,
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
+        headers: accessTokenHeader(token),
+      }),
+    actOnCredential: (credentialId, actionPayload, token) =>
+      request({
+        url: `${sandboxPrefix}/api/credential/${credentialId}/action`,
+        method: 'PUT',
+        data: actionPayload,
+        headers: bearerHeader(token),
+      }),
+    revokeCredential: (credentialId, token) =>
+      request({
+        url: `${sandboxPrefix}/api/credentials/${credentialId}/revoke`,
+        method: 'POST',
+        headers: bearerHeader(token),
+      }),
+    deleteCredential: (credentialId, token) =>
+      request({
+        url: `${sandboxPrefix}/api/credentials/${credentialId}`,
+        method: 'DELETE',
+        headers: bearerHeader(token),
+      }),
+    listHolderCredentials: (holderDid, token) =>
+      request({
+        url: `${sandboxPrefix}/api/wallet/${encodeURIComponent(holderDid)}/credentials`,
+        method: 'GET',
+        headers: bearerHeader(token),
+      }),
+    forgetHolder: (holderDid, token) =>
+      request({
+        url: `${sandboxPrefix}/api/wallet/${encodeURIComponent(holderDid)}/forget`,
+        method: 'DELETE',
+        headers: bearerHeader(token),
       }),
     purgeSession: (sessionId, token) =>
       request({
-        url: `${prefix}/api/did/vp/session/${sessionId}`,
+        url: `${sandboxPrefix}/api/did/vp/session/${sessionId}`,
         method: 'DELETE',
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
+        headers: bearerHeader(token),
       }),
     resetSandbox: (token) =>
       request({
-        url: `${prefix}/api/system/reset`,
+        url: `${sandboxPrefix}/api/system/reset`,
         method: 'POST',
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
+        headers: bearerHeader(token),
       }),
   };
 }

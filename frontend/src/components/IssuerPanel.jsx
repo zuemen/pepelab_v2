@@ -31,6 +31,12 @@ const PRIMARY_SCOPE_OPTIONS = [
   },
 ];
 
+const SCOPE_TO_VC_UID = {
+  MEDICAL_RECORD: '00000000_vc_cond',
+  MEDICATION_PICKUP: '00000000_vc_rx',
+  RESEARCH_ANALYTICS: '00000000_vc_cons',
+};
+
 const INITIAL_CONDITION = {
   id: `cond-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://hl7.org/fhir/sid/icd-10',
@@ -123,6 +129,95 @@ function buildPayload({
   };
 }
 
+function parseQuantityParts(quantityText) {
+  if (!quantityText) {
+    return { value: '', unit: '' };
+  }
+  const match = quantityText.match(/^[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*(.*)$/);
+  if (match) {
+    return { value: match[1] ?? '', unit: (match[2] ?? '').trim() };
+  }
+  return { value: '', unit: quantityText.trim() };
+}
+
+function resolveExpiry(scope, consentExpiry) {
+  if (consentExpiry) {
+    const parsed = dayjs(consentExpiry);
+    if (parsed.isValid()) {
+      return parsed;
+    }
+  }
+  switch (scope) {
+    case 'MEDICATION_PICKUP':
+      return dayjs().add(3, 'day');
+    case 'RESEARCH_ANALYTICS':
+      return dayjs().add(180, 'day');
+    default:
+      return dayjs().add(7, 'day');
+  }
+}
+
+function convertToGovFormat({
+  payload,
+  scope,
+  medication,
+  consentScope,
+  consentPurpose,
+  consentExpiry,
+}) {
+  const vcUid = SCOPE_TO_VC_UID[scope] || '00000000_vc_cond';
+  const issuanceDate = dayjs().format('YYYYMMDD');
+  const expiry = resolveExpiry(scope, consentExpiry);
+  const expiredDate = expiry.isValid()
+    ? expiry.format('YYYYMMDD')
+    : dayjs().add(90, 'day').format('YYYYMMDD');
+
+  const fields = [];
+
+  if (scope === 'MEDICAL_RECORD' && payload?.condition) {
+    const coding = payload.condition.code?.coding?.[0] ?? {};
+    fields.push(
+      { ename: 'cond_code', content: coding.code || '' },
+      { ename: 'cond_display', content: coding.display || payload.condition.code?.text || '' },
+      { ename: 'cond_onset', content: payload.condition.recordedDate || '' }
+    );
+  }
+
+  if (scope === 'MEDICATION_PICKUP' && medication) {
+    const quantityParts = parseQuantityParts(medication.quantityText);
+    fields.push(
+      { ename: 'med_code', content: medication.code || '' },
+      { ename: 'med_name', content: medication.display || '' },
+      {
+        ename: 'dose_text',
+        content: medication.quantityText || `${medication.display || ''} ${medication.daysSupply || ''}`.trim(),
+      },
+      {
+        ename: 'qty_value',
+        content: quantityParts.value || (medication.daysSupply ? String(medication.daysSupply) : ''),
+      },
+      { ename: 'qty_unit', content: quantityParts.unit || '日份' }
+    );
+  }
+
+  if (scope === 'RESEARCH_ANALYTICS') {
+    fields.push(
+      { ename: 'cons_scope', content: consentScope || 'MEDSSI_RESEARCH' },
+      { ename: 'cons_purpose', content: consentPurpose || '胃炎風險研究' },
+      { ename: 'cons_end', content: expiry.format('YYYY-MM-DD') }
+    );
+  }
+
+  const filtered = fields.filter((field) => field.content !== undefined && field.content !== null && field.content !== '');
+
+  return {
+    vcUid,
+    issuanceDate,
+    expiredDate,
+    fields: filtered,
+  };
+}
+
 export function IssuerPanel({ client, issuerToken, baseUrl }) {
   const [issuerId, setIssuerId] = useState('did:example:hospital-001');
   const [holderDid, setHolderDid] = useState('did:example:patient-001');
@@ -137,6 +232,8 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     'urn:sha256:3a1f0c98c5d4a4efed2d4dfe58e8'
   );
   const [consentExpiry, setConsentExpiry] = useState('');
+  const [consentScopeCode, setConsentScopeCode] = useState('MEDSSI_RESEARCH');
+  const [consentPurpose, setConsentPurpose] = useState('胃炎風險研究');
   const [medicalFields, setMedicalFields] = useState(
     DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', ')
   );
@@ -207,36 +304,53 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setError(null);
     setSuccess(null);
 
-    const requestBody = {
-      issuer_id: issuerId,
-      ial,
-      primary_scope: primaryScope,
-      disclosure_policies: disclosurePolicies.map((policy) => ({
-        scope: policy.scope,
-        fields: policy.fields,
-      })),
-      valid_for_minutes: Number(validMinutes) || 5,
-      holder_hint: holderHint || undefined,
-    };
+    const govPayload = convertToGovFormat({
+      payload: payloadTemplate,
+      scope: primaryScope,
+      medication:
+        includeMedication || primaryScope === 'MEDICATION_PICKUP' ? medication : null,
+      consentScope: consentScopeCode,
+      consentPurpose,
+      consentExpiry,
+    });
 
-    if (mode === 'WITH_DATA') {
-      requestBody.holder_did = holderDid || undefined;
-      requestBody.payload = payloadTemplate;
-    } else {
-      requestBody.payload_template = payloadTemplate || undefined;
-      requestBody.holder_did = holderDid || undefined;
-    }
-
-    const method = mode === 'WITH_DATA' ? 'issueWithData' : 'issueWithoutData';
-    const response = await client[method](requestBody, issuerToken);
-    setLoading(false);
-
-    if (!response.ok) {
-      setError(`(${response.status}) ${response.detail}`);
+    if (!govPayload.fields.length && mode === 'WITH_DATA') {
+      setLoading(false);
+      setError('缺少必要欄位，請確認診斷／領藥或同意書欄位是否完整。');
       return;
     }
 
-    setSuccess(response.data);
+    try {
+      let response;
+      if (mode === 'WITH_DATA') {
+        response = await client.issueWithData(govPayload, issuerToken);
+      } else {
+        response = await client.issueWithoutData(
+          { vcUid: govPayload.vcUid },
+          issuerToken
+        );
+      }
+      setLoading(false);
+
+      if (!response.ok) {
+        setError(`(${response.status}) ${response.detail}`);
+        return;
+      }
+
+      const data = response.data || {};
+      const normalized = {
+        transactionId:
+          data.transactionId || data.verifier_transaction_id || data.transaction_id || '',
+        qrCode:
+          data.qrCode || data.qrcodeImage || data.qrcode_image || data.qr_payload || '',
+        deepLink: data.deepLink || data.authUri || data.auth_uri || '',
+        raw: data,
+      };
+      setSuccess(normalized);
+    } catch (err) {
+      setLoading(false);
+      setError(err.message || '發卡失敗，請稍後再試');
+    }
   }
 
   function loadSample() {
@@ -245,10 +359,15 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setIncludeMedication(true);
     setEncounterHash('urn:sha256:3a1f0c98c5d4a4efed2d4dfe58e8');
     setConsentExpiry(dayjs().add(90, 'day').format('YYYY-MM-DD'));
+    setConsentScopeCode('MEDSSI_RESEARCH');
+    setConsentPurpose('胃炎風險研究');
     setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
     setMedicationFields(DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', '));
     setResearchFields(DEFAULT_DISCLOSURES.RESEARCH_ANALYTICS.join(', '));
   }
+
+  const qrSource = success?.qrCode || success?.deepLink || '';
+  const shouldRenderImage = success?.qrCode?.startsWith('data:image');
 
   return (
     <section aria-labelledby="issuer-heading">
@@ -308,7 +427,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
             <option value="MOICA_CERT">MOICA_CERT – 自然人憑證</option>
           </select>
 
-          <label htmlFor="valid">QR 有效分鐘數 (1-5)</label>
+          <label htmlFor="valid">QR 有效分鐘 (1-5)</label>
           <input
             id="valid"
             type="number"
@@ -356,7 +475,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
           {error ? <div className="alert error">{error}</div> : null}
           {success ? (
             <div className="alert success" role="status">
-              已建立憑證（credential_id: {success.credential.credential_id}）。請於 5 分鐘內掃描。
+              已取得政府沙盒 QR Code（交易序號：{success.transactionId || '未知'}）。
             </div>
           ) : null}
         </div>
@@ -413,6 +532,18 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
               type="date"
               value={consentExpiry}
               onChange={(event) => setConsentExpiry(event.target.value)}
+            />
+            <label htmlFor="consent-scope">授權範圍代碼（cons_scope）</label>
+            <input
+              id="consent-scope"
+              value={consentScopeCode}
+              onChange={(event) => setConsentScopeCode(event.target.value)}
+            />
+            <label htmlFor="consent-purpose">授權目的（cons_purpose）</label>
+            <input
+              id="consent-purpose"
+              value={consentPurpose}
+              onChange={(event) => setConsentPurpose(event.target.value)}
             />
           </fieldset>
 
@@ -500,16 +631,28 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
 
       {success ? (
         <div className="card" aria-live="polite">
-          <h3>QR payload</h3>
-          <p>Transaction ID：{success.credential.transaction_id}</p>
-          <div className="qr-container" aria-label="發卡 QR Code">
-            <QRCodeCanvas value={success.qr_payload} size={192} includeMargin />
-          </div>
-          <p>
-            Retention 到期日：
-            {success.credential.retention_expires_at || '尚未建立（尚未被錢包接受）'}
-          </p>
-          <pre>{JSON.stringify(success.credential, null, 2)}</pre>
+          <h3>政府沙盒回應</h3>
+          <p>Transaction ID：{success.transactionId || '尚未提供'}</p>
+          {qrSource ? (
+            shouldRenderImage ? (
+              <div className="qr-container" aria-label="發卡 QR Code">
+                <img src={success.qrCode} alt="發卡 QR Code" width={192} height={192} />
+              </div>
+            ) : (
+              <div className="qr-container" aria-label="發卡 QR Code">
+                <QRCodeCanvas value={qrSource} size={192} includeMargin />
+              </div>
+            )
+          ) : (
+            <p>尚未取得 QR Code 圖片，請稍後重試。</p>
+          )}
+          {success.deepLink ? (
+            <p>
+              Deep Link：
+              <a href={success.deepLink}>{success.deepLink}</a>
+            </p>
+          ) : null}
+          <pre>{JSON.stringify(success.raw, null, 2)}</pre>
         </div>
       ) : null}
     </section>
