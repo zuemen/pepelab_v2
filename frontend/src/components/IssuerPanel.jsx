@@ -366,6 +366,17 @@ function convertToGovFormat({
 
   const fields = [];
 
+  const pushField = (ename, content) => {
+    if (content === undefined || content === null) {
+      return;
+    }
+    const trimmed = String(content).trim();
+    if (!trimmed) {
+      return;
+    }
+    fields.push({ type: 'NORMAL', ename, content: trimmed });
+  };
+
   if (scope === 'MEDICAL_RECORD' && payload?.condition) {
     const coding = payload.condition.code?.coding?.[0] ?? {};
     const codeValue = normalizeAlphaNumUpper(coding.code, 'K2970');
@@ -374,11 +385,9 @@ function convertToGovFormat({
       'CHRONICGASTRITIS'
     );
     const onsetValue = normalizeDate(payload.condition.recordedDate, expiry);
-    fields.push(
-      { ename: 'cond_code', content: codeValue },
-      { ename: 'cond_display', content: displayValue },
-      { ename: 'cond_onset', content: onsetValue }
-    );
+    pushField('cond_code', codeValue);
+    pushField('cond_display', displayValue);
+    pushField('cond_onset', onsetValue);
   }
 
   if (scope === 'MEDICATION_PICKUP' && medication) {
@@ -393,13 +402,11 @@ function convertToGovFormat({
       fallback: '30',
     });
     const qtyUnit = normalizeCnEnText(quantityParts.unit || 'TABLET', 'TABLET');
-    fields.push(
-      { ename: 'med_code', content: medCode },
-      { ename: 'med_name', content: medName },
-      { ename: 'dose_text', content: doseText },
-      { ename: 'qty_value', content: qtyValue },
-      { ename: 'qty_unit', content: qtyUnit }
-    );
+    pushField('med_code', medCode);
+    pushField('med_name', medName);
+    pushField('dose_text', doseText);
+    pushField('qty_value', qtyValue);
+    pushField('qty_unit', qtyUnit);
   }
 
   if (scope === 'CONSENT_CARD') {
@@ -407,23 +414,19 @@ function convertToGovFormat({
     const normalizedPurpose = normalizeCnEnText(consentPurpose, 'MEDDATARESEARCH');
     const normalizedEnd = normalizeDate(expiry, expiry);
     const normalizedPath = normalizePath(consentPath);
-    fields.push(
-      { ename: 'cons_scope', content: normalizedScope },
-      { ename: 'cons_purpose', content: normalizedPurpose },
-      { ename: 'cons_end', content: normalizedEnd },
-      { ename: 'cons_path', content: normalizedPath }
-    );
+    pushField('cons_scope', normalizedScope);
+    pushField('cons_purpose', normalizedPurpose);
+    pushField('cons_end', normalizedEnd);
+    pushField('cons_path', normalizedPath);
   }
 
   if (scope === 'ALLERGY_CARD') {
     const algyCode = normalizeAlphaNumUpper(allergy?.code, 'ALG001');
     const algyName = normalizeCnEnText(allergy?.display, 'PENICILLIN');
     const algySeverity = normalizeDigits(allergy?.severity, { fallback: '2' });
-    fields.push(
-      { ename: 'algy_code', content: algyCode },
-      { ename: 'algy_name', content: algyName },
-      { ename: 'algy_severity', content: algySeverity }
-    );
+    pushField('algy_code', algyCode);
+    pushField('algy_name', algyName);
+    pushField('algy_severity', algySeverity);
   }
 
   if (scope === 'IDENTITY_CARD') {
@@ -433,19 +436,15 @@ function convertToGovFormat({
     const pidValidFrom = normalizeDate(identity?.pidValidFrom, dayjs());
     const pidValidTo = normalizeDate(identity?.pidValidTo, expiry);
     const walletId = normalizeDigits(identity?.walletId, { fallback: '10000001' });
-    fields.push(
-      { ename: 'pid_hash', content: pidHash },
-      { ename: 'pid_type', content: pidType },
-      { ename: 'pid_valid_from', content: pidValidFrom },
-      { ename: 'pid_issuer', content: pidIssuer },
-      { ename: 'pid_valid_to', content: pidValidTo },
-      { ename: 'wallet_id', content: walletId }
-    );
+    pushField('pid_hash', pidHash);
+    pushField('pid_type', pidType);
+    pushField('pid_valid_from', pidValidFrom);
+    pushField('pid_issuer', pidIssuer);
+    pushField('pid_valid_to', pidValidTo);
+    pushField('wallet_id', walletId);
   }
 
-  const filtered = fields.filter(
-    (field) => field.content !== undefined && field.content !== null && String(field.content).trim() !== ''
-  );
+  const filtered = fields;
 
   const payloadBase = {
     vcUid: normalizedIdentifiers.vcUid,

@@ -395,7 +395,7 @@ def _build_moda_field_entries(request: MODAIssuanceRequest) -> List[Dict[str, st
     fields: List[Dict[str, str]] = []
     for key in ordered_keys:
         value = merged.get(key, "")
-        fields.append({"ename": key, "content": value})
+        fields.append({"type": "NORMAL", "ename": key, "content": value})
 
     return fields
 
@@ -463,7 +463,9 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                 if not ename:
                     continue
                 content = item.get("content", "")
-                cleaned_fields.append({"ename": ename, "content": content})
+                cleaned_fields.append(
+                    {"type": item.get("type", "NORMAL"), "ename": ename, "content": content}
+                )
 
             if cleaned_fields:
                 field_map = {entry["ename"]: entry for entry in cleaned_fields}
@@ -485,10 +487,13 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                         continue
                     content_text = str(entry.get("content", "")).strip()
                     if content_text:
-                        ordered_fields.append({
-                            "ename": required_key,
-                            "content": content_text,
-                        })
+                        ordered_fields.append(
+                            {
+                                "type": entry.get("type", "NORMAL"),
+                                "ename": required_key,
+                                "content": content_text,
+                            }
+                        )
 
                 for entry in cleaned_fields:
                     name = entry["ename"]
@@ -496,7 +501,13 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                         continue
                     content_text = str(entry.get("content", "")).strip()
                     if content_text:
-                        ordered_fields.append({"ename": name, "content": content_text})
+                        ordered_fields.append(
+                            {
+                                "type": entry.get("type", "NORMAL"),
+                                "ename": name,
+                                "content": content_text,
+                            }
+                        )
 
                 if ordered_fields:
                     cleaned[key] = ordered_fields
