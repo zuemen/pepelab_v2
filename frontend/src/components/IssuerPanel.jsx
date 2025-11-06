@@ -15,7 +15,12 @@ const DEFAULT_DISCLOSURES = {
   ],
   CONSENT_CARD: ['consent.scope', 'consent.purpose', 'consent.expires_on'],
   ALLERGY_CARD: ['allergies[0].code.coding[0].code', 'allergies[0].criticality'],
-  IDENTITY_CARD: ['identity.pid_hash', 'identity.wallet_id', 'identity.pid_valid_to'],
+  IDENTITY_CARD: [
+    'identity.pid_hash',
+    'identity.pid_valid_from',
+    'identity.pid_valid_to',
+    'identity.wallet_id',
+  ],
 };
 
 const PRIMARY_SCOPE_OPTIONS = [
@@ -116,7 +121,7 @@ const INITIAL_ALLERGY = {
 const INITIAL_IDENTITY = {
   pidHash: '12345678',
   pidType: '01',
-  pidVer: '01',
+  pidValidFrom: dayjs().format('YYYY-MM-DD'),
   pidIssuer: '886',
   pidValidTo: dayjs().add(10, 'year').format('YYYY-MM-DD'),
   walletId: '10000001',
@@ -226,11 +231,16 @@ function buildPayload({
         : [],
     identity:
       identity &&
-      (identity.pidHash || identity.pidType || identity.pidVer || identity.pidIssuer || identity.pidValidTo || identity.walletId)
+      (identity.pidHash ||
+        identity.pidType ||
+        identity.pidValidFrom ||
+        identity.pidIssuer ||
+        identity.pidValidTo ||
+        identity.walletId)
         ? {
             pid_hash: identity.pidHash || undefined,
             pid_type: identity.pidType || undefined,
-            pid_ver: identity.pidVer || undefined,
+            pid_valid_from: identity.pidValidFrom || undefined,
             pid_issuer: identity.pidIssuer || undefined,
             pid_valid_to: identity.pidValidTo || undefined,
             wallet_id: identity.walletId || undefined,
@@ -419,14 +429,14 @@ function convertToGovFormat({
   if (scope === 'IDENTITY_CARD') {
     const pidHash = normalizeDigits(identity?.pidHash, { fallback: '12345678', length: 8 });
     const pidType = normalizeDigits(identity?.pidType, { fallback: '01' });
-    const pidVer = normalizeDigits(identity?.pidVer, { fallback: '01' });
     const pidIssuer = normalizeDigits(identity?.pidIssuer, { fallback: '886' });
+    const pidValidFrom = normalizeDate(identity?.pidValidFrom, dayjs());
     const pidValidTo = normalizeDate(identity?.pidValidTo, expiry);
     const walletId = normalizeDigits(identity?.walletId, { fallback: '10000001' });
     fields.push(
       { ename: 'pid_hash', content: pidHash },
       { ename: 'pid_type', content: pidType },
-      { ename: 'pid_ver', content: pidVer },
+      { ename: 'pid_valid_from', content: pidValidFrom },
       { ename: 'pid_issuer', content: pidIssuer },
       { ename: 'pid_valid_to', content: pidValidTo },
       { ename: 'wallet_id', content: walletId }
@@ -685,6 +695,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setAllergyInfo(INITIAL_ALLERGY);
     setIdentityInfo({
       ...INITIAL_IDENTITY,
+      pidValidFrom: dayjs().format('YYYY-MM-DD'),
       pidValidTo: dayjs().add(10, 'year').format('YYYY-MM-DD'),
     });
   }
@@ -997,11 +1008,12 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
                 value={identityInfo.pidType}
                 onChange={(event) => updateIdentity('pidType', event.target.value)}
               />
-              <label htmlFor="pid-ver">識別碼版本（pid_ver）</label>
+              <label htmlFor="pid-valid-from">發證日期（pid_valid_from）</label>
               <input
-                id="pid-ver"
-                value={identityInfo.pidVer}
-                onChange={(event) => updateIdentity('pidVer', event.target.value)}
+                id="pid-valid-from"
+                type="date"
+                value={identityInfo.pidValidFrom}
+                onChange={(event) => updateIdentity('pidValidFrom', event.target.value)}
               />
               <label htmlFor="pid-issuer">發行者代碼（pid_issuer）</label>
               <input
