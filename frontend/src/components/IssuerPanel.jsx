@@ -101,10 +101,11 @@ const INITIAL_MEDICATION = {
   id: `med-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://www.whocc.no/atc',
   code: 'A02BC05',
-  display: 'Omeprazole 20mg',
-  quantityText: '30 capsules',
+  display: 'OMEPRAZOLE20MG',
+  quantityText: '30粒',
+  doseText: '每日2次10毫升',
   daysSupply: 30,
-  pickupWindowEnd: dayjs().add(7, 'day').format('YYYY-MM-DD'),
+  pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
 };
 
@@ -199,6 +200,7 @@ function buildPayload({
               text: medication.display || undefined,
             },
             quantity_text: medication.quantityText,
+            dosage_text: medication.doseText || undefined,
             days_supply: Number(medication.daysSupply) || 0,
             performer: medication.performer
               ? {
@@ -385,10 +387,10 @@ function convertToGovFormat({
   if (scope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
     const medCode = normalizeAlphaNumUpper(medication.code, 'RX0001');
-    const medName = normalizeCnEnText(medication.display, '胃藥膠囊');
+    const medName = normalizeCnEnText(medication.display, '胃藥膠囊').toUpperCase();
     const doseText = normalizeCnEnText(
-      medication.quantityText || `${medication.display || ''} ${medication.daysSupply || ''}`,
-      '每日三次10毫升'
+      medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
+      '每日2次10毫升'
     );
     const qtyValue = normalizeDigits(quantityParts.value || medication.daysSupply, {
       fallback: '30',
@@ -487,9 +489,9 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     'urn:sha256:3a1f0c98c5d4a4efed2d4dfe58e8'
   );
   const [consentExpiry, setConsentExpiry] = useState('');
-  const [consentScopeCode, setConsentScopeCode] = useState('MEDSSI_RESEARCH');
-  const [consentPurpose, setConsentPurpose] = useState('胃炎風險研究');
-  const [consentPath, setConsentPath] = useState('medssi://consent/irb-2025-001');
+  const [consentScopeCode, setConsentScopeCode] = useState('MEDSSI01');
+  const [consentPurpose, setConsentPurpose] = useState('AI胃炎研究');
+  const [consentPath, setConsentPath] = useState('IRB_2025_001');
   const [consentIssuer, setConsentIssuer] = useState('MOHW-IRB-2025-001');
   const [medicalFields, setMedicalFields] = useState(
     DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', ')
@@ -698,9 +700,9 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setIncludeMedication(true);
     setEncounterHash('urn:sha256:3a1f0c98c5d4a4efed2d4dfe58e8');
     setConsentExpiry(dayjs().add(90, 'day').format('YYYY-MM-DD'));
-    setConsentScopeCode('MEDSSI_RESEARCH');
-    setConsentPurpose('胃炎風險研究');
-    setConsentPath('medssi://consent/irb-2025-001');
+    setConsentScopeCode('MEDSSI01');
+    setConsentPurpose('AI胃炎研究');
+    setConsentPath('IRB_2025_001');
     setConsentIssuer('MOHW-IRB-2025-001');
     setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
     setMedicationFields(DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', '));
@@ -972,11 +974,18 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
               onChange={(event) => updateMedication('display', event.target.value)}
               disabled={!includeMedication && primaryScope !== 'MEDICATION_PICKUP'}
             />
-            <label htmlFor="quantity-text">劑量資訊</label>
+            <label htmlFor="quantity-text">包裝數量（僅限數字／中文）</label>
             <input
               id="quantity-text"
               value={medication.quantityText}
               onChange={(event) => updateMedication('quantityText', event.target.value)}
+              disabled={!includeMedication && primaryScope !== 'MEDICATION_PICKUP'}
+            />
+            <label htmlFor="dose-text">用藥指示</label>
+            <input
+              id="dose-text"
+              value={medication.doseText || ''}
+              onChange={(event) => updateMedication('doseText', event.target.value)}
               disabled={!includeMedication && primaryScope !== 'MEDICATION_PICKUP'}
             />
             <label htmlFor="days-supply">用藥天數</label>
