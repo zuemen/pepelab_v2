@@ -98,8 +98,8 @@ const INITIAL_MEDICATION = {
   system: 'http://www.whocc.no/atc',
   code: 'A02BC05',
   display: 'OMEPRAZOLE20MG',
-  quantityText: '30TABLET',
-  doseText: 'BID10ML',
+  quantityText: '30 TABLET',
+  doseText: 'BID 10ML',
   daysSupply: 30,
   pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
@@ -307,8 +307,7 @@ function normalizeAlphaNumUpper(value, fallback = '') {
 
 function normalizeCnEnText(value, fallback = '') {
   const cleaned = String(value ?? '')
-    .toUpperCase()
-    .replace(/[^0-9A-Z\u4E00-\u9FFF]/g, '')
+    .replace(/[^0-9A-Za-z\u4E00-\u9FFF\s-]/g, '')
     .trim();
   return cleaned || fallback;
 }
@@ -378,7 +377,7 @@ function convertToGovFormat({
     const medName = normalizeCnEnText(medication.display, 'OMEPRAZOLE');
     const doseText = normalizeCnEnText(
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      'BID10ML'
+      'BID 10ML'
     );
     const qtyValue = normalizeDigits(quantityParts.value || medication.daysSupply, {
       fallback: '30',

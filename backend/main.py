@@ -917,7 +917,7 @@ MODA_SAMPLE_FIELD_VALUES = {
     "vc_rx": {
         "med_code": "A02BC05",
         "med_name": "OMEPRAZOLE",
-        "dose_text": "BID10ML",
+        "dose_text": "BID 10ML",
         "qty_value": "30",
         "qty_unit": "TABLET",
     },
