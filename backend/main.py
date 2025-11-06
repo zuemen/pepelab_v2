@@ -447,6 +447,10 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
     payload["fields"] = fields
 
     cleaned: Dict[str, Any] = {}
+    field_slug = _normalize_vc_uid(payload.get("vcUid"))
+    required_fields = MODA_VC_FIELD_KEYS.get(field_slug, []) or []
+    sample_values = MODA_SAMPLE_FIELD_VALUES.get(field_slug, {})
+
     for key, value in payload.items():
         if value is None:
             continue
@@ -460,8 +464,42 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                     continue
                 content = item.get("content", "")
                 cleaned_fields.append({"ename": ename, "content": content})
+
             if cleaned_fields:
-                cleaned[key] = cleaned_fields
+                field_map = {entry["ename"]: entry for entry in cleaned_fields}
+                for required_key in required_fields:
+                    entry = field_map.get(required_key)
+                    needs_fallback = not entry or not str(entry.get("content", "")).strip()
+                    if needs_fallback:
+                        fallback_value = sample_values.get(required_key)
+                        if fallback_value is not None:
+                            field_map[required_key] = {
+                                "ename": required_key,
+                                "content": fallback_value,
+                            }
+
+                ordered_fields: List[Dict[str, str]] = []
+                for required_key in required_fields:
+                    entry = field_map.get(required_key)
+                    if not entry:
+                        continue
+                    content_text = str(entry.get("content", "")).strip()
+                    if content_text:
+                        ordered_fields.append({
+                            "ename": required_key,
+                            "content": content_text,
+                        })
+
+                for entry in cleaned_fields:
+                    name = entry["ename"]
+                    if name in required_fields:
+                        continue
+                    content_text = str(entry.get("content", "")).strip()
+                    if content_text:
+                        ordered_fields.append({"ename": name, "content": content_text})
+
+                if ordered_fields:
+                    cleaned[key] = ordered_fields
             continue
         cleaned[key] = value
 
