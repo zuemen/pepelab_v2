@@ -32,8 +32,8 @@ const PRIMARY_SCOPE_OPTIONS = [
     label: '領藥卡（MEDICATION_PICKUP）－3 天後自動刪除',
   },
   {
-    value: 'RESEARCH_ANALYTICS',
-    label: '研究卡（RESEARCH_ANALYTICS）－30 天匿名化保留',
+    value: 'CONSENT_CARD',
+    label: '同意卡（vc_cons）－180 天授權保留',
   },
   {
     value: 'ALLERGY_CARD',
@@ -48,7 +48,7 @@ const PRIMARY_SCOPE_OPTIONS = [
 const SCOPE_TO_VC_UID = {
   MEDICAL_RECORD: '00000000_vc_cond',
   MEDICATION_PICKUP: '00000000_vc_rx',
-  RESEARCH_ANALYTICS: '00000000_vc_cons',
+  CONSENT_CARD: '00000000_vc_cons',
   ALLERGY_CARD: '00000000_vc_algy',
   IDENTITY_CARD: '00000000_vc_pid',
 };
@@ -66,7 +66,7 @@ const DEFAULT_CARD_IDENTIFIERS = {
     vcId: '',
     apiKey: '',
   },
-  RESEARCH_ANALYTICS: {
+  CONSENT_CARD: {
     vcUid: '00000000_vc_cons',
     vcCid: 'vc_cons',
     vcId: '',
@@ -278,6 +278,7 @@ function resolveExpiry(scope, consentExpiry, medication, identity) {
       }
       return dayjs().add(3, 'day');
     }
+    case 'CONSENT_CARD':
     case 'RESEARCH_ANALYTICS':
       return dayjs().add(180, 'day');
     case 'ALLERGY_CARD':
@@ -405,7 +406,7 @@ function convertToGovFormat({
     );
   }
 
-  if (scope === 'RESEARCH_ANALYTICS') {
+  if (scope === 'CONSENT_CARD' || scope === 'RESEARCH_ANALYTICS') {
     const normalizedScope = normalizeCnEnText(consentScope, 'MEDSSI研究');
     const normalizedPurpose = normalizeCnEnText(consentPurpose, '胃炎風險分析');
     const normalizedEnd = normalizeDate(expiry, expiry);
@@ -499,7 +500,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
   const [medicationFields, setMedicationFields] = useState(
     DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', ')
   );
-  const [researchFields, setResearchFields] = useState(
+  const [consentFields, setConsentFields] = useState(
     DEFAULT_DISCLOSURES.RESEARCH_ANALYTICS.join(', ')
   );
   const [allergyInfo, setAllergyInfo] = useState(INITIAL_ALLERGY);
@@ -527,9 +528,9 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
           ...DEFAULT_CARD_IDENTIFIERS.MEDICATION_PICKUP,
           ...(parsed.MEDICATION_PICKUP || {}),
         },
-        RESEARCH_ANALYTICS: {
-          ...DEFAULT_CARD_IDENTIFIERS.RESEARCH_ANALYTICS,
-          ...(parsed.RESEARCH_ANALYTICS || {}),
+        CONSENT_CARD: {
+          ...DEFAULT_CARD_IDENTIFIERS.CONSENT_CARD,
+          ...(parsed.CONSENT_CARD || parsed.RESEARCH_ANALYTICS || {}),
         },
         ALLERGY_CARD: {
           ...DEFAULT_CARD_IDENTIFIERS.ALLERGY_CARD,
@@ -574,7 +575,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     const entries = [
       ['MEDICAL_RECORD', medicalFields],
       ['MEDICATION_PICKUP', medicationFields],
-      ['RESEARCH_ANALYTICS', researchFields],
+      ['RESEARCH_ANALYTICS', consentFields],
       ['ALLERGY_CARD', DEFAULT_DISCLOSURES.ALLERGY_CARD.join(', ')],
       ['IDENTITY_CARD', DEFAULT_DISCLOSURES.IDENTITY_CARD.join(', ')],
     ];
@@ -587,7 +588,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
           .filter(Boolean),
       }))
       .filter((item) => item.fields.length);
-  }, [medicalFields, medicationFields, researchFields]);
+  }, [medicalFields, medicationFields, consentFields]);
 
   const payloadTemplate = useMemo(
     () =>
@@ -706,7 +707,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setConsentIssuer('MOHW-IRB-2025-001');
     setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
     setMedicationFields(DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', '));
-    setResearchFields(DEFAULT_DISCLOSURES.RESEARCH_ANALYTICS.join(', '));
+    setConsentFields(DEFAULT_DISCLOSURES.RESEARCH_ANALYTICS.join(', '));
     setAllergyInfo(INITIAL_ALLERGY);
     setIdentityInfo(INITIAL_IDENTITY);
   }
@@ -871,37 +872,41 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
               value={encounterHash}
               onChange={(event) => setEncounterHash(event.target.value)}
             />
-            <label htmlFor="consent-expire">授權到期日（可空白）</label>
-            <input
-              id="consent-expire"
-              type="date"
-              value={consentExpiry}
-              onChange={(event) => setConsentExpiry(event.target.value)}
-            />
-            <label htmlFor="consent-scope">授權範圍代碼（cons_scope）</label>
-            <input
-              id="consent-scope"
-              value={consentScopeCode}
-              onChange={(event) => setConsentScopeCode(event.target.value)}
-            />
-            <label htmlFor="consent-purpose">授權目的（cons_purpose）</label>
-            <input
-              id="consent-purpose"
-              value={consentPurpose}
-              onChange={(event) => setConsentPurpose(event.target.value)}
-            />
-            <label htmlFor="consent-path">授權資料路徑（cons_path，可空白）</label>
-            <input
-              id="consent-path"
-              value={consentPath}
-              onChange={(event) => setConsentPath(event.target.value)}
-            />
-            <label htmlFor="consent-issuer">核發單位（cons_issuer，可空白）</label>
-            <input
-              id="consent-issuer"
-              value={consentIssuer}
-              onChange={(event) => setConsentIssuer(event.target.value)}
-            />
+            {primaryScope === 'CONSENT_CARD' && (
+              <>
+                <label htmlFor="consent-expire">授權到期日（可空白）</label>
+                <input
+                  id="consent-expire"
+                  type="date"
+                  value={consentExpiry}
+                  onChange={(event) => setConsentExpiry(event.target.value)}
+                />
+                <label htmlFor="consent-scope">授權範圍代碼（cons_scope）</label>
+                <input
+                  id="consent-scope"
+                  value={consentScopeCode}
+                  onChange={(event) => setConsentScopeCode(event.target.value)}
+                />
+                <label htmlFor="consent-purpose">授權目的（cons_purpose）</label>
+                <input
+                  id="consent-purpose"
+                  value={consentPurpose}
+                  onChange={(event) => setConsentPurpose(event.target.value)}
+                />
+                <label htmlFor="consent-path">授權資料路徑（cons_path，可空白）</label>
+                <input
+                  id="consent-path"
+                  value={consentPath}
+                  onChange={(event) => setConsentPath(event.target.value)}
+                />
+                <label htmlFor="consent-issuer">核發單位（cons_issuer，可空白）</label>
+                <input
+                  id="consent-issuer"
+                  value={consentIssuer}
+                  onChange={(event) => setConsentIssuer(event.target.value)}
+                />
+              </>
+            )}
             <div className="grid four">
               <div>
                 <label htmlFor="gov-vc-uid">政府 vcUid</label>
@@ -1100,11 +1105,11 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
               value={medicationFields}
               onChange={(event) => setMedicationFields(event.target.value)}
             />
-            <label htmlFor="research-fields">研究欄位 (RESEARCH_ANALYTICS)</label>
+            <label htmlFor="research-fields">研究驗證欄位 (RESEARCH_ANALYTICS)</label>
             <textarea
               id="research-fields"
-              value={researchFields}
-              onChange={(event) => setResearchFields(event.target.value)}
+              value={consentFields}
+              onChange={(event) => setConsentFields(event.target.value)}
             />
           </fieldset>
         </div>

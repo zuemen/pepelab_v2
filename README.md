@@ -127,7 +127,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
    - 可傳入自訂後端位址與發行端 token：`python scripts/reset_sandbox.py http://localhost:8000 my-token`。
    - 腳本會呼叫 `/v2/api/system/reset`，確保每次示範前從乾淨狀態開始。
 4. **建議 demo 流程**
-   1. 在 Step 1 按「載入示例」，挑選主用途（病歷／領藥／研究），送出「含資料」發卡並掃描 QR。
+   1. 在 Step 1 按「載入示例」，挑選主用途（病歷／領藥／同意），送出「含資料」發卡並掃描 QR。
    2. Step 2 以發行端回傳的 `transaction_id` 取得 nonce，按「載入示例 Payload」後執行 `ACCEPT`，錢包即會儲存憑證並顯示揭露欄位。
    3. Step 3 產生驗證 QR Code（可切換三種 scope），照欄位提示填入 VP 後送出，並觀察 AI Insight 與稽核資訊。
    4. 於 Step 2 使用「行使可遺忘權」清除資料，或在頁首按「重設沙盒資料」快速還原初始狀態。
