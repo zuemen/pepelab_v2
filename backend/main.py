@@ -781,7 +781,7 @@ MODA_VC_FIELD_KEYS = {
     "vc_pid": [
         "pid_hash",
         "pid_type",
-        "pid_valid_from",
+        "pid_ver",
         "pid_issuer",
         "pid_valid_to",
         "wallet_id",
@@ -819,12 +819,10 @@ MODA_FIELD_TO_FHIR = {
     "med_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
     "qty_value": "medication_dispense[0].days_supply",
     "qty_unit": "medication_dispense[0].quantity_text",
-    "pickup_deadline": "medication_dispense[0].pickup_window_end",
     "dose_text": "medication_dispense[0].dose_text",
     "medication_list[0].medication_code": "medication_dispense[0].medicationCodeableConcept.coding[0].code",
     "medication_list[0].medication_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
     "medication_list[0].dosage": "medication_dispense[0].days_supply",
-    "pickup_info.pickup_deadline": "medication_dispense[0].pickup_window_end",
     "condition_info.condition_code": "condition.code.coding[0].code",
     "condition_info.condition_display": "condition.code.coding[0].display",
     "condition_info.condition_onset": "condition.recordedDate",
@@ -840,10 +838,11 @@ MODA_FIELD_TO_FHIR = {
     "pid_name": "patient_digest.display_name",
     "pid_birth": "patient_digest.birth_date",
     "pid_type": "patient_digest.document_type",
-    "pid_valid_from": "patient_digest.valid_from",
+    "pid_ver": "patient_digest.document_version",
     "pid_issuer": "patient_digest.issuer",
     "pid_valid_to": "patient_digest.valid_to",
     "wallet_id": "patient_digest.wallet_id",
+    "pid_info.pid_ver": "patient_digest.document_version",
 }
 
 
@@ -857,6 +856,7 @@ MODA_FIELD_DIRECT_ALIASES = {
     "conditionInfo.conditionDisplay": "condition_info.condition_display",
     "conditionInfo.conditionOnset": "condition_info.condition_onset",
     "consentInfo.consentEnd": "cons_end",
+    "pidInfo.pidVer": "pid_info.pid_ver",
 }
 
 
@@ -874,7 +874,6 @@ MODA_FIELD_LOWER_ALIASES = {
     "qtyvalue": "qty_value",
     "dosage": "qty_value",
     "qtyunit": "qty_unit",
-    "pickupdeadline": "pickup_deadline",
     "dosetext": "dose_text",
     "consentscope": "cons_scope",
     "consentpurpose": "cons_purpose",
@@ -885,7 +884,7 @@ MODA_FIELD_LOWER_ALIASES = {
     "pidname": "pid_name",
     "pidbirth": "pid_birth",
     "pidtype": "pid_type",
-    "pidvalidfrom": "pid_valid_from",
+    "pidver": "pid_ver",
     "pidissuer": "pid_issuer",
     "pidvalidto": "pid_valid_to",
     "walletid": "wallet_id",
@@ -899,7 +898,7 @@ MODA_SAMPLE_FIELD_VALUES = {
     "vc_pid": {
         "pid_hash": "hash::8f4c0d1d6c1a4b67a4f9d1234567890b",
         "pid_type": "NHI_CARD",
-        "pid_valid_from": (date.today() - timedelta(days=365)).isoformat(),
+        "pid_ver": "v1.0",
         "pid_issuer": "衛福部中央健康保險署",
         "pid_valid_to": (date.today() + timedelta(days=365 * 2)).isoformat(),
         "wallet_id": "wallet-demo-001",
@@ -929,7 +928,6 @@ MODA_SAMPLE_FIELD_VALUES = {
         "dose_text": "Take 1 capsule twice daily before meals",
         "qty_value": "30",
         "qty_unit": "capsules",
-        "pickup_deadline": (date.today() + timedelta(days=3)).isoformat(),
     },
 }
 
@@ -1119,7 +1117,7 @@ def _sample_payload() -> CredentialPayload:
             "display_name": "張小華",
             "birth_date": "1950-07-18",
             "document_type": "NHI_CARD",
-            "valid_from": (today - timedelta(days=365)).isoformat(),
+            "document_version": "v1.0",
             "issuer": "衛福部中央健康保險署",
             "valid_to": (today + timedelta(days=365 * 2)).isoformat(),
             "wallet_id": "wallet-demo-001",
@@ -1318,7 +1316,7 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
             "pid_name",
             "pid_birth",
             "pid_type",
-            "pid_valid_from",
+            "pid_ver",
             "pid_issuer",
             "pid_valid_to",
             "wallet_id",
@@ -1331,7 +1329,7 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
                     "display_name": alias_map.get("pid_name"),
                     "birth_date": alias_map.get("pid_birth"),
                     "document_type": alias_map.get("pid_type"),
-                    "valid_from": alias_map.get("pid_valid_from"),
+                    "document_version": alias_map.get("pid_ver"),
                     "issuer": alias_map.get("pid_issuer"),
                     "valid_to": alias_map.get("pid_valid_to"),
                     "wallet_id": alias_map.get("wallet_id"),
@@ -1363,7 +1361,7 @@ def _expand_aliases(alias_map: Dict[str, str]) -> Dict[str, str]:
     copy_if_missing("pid_name", "pid_info.pid_name")
     copy_if_missing("pid_birth", "pid_info.pid_birth")
     copy_if_missing("pid_type", "pid_info.pid_type")
-    copy_if_missing("pid_valid_from", "pid_info.pid_valid_from")
+    copy_if_missing("pid_ver", "pid_info.pid_ver")
     copy_if_missing("pid_issuer", "pid_info.pid_issuer")
     copy_if_missing("pid_valid_to", "pid_info.pid_valid_to")
     copy_if_missing("wallet_id", "pid_info.wallet_id")

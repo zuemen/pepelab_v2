@@ -19,7 +19,7 @@ module.exports = {
     vc_pid: {
       pid_hash: 'hash::8f4c0d1d6c1a4b67a4f9d1234567890b',
       pid_type: 'NHI_CARD',
-      pid_valid_from: '2024-01-01',
+      pid_ver: 'v1.0',
       pid_issuer: '衛福部中央健康保險署',
       pid_valid_to: '2026-12-31',
       wallet_id: 'wallet-demo-001',

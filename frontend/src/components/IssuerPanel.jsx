@@ -14,6 +14,12 @@ const DEFAULT_DISCLOSURES = {
     'medication_dispense[0].pickup_window_end',
   ],
   RESEARCH_ANALYTICS: ['condition.code.coding[0].code', 'encounter_summary_hash'],
+  ALLERGY_CARD: ['allergies[0].code.coding[0].code', 'allergies[0].criticality'],
+  IDENTITY_CARD: [
+    'patient_digest.hashed_id',
+    'patient_digest.document_version',
+    'patient_digest.valid_to',
+  ],
 };
 
 const PRIMARY_SCOPE_OPTIONS = [
@@ -29,12 +35,22 @@ const PRIMARY_SCOPE_OPTIONS = [
     value: 'RESEARCH_ANALYTICS',
     label: '研究卡（RESEARCH_ANALYTICS）－30 天匿名化保留',
   },
+  {
+    value: 'ALLERGY_CARD',
+    label: '過敏資訊卡（vc_algy）－預設 3 年效期',
+  },
+  {
+    value: 'IDENTITY_CARD',
+    label: '匿名身分卡（vc_pid）－預設 10 年效期',
+  },
 ];
 
 const SCOPE_TO_VC_UID = {
   MEDICAL_RECORD: '00000000_vc_cond',
   MEDICATION_PICKUP: '00000000_vc_rx',
   RESEARCH_ANALYTICS: '00000000_vc_cons',
+  ALLERGY_CARD: '00000000_vc_algy',
+  IDENTITY_CARD: '00000000_vc_pid',
 };
 
 const DEFAULT_CARD_IDENTIFIERS = {
@@ -53,6 +69,18 @@ const DEFAULT_CARD_IDENTIFIERS = {
   RESEARCH_ANALYTICS: {
     vcUid: '00000000_vc_cons',
     vcCid: 'vc_cons',
+    vcId: '',
+    apiKey: '',
+  },
+  ALLERGY_CARD: {
+    vcUid: '00000000_vc_algy',
+    vcCid: 'vc_algy',
+    vcId: '',
+    apiKey: '',
+  },
+  IDENTITY_CARD: {
+    vcUid: '00000000_vc_pid',
+    vcCid: 'vc_pid',
     vcId: '',
     apiKey: '',
   },
@@ -80,6 +108,25 @@ const INITIAL_MEDICATION = {
   performer: 'did:example:rx-unit-01',
 };
 
+const INITIAL_ALLERGY = {
+  id: `algy-${Math.random().toString(36).slice(2, 8)}`,
+  system: 'http://hl7.org/fhir/sid/icd-10',
+  code: 'Z88.1',
+  display: 'Penicillin allergy',
+  severity: 'Severe',
+};
+
+const INITIAL_IDENTITY = {
+  hash: 'hash::8f4c0d1d6c1a4b67a4f9d1234567890b',
+  type: 'NHI_CARD',
+  version: 'v1.0',
+  issuer: '衛福部中央健康保險署',
+  validTo: dayjs().add(2, 'year').format('YYYY-MM-DD'),
+  walletId: 'wallet-demo-001',
+  name: '張小華',
+  birth: '1950-07-18',
+};
+
 function buildPayload({
   condition,
   includeMedication,
@@ -87,6 +134,12 @@ function buildPayload({
   encounterHash,
   issuedOn,
   consentExpiry,
+  consentScope,
+  consentPurpose,
+  consentPath,
+  consentIssuer,
+  allergy,
+  identity,
 }) {
   return {
     fhir_profile: 'https://profiles.iisigroup.com.tw/StructureDefinition/medssi-bundle',
@@ -120,6 +173,16 @@ function buildPayload({
     },
     issued_on: issuedOn,
     consent_expires_on: consentExpiry || undefined,
+    consent:
+      consentScope || consentPurpose || consentPath || consentIssuer
+        ? {
+            scope: consentScope || undefined,
+            purpose: consentPurpose || undefined,
+            path: consentPath || undefined,
+            issuer: consentIssuer || undefined,
+            expires_on: consentExpiry || undefined,
+          }
+        : undefined,
     medication_dispense: includeMedication
       ? [
           {
@@ -147,6 +210,40 @@ function buildPayload({
           },
         ]
       : [],
+    allergies:
+      allergy && (allergy.code || allergy.display || allergy.severity)
+        ? [
+            {
+              resourceType: 'AllergyIntolerance',
+              id: allergy.id,
+              code: {
+                coding: [
+                  {
+                    system: allergy.system || 'http://hl7.org/fhir/sid/icd-10',
+                    code: allergy.code || '',
+                    display: allergy.display || undefined,
+                  },
+                ],
+                text: allergy.display || undefined,
+              },
+              criticality: allergy.severity || undefined,
+            },
+          ]
+        : [],
+    patient_digest:
+      identity &&
+      (identity.hash || identity.type || identity.version || identity.issuer || identity.validTo)
+        ? {
+            hashed_id: identity.hash || undefined,
+            document_type: identity.type || undefined,
+            document_version: identity.version || undefined,
+            issuer: identity.issuer || undefined,
+            valid_to: identity.validTo || undefined,
+            wallet_id: identity.walletId || undefined,
+            display_name: identity.name || undefined,
+            birth_date: identity.birth || undefined,
+          }
+        : undefined,
   };
 }
 
@@ -161,18 +258,37 @@ function parseQuantityParts(quantityText) {
   return { value: '', unit: quantityText.trim() };
 }
 
-function resolveExpiry(scope, consentExpiry) {
+function resolveExpiry(scope, consentExpiry, medication, identity) {
   if (consentExpiry) {
     const parsed = dayjs(consentExpiry);
     if (parsed.isValid()) {
       return parsed;
     }
   }
+
   switch (scope) {
-    case 'MEDICATION_PICKUP':
+    case 'MEDICATION_PICKUP': {
+      if (medication?.pickupWindowEnd) {
+        const parsed = dayjs(medication.pickupWindowEnd);
+        if (parsed.isValid()) {
+          return parsed;
+        }
+      }
       return dayjs().add(3, 'day');
+    }
     case 'RESEARCH_ANALYTICS':
       return dayjs().add(180, 'day');
+    case 'ALLERGY_CARD':
+      return dayjs().add(3, 'year');
+    case 'IDENTITY_CARD': {
+      if (identity?.validTo) {
+        const parsed = dayjs(identity.validTo);
+        if (parsed.isValid()) {
+          return parsed;
+        }
+      }
+      return dayjs().add(10, 'year');
+    }
     default:
       return dayjs().add(7, 'day');
   }
@@ -184,11 +300,15 @@ function convertToGovFormat({
   medication,
   consentScope,
   consentPurpose,
+  consentPath,
+  consentIssuer,
   consentExpiry,
+  allergy,
+  identity,
   identifiers = {},
 }) {
   const issuanceDate = dayjs().format('YYYYMMDD');
-  const expiry = resolveExpiry(scope, consentExpiry);
+  const expiry = resolveExpiry(scope, consentExpiry, medication, identity);
   const expiredDate = expiry.isValid()
     ? expiry.format('YYYYMMDD')
     : dayjs().add(90, 'day').format('YYYYMMDD');
@@ -224,8 +344,7 @@ function convertToGovFormat({
         ename: 'qty_value',
         content: quantityParts.value || (medication.daysSupply ? String(medication.daysSupply) : ''),
       },
-      { ename: 'qty_unit', content: quantityParts.unit || '日份' },
-      { ename: 'pickup_deadline', content: medication.pickupWindowEnd || '' }
+      { ename: 'qty_unit', content: quantityParts.unit || '日份' }
     );
   }
 
@@ -235,6 +354,33 @@ function convertToGovFormat({
       { ename: 'cons_purpose', content: consentPurpose || '胃炎風險研究' },
       { ename: 'cons_end', content: expiry.format('YYYY-MM-DD') }
     );
+    if (consentPath) {
+      fields.push({ ename: 'cons_path', content: consentPath });
+    }
+    if (consentIssuer) {
+      fields.push({ ename: 'cons_issuer', content: consentIssuer });
+    }
+  }
+
+  if (scope === 'ALLERGY_CARD') {
+    fields.push(
+      { ename: 'algy_code', content: allergy?.code || '' },
+      { ename: 'algy_name', content: allergy?.display || '' },
+      { ename: 'algy_severity', content: allergy?.severity || '' }
+    );
+  }
+
+  if (scope === 'IDENTITY_CARD') {
+    fields.push(
+      { ename: 'pid_hash', content: identity?.hash || '' },
+      { ename: 'pid_type', content: identity?.type || '' },
+      { ename: 'pid_ver', content: identity?.version || '' },
+      { ename: 'pid_issuer', content: identity?.issuer || '' },
+      { ename: 'pid_valid_to', content: identity?.validTo || expiry.format('YYYY-MM-DD') }
+    );
+    if (identity?.walletId) {
+      fields.push({ ename: 'wallet_id', content: identity.walletId });
+    }
   }
 
   const filtered = fields.filter(
@@ -282,6 +428,8 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
   const [consentExpiry, setConsentExpiry] = useState('');
   const [consentScopeCode, setConsentScopeCode] = useState('MEDSSI_RESEARCH');
   const [consentPurpose, setConsentPurpose] = useState('胃炎風險研究');
+  const [consentPath, setConsentPath] = useState('medssi://consent/irb-2025-001');
+  const [consentIssuer, setConsentIssuer] = useState('MOHW-IRB-2025-001');
   const [medicalFields, setMedicalFields] = useState(
     DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', ')
   );
@@ -291,6 +439,8 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
   const [researchFields, setResearchFields] = useState(
     DEFAULT_DISCLOSURES.RESEARCH_ANALYTICS.join(', ')
   );
+  const [allergyInfo, setAllergyInfo] = useState(INITIAL_ALLERGY);
+  const [identityInfo, setIdentityInfo] = useState(INITIAL_IDENTITY);
   const [mode, setMode] = useState('WITH_DATA');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -317,6 +467,14 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
         RESEARCH_ANALYTICS: {
           ...DEFAULT_CARD_IDENTIFIERS.RESEARCH_ANALYTICS,
           ...(parsed.RESEARCH_ANALYTICS || {}),
+        },
+        ALLERGY_CARD: {
+          ...DEFAULT_CARD_IDENTIFIERS.ALLERGY_CARD,
+          ...(parsed.ALLERGY_CARD || {}),
+        },
+        IDENTITY_CARD: {
+          ...DEFAULT_CARD_IDENTIFIERS.IDENTITY_CARD,
+          ...(parsed.IDENTITY_CARD || {}),
         },
       };
     } catch (err) {
@@ -354,6 +512,8 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       ['MEDICAL_RECORD', medicalFields],
       ['MEDICATION_PICKUP', medicationFields],
       ['RESEARCH_ANALYTICS', researchFields],
+      ['ALLERGY_CARD', DEFAULT_DISCLOSURES.ALLERGY_CARD.join(', ')],
+      ['IDENTITY_CARD', DEFAULT_DISCLOSURES.IDENTITY_CARD.join(', ')],
     ];
     return entries
       .map(([scope, value]) => ({
@@ -375,6 +535,12 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
         encounterHash,
         issuedOn: dayjs().format('YYYY-MM-DD'),
         consentExpiry: consentExpiry || null,
+        consentScope: consentScopeCode,
+        consentPurpose,
+        consentPath,
+        consentIssuer,
+        allergy: allergyInfo,
+        identity: identityInfo,
       }),
     [
       condition,
@@ -383,6 +549,12 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       encounterHash,
       consentExpiry,
       primaryScope,
+      consentScopeCode,
+      consentPurpose,
+      consentPath,
+      consentIssuer,
+      allergyInfo,
+      identityInfo,
     ]
   );
 
@@ -392,6 +564,14 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
 
   function updateMedication(field, value) {
     setMedication((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function updateAllergy(field, value) {
+    setAllergyInfo((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function updateIdentity(field, value) {
+    setIdentityInfo((prev) => ({ ...prev, [field]: value }));
   }
 
   async function submit() {
@@ -406,7 +586,11 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
         includeMedication || primaryScope === 'MEDICATION_PICKUP' ? medication : null,
       consentScope: consentScopeCode,
       consentPurpose,
+      consentPath,
+      consentIssuer,
       consentExpiry,
+      allergy: allergyInfo,
+      identity: identityInfo,
       identifiers: currentIdentifiers,
     });
 
@@ -455,9 +639,13 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setConsentExpiry(dayjs().add(90, 'day').format('YYYY-MM-DD'));
     setConsentScopeCode('MEDSSI_RESEARCH');
     setConsentPurpose('胃炎風險研究');
+    setConsentPath('medssi://consent/irb-2025-001');
+    setConsentIssuer('MOHW-IRB-2025-001');
     setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
     setMedicationFields(DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', '));
     setResearchFields(DEFAULT_DISCLOSURES.RESEARCH_ANALYTICS.join(', '));
+    setAllergyInfo(INITIAL_ALLERGY);
+    setIdentityInfo(INITIAL_IDENTITY);
   }
 
   const qrSource = success?.qrCode || success?.deepLink || '';
@@ -639,6 +827,18 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
               value={consentPurpose}
               onChange={(event) => setConsentPurpose(event.target.value)}
             />
+            <label htmlFor="consent-path">授權資料路徑（cons_path，可空白）</label>
+            <input
+              id="consent-path"
+              value={consentPath}
+              onChange={(event) => setConsentPath(event.target.value)}
+            />
+            <label htmlFor="consent-issuer">核發單位（cons_issuer，可空白）</label>
+            <input
+              id="consent-issuer"
+              value={consentIssuer}
+              onChange={(event) => setConsentIssuer(event.target.value)}
+            />
             <div className="grid four">
               <div>
                 <label htmlFor="gov-vc-uid">政府 vcUid</label>
@@ -678,7 +878,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
             </p>
       </fieldset>
 
-      <fieldset>
+          <fieldset>
             <legend>
               領藥摘要
               <span className="helper" style={{ display: 'block' }}>
@@ -735,6 +935,86 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
               disabled={!includeMedication && primaryScope !== 'MEDICATION_PICKUP'}
             />
           </fieldset>
+
+          {(primaryScope === 'ALLERGY_CARD' || primaryScope === 'MEDICATION_PICKUP') && (
+            <fieldset>
+              <legend>過敏資訊（vc_algy）</legend>
+              <label htmlFor="allergy-code">過敏代碼（algy_code）</label>
+              <input
+                id="allergy-code"
+                value={allergyInfo.code}
+                onChange={(event) => updateAllergy('code', event.target.value)}
+              />
+              <label htmlFor="allergy-name">過敏名稱（algy_name）</label>
+              <input
+                id="allergy-name"
+                value={allergyInfo.display}
+                onChange={(event) => updateAllergy('display', event.target.value)}
+              />
+              <label htmlFor="allergy-severity">嚴重程度（algy_severity）</label>
+              <input
+                id="allergy-severity"
+                value={allergyInfo.severity}
+                onChange={(event) => updateAllergy('severity', event.target.value)}
+              />
+            </fieldset>
+          )}
+
+          {primaryScope === 'IDENTITY_CARD' && (
+            <fieldset>
+              <legend>身分識別摘要（vc_pid）</legend>
+              <label htmlFor="pid-hash">身分雜湊（pid_hash）</label>
+              <input
+                id="pid-hash"
+                value={identityInfo.hash}
+                onChange={(event) => updateIdentity('hash', event.target.value)}
+              />
+              <label htmlFor="pid-type">證件類型（pid_type）</label>
+              <input
+                id="pid-type"
+                value={identityInfo.type}
+                onChange={(event) => updateIdentity('type', event.target.value)}
+              />
+              <label htmlFor="pid-ver">識別版本（pid_ver）</label>
+              <input
+                id="pid-ver"
+                value={identityInfo.version}
+                onChange={(event) => updateIdentity('version', event.target.value)}
+              />
+              <label htmlFor="pid-issuer">發證機關（pid_issuer）</label>
+              <input
+                id="pid-issuer"
+                value={identityInfo.issuer}
+                onChange={(event) => updateIdentity('issuer', event.target.value)}
+              />
+              <label htmlFor="pid-valid-to">到期日（pid_valid_to）</label>
+              <input
+                id="pid-valid-to"
+                type="date"
+                value={identityInfo.validTo}
+                onChange={(event) => updateIdentity('validTo', event.target.value)}
+              />
+              <label htmlFor="pid-wallet">錢包識別碼（wallet_id，可空白）</label>
+              <input
+                id="pid-wallet"
+                value={identityInfo.walletId}
+                onChange={(event) => updateIdentity('walletId', event.target.value)}
+              />
+              <label htmlFor="pid-name">遮罩姓名（選填）</label>
+              <input
+                id="pid-name"
+                value={identityInfo.name}
+                onChange={(event) => updateIdentity('name', event.target.value)}
+              />
+              <label htmlFor="pid-birth">生日（選填）</label>
+              <input
+                id="pid-birth"
+                type="date"
+                value={identityInfo.birth}
+                onChange={(event) => updateIdentity('birth', event.target.value)}
+              />
+            </fieldset>
+          )}
 
           <fieldset>
             <legend>選擇性揭露欄位</legend>

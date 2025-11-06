@@ -109,8 +109,8 @@ class PatientDigest(BaseModel):
     document_type: Optional[str] = Field(
         None, description="Document type mirrored to vc_pid 的 pid_type"
     )
-    valid_from: Optional[date] = Field(
-        None, description="Document valid-from date for pid_valid_from"
+    document_version: Optional[str] = Field(
+        None, description="Document version mirrored to vc_pid 的 pid_ver"
     )
     issuer: Optional[str] = Field(None, description="Issuing authority for pid_issuer")
     valid_to: Optional[date] = Field(

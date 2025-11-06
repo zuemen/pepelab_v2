@@ -4,7 +4,7 @@
 
 - **身份保證等級（IAL）貼近 MyData / 健保規範**：提供 `MYDATA_LIGHT`、`NHI_CARD_PIN`、`MOICA_CERT` 三個層級，不再使用生物辨識。
 - **FHIR 結構化 Payload**：Credential 內含 `Condition`、`MedicationDispense` 與匿名研究摘要，並以 FHIR path 定義選擇性揭露欄位。
-- **三條流程分流**：後端以 `DisclosureScope`（`MEDICAL_RECORD`、`MEDICATION_PICKUP`、`RESEARCH_ANALYTICS`）區分用途，前端以高對比面板呈現病歷、領藥、研究三條路徑。
+- **流程分流**：後端以 `DisclosureScope`（`MEDICAL_RECORD`、`MEDICATION_PICKUP`、`RESEARCH_ANALYTICS`）區分主要情境，前端額外提供 `vc_algy` 過敏卡與 `vc_pid` 身分卡切換，完整涵蓋官方沙盒的五種 VC 模板。
 - **可遺忘權、Session 與沙盒重設**：錢包可呼叫 `/v2/api/wallet/{holder_did}/forget` 清除資料，驗證端可刪除 session，並新增 `/v2/api/system/reset` 快速還原沙盒。
 - **長者友善介面**：分步驟面板、示例按鈕、自動填入日期與 ARIA live 區域，降低操作複雜度並方便陪同家屬示範。
 - **Access Token 與 5 分鐘 QR 有效期**：所有發行端／錢包／驗證端 API 需附帶 `Authorization: Bearer <token>`，並強制 5 分鐘內使用 QR code。
@@ -63,11 +63,11 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 - `vcUid` / `fields` 結構會自動轉換為 FHIR VC payload，同時保留 MODA 欄位別名（例如 `cond_code`、`cons_scope`），錢包與驗證端可直接沿用官方沙盒的欄位設定。
 - 內建 `vc_pid`、`vc_cons`、`vc_cond`、`vc_algy`、`vc_rx` 等樣板欄位與範例值（依官方截圖整理），若呼叫端未傳入 `fields` 也會自動補齊對應欄位與內容，避免掃描後顯示「資料格式錯誤」。
 - 欄位會對照政府沙盒公布的模板規格：
-  - **vc_pid**：補齊 `pid_hash`、`pid_type`、`pid_valid_from`、`pid_issuer`、`pid_valid_to` 與可選 `wallet_id`，同時保留示範姓名與生日作為遮罩資訊。
+  - **vc_pid**：補齊 `pid_hash`、`pid_type`、`pid_ver`、`pid_issuer`、`pid_valid_to` 與可選 `wallet_id`，同時保留示範姓名與生日作為遮罩資訊。
   - **vc_cons**：輸出 `cons_scope`、`cons_purpose`、`cons_end` 及可選的 `cons_path`，對應授權範圍、目的與到期日。
   - **vc_cond**：維持 `cond_code`、`cond_display`、`cond_onset` 做為診斷摘要必填欄位。
   - **vc_algy**：提供 `algy_code`、`algy_name`、`algy_severity` 以描述過敏原與嚴重程度。
-  - **vc_rx**：產生 `med_code`、`med_name`、`dose_text`、`qty_value`、`qty_unit` 等處方資訊，並保留 `pickup_deadline` 便於示範領藥截止日。
+  - **vc_rx**：產生 `med_code`、`med_name`、`dose_text`、`qty_value`、`qty_unit` 等處方資訊。
 
 > ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。若需暫時允許多組 Token，可在環境變數中以逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會自動接受其中任一值。若沿用官方 sandbox 範例以 `access-token` header 傳遞，也會自動轉換為 Bearer Token 無須修改程式。
 
