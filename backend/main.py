@@ -896,38 +896,35 @@ MODA_FIELD_LOWER_ALIASES = {
 
 MODA_SAMPLE_FIELD_VALUES = {
     "vc_pid": {
-        "pid_hash": "hash::8f4c0d1d6c1a4b67a4f9d1234567890b",
-        "pid_type": "NHI_CARD",
-        "pid_ver": "v1.0",
-        "pid_issuer": "衛福部中央健康保險署",
+        "pid_hash": "12345678",
+        "pid_type": "01",
+        "pid_ver": "01",
+        "pid_issuer": "3567",
         "pid_valid_to": (date.today() + timedelta(days=365 * 2)).isoformat(),
-        "wallet_id": "wallet-demo-001",
-        "pid_name": "張小華",
-        "pid_birth": "1950-07-18",
+        "wallet_id": "10000001",
     },
     "vc_cons": {
-        "cons_scope": "research_info",
-        "cons_purpose": "AI 胃炎趨勢研究",
+        "cons_scope": "MEDSSI01",
+        "cons_purpose": "AI胃炎研究",
         "cons_end": (date.today() + timedelta(days=180)).isoformat(),
-        "cons_issuer": "MOHW-IRB-2025-001",
-        "cons_path": "medssi://consent/irb-2025-001",
+        "cons_path": "IRB_2025_001",
     },
     "vc_cond": {
         "cond_code": "K29.70",
-        "cond_display": "慢性胃炎（未特指）",
+        "cond_display": "慢性胃炎",
         "cond_onset": "2025-02-12",
     },
     "vc_algy": {
-        "algy_code": "Z88.1",
-        "algy_name": "Penicillin allergy",
-        "algy_severity": "Severe",
+        "algy_code": "ALG001",
+        "algy_name": "海鮮過敏",
+        "algy_severity": "2",
     },
     "vc_rx": {
         "med_code": "A02BC05",
-        "med_name": "Omeprazole 20mg capsule",
-        "dose_text": "Take 1 capsule twice daily before meals",
+        "med_name": "OMEPRAZOLE20MG",
+        "dose_text": "每天2次10毫升",
         "qty_value": "30",
-        "qty_unit": "capsules",
+        "qty_unit": "粒",
     },
 }
 
