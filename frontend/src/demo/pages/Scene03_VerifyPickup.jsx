@@ -26,18 +26,22 @@ export default function Scene03_VerifyPickup() {
           </div>
         </>
       }
-      right={
-        <div className="verify-preview">
-          <div className="result-card">
-            <div className="line"><strong>藥品：</strong> Omeprazole 20mg</div>
-            <div className="line"><strong>天數：</strong> 28</div>
-            <div className="line ok"><strong>過敏對照：</strong> 無衝突</div>
-            <div className="line"><strong>同意到期：</strong> 2025-12-31</div>
-          </div>
-          <div className="insight">AI Insight：D-3 續領提醒</div>
-          <div className={`hint ${mode === "live" ? "" : "muted"}`}>Live 模式才會真的驗章</div>
-        </div>
-      }
-    />
+   right={
+  <div className="verify-preview">
+    <div className="result-card">
+      <div className="line"><strong>藥品：</strong> Omeprazole 20mg</div>
+      <div className="line"><strong>天數：</strong> 28</div>
+      <div className="line ok"><strong>過敏對照：</strong> 無衝突</div>
+      <div className="line"><strong>同意到期：</strong> 2025-12-31</div>
+    </div>
+    <div className="insight">
+      <strong>AI Insight：</strong>D-3 續領提醒
+    </div>
+    <div className={`hint ${mode === "live" ? "" : "muted"}`}>
+      Live 模式才會真的驗章
+    </div>
+  </div>
+}
+/>
   );
 }

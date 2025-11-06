@@ -1,141 +1,174 @@
 /* =========================
  *  Page2：新聞卡片（高對比＋可 hover）
  * ========================= */
-.grid-cards{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-  gap:16px;
+.grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
 }
+
 .news-card,
 .news-card:link,
-.news-card:visited{
-  display:block;
-  background:#112a46;
-  border:1px solid rgba(255,255,255,.18);
-  border-radius:16px;
-  padding:16px;
-  color:#eaf2f9!important;            /* 統一連結色 */
-  text-decoration:none!important;     /* 去底線 */
-  box-shadow:0 4px 12px rgba(0,0,0,.28);
-  transition:transform .2s, box-shadow .2s, border-color .2s, background .2s;
+.news-card:visited {
+  display: block;
+  background: #112a46;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 16px;
+  padding: 16px;
+  color: #eaf2f9 !important; /* 統一連結色 */
+  text-decoration: none !important; /* 去底線 */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .28);
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s, background 0.2s;
 }
-.news-card h3{color:#f1f5f9;font-weight:800;font-size:20px;margin:0 0 8px}
-.news-card p{color:#cbd5e1;margin:0 0 12px}
-.news-card .more{color:#5fd3ff;font-weight:600}
-.news-card:hover{
-  background:#17365a;
-  border-color:#5fd3ff;
-  transform:translateY(-3px);
-  box-shadow:0 8px 18px rgba(0,0,0,.35);
+
+.news-card h3 {
+  color: #f1f5f9;
+  font-weight: 800;
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+
+.news-card p {
+  color: #cbd5e1;
+  margin: 0 0 12px;
+}
+
+.news-card .more {
+  color: #5fd3ff;
+  font-weight: 600;
+}
+
+.news-card:hover {
+  background: #17365a;
+  border-color: #5fd3ff;
+  transform: translateY(-3px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .35);
 }
 
 /* =========================
  *  Page3：白底說明卡（對比拉高）
  * ========================= */
-/* 防止被舊樣式的 opacity 影響 */
-.white-card *{opacity:1!important;filter:none!important}
+.white-card {
+  background: #fff;
+  color: #1e293b;
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .08);
+}
 
-.white-card{
-  background:#fff;
-  color:#1e293b;
-  border-radius:20px;
-  padding:32px;
-  box-shadow:0 6px 20px rgba(0,0,0,.08);
+.white-card h2 {
+  color: #0f172a;
+  font-weight: 900;
+  font-size: 28px;
+  margin-bottom: 12px;
 }
-.white-card h2{
-  color:#0f172a;
-  font-weight:900;
-  font-size:28px;
-  margin-bottom:12px;
-}
+
 .white-card p,
-.white-card li{
-  color:#1e293b;
-  font-weight:600;
-  line-height:1.8;
-}
-.white-card ul{list-style:none;padding:0;margin:12px 0 0}
-.white-card ul li{
-  margin-bottom:6px;
-  border-left:4px solid #2563eb;
-  padding-left:10px;
+.white-card li {
+  color: #1e293b;
+  font-weight: 600;
+  line-height: 1.8;
 }
 
-/* 流程卡（白底藍邊，節點亮藍） */
-.flow-card{
-  background:#fff;
-  border:2px solid #2563eb;
-  border-radius:16px;
-  padding:20px;
-  margin-top:28px;
-  color:#1e293b;
-  box-shadow:0 4px 16px rgba(0,0,0,.05);
+.white-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
 }
-.flow{
-  display:flex;align-items:center;justify-content:center;
-  flex-wrap:wrap;gap:12px;
+
+.white-card ul li {
+  margin-bottom: 6px;
+  border-left: 4px solid #2563eb;
+  padding-left: 10px;
 }
-.flow .role{
-  background:#2563eb;
-  color:#fff;
-  border-radius:10px;
-  padding:10px 16px;
-  font-weight:700;
-}
-.flow .arrow{color:#2563eb;font-size:20px;font-weight:700}
 
 /* =========================
- *  Page4：分支卡片（領藥／研究）
+ *  流程卡（白底藍邊，節點亮藍）
  * ========================= */
-.page4 .branch-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
-  gap:18px;
+.flow-card {
+  background: #fff;
+  border: 2px solid #2563eb;
+  border-radius: 16px;
+  padding: 20px;
+  margin-top: 28px;
+  color: #1e293b;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .05);
 }
-.page4 .branch-card{
-  background:#0f2338;
-  border:1px solid rgba(255,255,255,.18);
-  border-radius:16px;
-  padding:18px;
-  color:#eaf2f9;
-  box-shadow:0 6px 16px rgba(0,0,0,.28);
-  transition:transform .2s,box-shadow .2s,border-color .2s,background .2s;
+
+.flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
-.page4 .branch-card h3{
-  margin:0 0 8px;color:#f8fafc;font-size:20px;font-weight:900;letter-spacing:.3px;
+
+.flow .role {
+  background: #2563eb;
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-weight: 700;
 }
-.page4 .branch-card p{margin:0 0 12px;color:#cbd5e1;line-height:1.7}
-.page4 .branch-card .badge{
-  display:inline-block;margin-bottom:10px;padding:6px 10px;
-  border-radius:999px;font-size:12px;background:#17375d;color:#9bd3ff;border:1px solid #5fd3ff;
-}
-.page4 .branch-card .actions{display:flex;gap:10px;flex-wrap:wrap}
-.page4 .branch-card:hover{
-  background:#17365a;border-color:#60a5fa;transform:translateY(-3px);
-  box-shadow:0 10px 24px rgba(0,0,0,.36);
+
+.flow .arrow {
+  color: #2563eb;
+  font-size: 20px;
+  font-weight: 700;
 }
 
 /* =========================
  *  Buttons（統一行動色）
  * ========================= */
-.btn-row{display:flex;justify-content:center;gap:14px;margin-top:28px}
+.btn-row {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 28px;
+}
 
-button.cta{
-  background:#16a34a;color:#fff;border:none;padding:12px 22px;
-  border-radius:12px;font-weight:700;cursor:pointer;font-size:16px;
+button.cta {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  padding: 12px 22px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }
-button.cta:hover{background:#22c55e;transition:.2s ease}
 
-button.blue{
-  background:#2563eb;border:none;color:#fff;padding:12px 22px;
-  border-radius:12px;font-weight:700;cursor:pointer;font-size:16px;
+button.cta:hover {
+  background: #22c55e;
+  transition: .2s ease;
 }
-button.blue:hover{background:#3b82f6}
-button.gray{
-  background:#64748b;border:none;color:#fff;padding:12px 22px;
-  border-radius:12px;font-weight:700;cursor:pointer;font-size:16px;
+
+button.blue {
+  background: #2563eb;
+  border: none;
+  color: #fff;
+  padding: 12px 22px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }
-button.gray:hover{background:#94a3b8}
+
+button.blue:hover {
+  background: #3b82f6;
+}
+
+button.gray {
+  background: #64748b;
+  border: none;
+  color: #fff;
+  padding: 12px 22px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button.gray:hover {
+  background: #94a3b8;
+}
 
 /* ===== Page1：Hero Card 動畫 ===== */
 .hero-card {
@@ -143,7 +176,7 @@ button.gray:hover{background:#94a3b8}
   color: #0f172a;
   border-radius: 20px;
   padding: 48px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
   text-align: center;
   animation: fadeUp 0.8s ease-out forwards;
 }
@@ -167,8 +200,13 @@ button.gray:hover{background:#94a3b8}
   transform: translateY(20px);
 }
 
-.hero-card p:nth-of-type(1) { animation: fadeUp 0.8s ease-out 0.3s forwards; }
-.hero-card p:nth-of-type(2) { animation: fadeUp 0.8s ease-out 0.5s forwards; }
+.hero-card p:nth-of-type(1) {
+  animation: fadeUp 0.8s ease-out 0.3s forwards;
+}
+
+.hero-card p:nth-of-type(2) {
+  animation: fadeUp 0.8s ease-out 0.5s forwards;
+}
 
 .hero-card button.cta {
   margin-top: 24px;
@@ -179,17 +217,24 @@ button.gray:hover{background:#94a3b8}
 
 /* 動畫關鍵影格 */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
+
 /* 讓卡片整體置中，但內文靠左且有固定寬度 */
 .hero-card {
   background: #fff;
   color: #0f172a;
   border-radius: 20px;
   padding: 40px;
-  box-shadow: 0 6px 20px rgba(0,0,0,.08);
-  text-align: center;                     /* 卡片本身置中（給標題用） */
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .08);
+  text-align: center; /* 卡片本身置中（給標題用） */
 }
 
 .hero-title {
@@ -200,9 +245,9 @@ button.gray:hover{background:#94a3b8}
 }
 
 .hero-body {
-  max-width: 860px;                       /* 內容寬度統一 */
-  margin: 0 auto;                         /* 置中容器 */
-  text-align: left;                       /* 文字靠左，不會看起來歪 */
+  max-width: 860px; /* 內容寬度統一 */
+  margin: 0 auto; /* 置中容器 */
+  text-align: left; /* 文字靠左，不會看起來歪 */
 }
 
 .hero-body .lead {
@@ -221,7 +266,7 @@ button.gray:hover{background:#94a3b8}
 
 .hero-body .bullets li {
   position: relative;
-  padding-left: 18px;                     /* 與符號距離 */
+  padding-left: 18px; /* 與符號距離 */
   margin: 6px 0;
   line-height: 1.8;
   color: #1f2937;
@@ -229,14 +274,15 @@ button.gray:hover{background:#94a3b8}
 }
 
 .hero-body .bullets li::before {
-  content: "•";                           /* 統一用實心圓 */
+  content: "•"; /* 統一用實心圓 */
   position: absolute;
   left: 0;
   top: 0;
-  color: #2563eb;                         /* 與藍色流程一致 */
+  color: #2563eb; /* 與藍色流程一致 */
   font-size: 20px;
   line-height: 1;
 }
+
 /* === 統一 Scene 頁面排版 === */
 .bonds-shell {
   width: 100%;
@@ -320,17 +366,23 @@ button.cta {
   font-weight: 700;
   cursor: pointer;
 }
-button.cta:hover { background: #22c55e; }
+
+button.cta:hover {
+  background: #22c55e;
+}
 
 button.ghost {
   background: transparent;
-  border: 1px solid rgba(255,255,255,0.25);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   color: #e2e8f0;
   padding: 10px 18px;
   border-radius: 12px;
   cursor: pointer;
 }
-button.ghost:hover { background: rgba(255,255,255,0.06); }
+
+button.ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
 
 /* == RWD 響應式排版 == */
 @media (max-width: 960px) {
@@ -347,4 +399,143 @@ button.ghost:hover { background: rgba(255,255,255,0.06); }
   .bonds-device {
     min-height: 260px;
   }
+}
+
+/* Page4 卡片區 */
+.branch-grid {
+  display: flex;
+  justify-content: space-between; /* 卡片間距均等 */
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.branch-card {
+  background: #0f2338; /* 深藍底 */
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 16px;
+  padding: 18px;
+  color: #eaf2f9;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .28);
+  transition: transform .2s, box-shadow .2s, border-color .2s, background .2s;
+  flex: 1 1 30%; /* 每張卡片寬度固定為 30% */
+}
+
+.branch-card h3 {
+  margin: 0 0 8px;
+  color: #f8fafc; /* 亮白主標 */
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: .3px;
+}
+
+.branch-card p {
+  margin: 0 0 12px;
+  color: #cbd5e1; /* 內文灰藍 */
+  line-height: 1.7;
+}
+
+.branch-card .badge {
+  display: inline-block;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #17375d;
+  color: #9bd3ff;
+  border: 1px solid #5fd3ff;
+}
+
+.branch-card .actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.branch-card:hover {
+  background: #17365a;
+  border-color: #60a5fa;
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .36);
+}
+/* 右側卡片調整，縮短空白間距 */
+.mock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* 調整間距，減少過大的空白 */
+  justify-content: flex-start;
+}
+
+.card.warn {
+  background: #f87171;  /* 鮮明警告顏色 */
+  color: #1f2937; /* 加強文字對比 */
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.card.warn .title {
+  font-weight: 700;
+  color: #1f2937;
+  font-size: 18px;
+}
+
+.tag.bad {
+  background: #b91c1c;
+  color: #ffd8e1;
+}
+
+.card.warn .description {
+  color: #fef2f2;
+  font-size: 14px;
+}
+.verify-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;  /* 保持適當的間隔 */
+}
+
+.result-card {
+  background: #1e293b; /* 深色背景 */
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  color: #e2e8f0; /* 高對比文字顏色 */
+}
+
+.result-card .line {
+  font-size: 16px;
+  color: #e2e8f0;
+  margin-bottom: 8px;
+}
+
+.result-card .line.ok {
+  color: #10b981; /* 綠色，標示無衝突 */
+}
+
+.insight {
+  background: #2563eb; /* 藍色背景 */
+  color: white;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+.hint {
+  font-size: 14px;
+  color: #d1d5db; /* 淡灰色文字 */
+  opacity: 0.7;
+}
+
+.hint.muted {
+  opacity: 0.4;
+}
+
+/* 改善文字對齊 */
+.verify-preview .result-card .line {
+  display: flex;
+  justify-content: space-between;
+}
+
+.verify-preview .result-card .line strong {
+  color: #10b981;  /* 高亮顯示標題文字 */
 }

@@ -2,6 +2,7 @@
 import { useNavigate } from "react-router-dom";
 import PageShell from "../components/PageShell";
 import { useDemo } from "../context";
+import qrImage from "../assets/診斷卡.png"; // 引入圖片
 
 export default function Scene02_IssuerVC() {
   const navigate = useNavigate();
@@ -21,17 +22,19 @@ export default function Scene02_IssuerVC() {
           </ul>
           <div className="navs">
             <button className="ghost" onClick={() => navigate("/scene01")}>← 上一幕</button>
-            <button className="cta" onClick={() => navigate("/scene03")}>阿朱用錢包掃描</button>
+            <button className="cta" onClick={() => navigate("/scene03")}>小朱用錢包掃描</button>
           </div>
         </>
       }
       right={
-        <div className="qr-preview">
-          <div className="qr-box pulse">Issuer QR（5:00）</div>
-          <div className="countdown">API：{baseUrl || "http://localhost:8000"}</div>
-          <div className="tag good">Scope: MEDICATION_PICKUP</div>
-          <div className="tag good">IAL2</div>
+        
+      <div className="mock">
+        <div className="card">
+          <h3>Issuer QR</h3>
+          <img src={qrImage} alt="QR Code" style={{ width: "100%", maxWidth: "600px", borderRadius: "12px" }} />
+          <p>QR Code 是由醫院產生，並且有 5 分鐘有效期，當病人領藥時，會自動過期。</p>
         </div>
+      </div>
       }
     />
   );
