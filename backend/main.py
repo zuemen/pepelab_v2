@@ -485,8 +485,8 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                     {"ename": ename, "content": content, "type": entry_type}
                 )
 
-                if cleaned_fields:
-                    field_map = {entry["ename"]: entry for entry in cleaned_fields}
+            if cleaned_fields:
+                field_map = {entry["ename"]: entry for entry in cleaned_fields}
                 for required_key in required_fields:
                     entry = field_map.get(required_key)
                     needs_fallback = not entry or not str(entry.get("content", "")).strip()
