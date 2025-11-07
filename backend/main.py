@@ -416,126 +416,71 @@ def _build_moda_field_entries(request: MODAIssuanceRequest) -> List[Dict[str, st
 
 
 def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        moda_request = MODAIssuanceRequest.parse_obj(raw_payload)
-    except ValidationError:
-        return raw_payload
+    """Coerce sandbox issuance payloads into the shape expected by MODA."""
 
-    payload = dict(raw_payload)
+    payload: Dict[str, Any] = dict(raw_payload or {})
 
-    slug = _normalize_vc_uid(moda_request.vc_uid)
+    vc_uid = payload.get("vcUid") or payload.get("vc_uid") or ""
+    slug = _normalize_vc_uid(vc_uid)
+
     identifiers = MODA_VC_IDENTIFIERS.get(slug, {})
-
-    payload["vcUid"] = moda_request.vc_uid or identifiers.get("vcUid")
-    if not payload.get("vcUid") and identifiers.get("vcUid"):
+    if not vc_uid and identifiers.get("vcUid"):
         payload["vcUid"] = identifiers["vcUid"]
-    if moda_request.vc_id:
-        payload["vcId"] = moda_request.vc_id
-    elif not payload.get("vcId") and identifiers.get("vcId"):
-        payload["vcId"] = identifiers["vcId"]
-    if moda_request.vc_cid:
-        payload["vcCid"] = moda_request.vc_cid
-    elif not payload.get("vcCid") and identifiers.get("vcCid"):
+    if not payload.get("vcCid") and identifiers.get("vcCid"):
         payload["vcCid"] = identifiers["vcCid"]
-    if moda_request.api_key:
-        payload["apiKey"] = moda_request.api_key
-    elif not payload.get("apiKey") and identifiers.get("apiKey"):
+    if not payload.get("vcId") and identifiers.get("vcId"):
+        payload["vcId"] = identifiers["vcId"]
+    if not payload.get("apiKey") and identifiers.get("apiKey"):
         payload["apiKey"] = identifiers["apiKey"]
-    if moda_request.issuer_id:
-        payload["issuerId"] = moda_request.issuer_id
-    if moda_request.holder_did:
-        payload["holderDid"] = moda_request.holder_did
 
-    if "issuanceDate" not in payload:
-        payload["issuanceDate"] = _format_gov_date(moda_request.issuance_date) or _format_gov_date(
-            date.today()
-        )
-    else:
-        payload["issuanceDate"] = _format_gov_date(payload["issuanceDate"])
+    issuance_value = payload.get("issuanceDate")
+    payload["issuanceDate"] = _format_gov_date(issuance_value) or _format_gov_date(date.today())
 
-    if "expiredDate" in payload:
-        payload["expiredDate"] = _format_gov_date(payload["expiredDate"])
-    elif moda_request.expired_date:
-        payload["expiredDate"] = _format_gov_date(moda_request.expired_date)
+    expiry_value = payload.get("expiredDate")
+    if expiry_value is not None:
+        payload["expiredDate"] = _format_gov_date(expiry_value)
 
-    fields = _build_moda_field_entries(moda_request)
-    payload["fields"] = fields
-
-    cleaned: Dict[str, Any] = {}
-    field_slug = _normalize_vc_uid(payload.get("vcUid"))
-    required_fields = MODA_VC_FIELD_KEYS.get(field_slug, []) or []
-    sample_values = MODA_SAMPLE_FIELD_VALUES.get(field_slug, {})
-
-    for key, value in payload.items():
-        if value is None:
-            continue
-        if key == "fields" and isinstance(value, list):
-            cleaned_fields = []
-            for item in value:
-                if not isinstance(item, dict):
+    normalized_fields: List[Dict[str, Any]] = []
+    raw_fields = payload.get("fields")
+    if isinstance(raw_fields, list):
+        for item in raw_fields:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name") or item.get("ename")
+            if not name:
+                continue
+            canonical_name = _canonical_alias_key(name)
+            raw_value: Any = item.get("value")
+            if raw_value is None:
+                raw_value = item.get("content")
+            if raw_value is None:
+                fallback = MODA_SAMPLE_FIELD_VALUES.get(slug, {}).get(canonical_name)
+                if fallback is None:
                     continue
-                ename = item.get("ename") or item.get("name")
-                if not ename:
-                    continue
-                content = item.get("content")
-                if content is None:
-                    content = item.get("value", "")
-                entry_type = item.get("type") or "NORMAL"
-                cleaned_fields.append(
-                    {"ename": ename, "content": content, "type": entry_type}
-                )
+                raw_value = fallback
 
-            if cleaned_fields:
-                field_map = {entry["ename"]: entry for entry in cleaned_fields}
-                for required_key in required_fields:
-                    entry = field_map.get(required_key)
-                    needs_fallback = not entry or not str(entry.get("content", "")).strip()
-                    if needs_fallback:
-                        fallback_value = sample_values.get(required_key)
-                        if fallback_value is not None:
-                            field_map[required_key] = {
-                                "ename": required_key,
-                                "content": fallback_value,
-                                "type": "NORMAL",
-                            }
+            text_value = raw_value
+            if isinstance(raw_value, (dict, list)):
+                text_value = json.dumps(raw_value, ensure_ascii=False)
+            elif isinstance(raw_value, (int, float)):
+                text_value = str(raw_value)
+            else:
+                text_value = str(raw_value).strip()
 
-                ordered_fields: List[Dict[str, str]] = []
-                for required_key in required_fields:
-                    entry = field_map.get(required_key)
-                    if not entry:
-                        continue
-                    content_text = str(entry.get("content", "")).strip()
-                    if content_text:
-                        ordered_fields.append(
-                            {
-                                "ename": required_key,
-                                "content": _normalize_moda_field_value(
-                                    required_key, content_text
-                                ),
-                            }
-                        )
+            if canonical_name in MODA_INTEGER_FIELDS:
+                digits = re.sub(r"[^0-9]", "", text_value)
+                text_value = digits or "0"
+            if canonical_name in MODA_DATE_FIELDS:
+                parsed = _parse_date_string(text_value)
+                if parsed:
+                    text_value = parsed.isoformat()
 
-                for entry in cleaned_fields:
-                    name = entry["ename"]
-                    if name in required_fields:
-                        continue
-                    content_text = str(entry.get("content", "")).strip()
-                    if content_text:
-                        ordered_fields.append(
-                            {
-                                "ename": name,
-                                "content": _normalize_moda_field_value(
-                                    name, content_text
-                                ),
-                            }
-                        )
+            normalized_fields.append({"name": canonical_name, "value": text_value})
 
-                if ordered_fields:
-                    cleaned[key] = ordered_fields
-            continue
-        cleaned[key] = value
+    if normalized_fields:
+        payload["fields"] = normalized_fields
 
-    return cleaned
+    return payload
 
 
 def require_issuer_token(
