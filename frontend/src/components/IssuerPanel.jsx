@@ -408,11 +408,18 @@ function convertToGovFormat({
     if (rawValue === undefined || rawValue === null) {
       return;
     }
-    const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
-    if (value === '' || value === null) {
+    let value = rawValue;
+    if (typeof value === 'number') {
+      value = String(value);
+    } else if (typeof value === 'string') {
+      value = value.trim();
+    } else {
+      value = String(value ?? '');
+    }
+    if (!value) {
       return;
     }
-    fields.push({ ename: name, content: value, type: 'NORMAL' });
+    fields.push({ ename: name, content: value });
   };
 
   if (scope === 'MEDICAL_RECORD' && payload?.condition) {
@@ -484,8 +491,6 @@ function convertToGovFormat({
     pushField('wallet_id', walletId);
   }
 
-  const filtered = fields;
-
   const payloadBase = {
     vcUid: normalizedIdentifiers.vcUid,
     issuanceDate,
@@ -505,24 +510,9 @@ function convertToGovFormat({
   assignIfPresent('vcId', normalizedIdentifiers.vcId);
   assignIfPresent('apiKey', normalizedIdentifiers.apiKey);
 
-  const integerFields = new Set(['qty_value', 'algy_severity']);
-  const normalizedFields = filtered.map(({ ename, content }) => {
-    if (ename === 'cons_end' || ename === 'pid_valid_to' || ename === 'cond_onset') {
-      const normalized = normalizeDate(content, expiry);
-      return { name: ename, value: normalized };
-    }
-    if (integerFields.has(ename)) {
-      const digits = normalizeDigits(content, {});
-      const value = digits ? digits : '0';
-      return { name: ename, value };
-    }
-    const trimmed = typeof content === 'string' ? content.trim() : String(content ?? '');
-    return { name: ename, value: trimmed };
-  });
-
   return {
     ...payloadBase,
-    fields: normalizedFields,
+    fields,
   };
 }
 

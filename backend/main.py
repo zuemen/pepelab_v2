@@ -475,7 +475,13 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                 if parsed:
                     text_value = parsed.isoformat()
 
-            normalized_fields.append({"name": canonical_name, "value": text_value})
+            field_entry: Dict[str, Any] = {
+                "ename": canonical_name,
+                "content": text_value,
+            }
+            if "type" in item and item.get("type") not in (None, ""):
+                field_entry["type"] = str(item.get("type")).strip()
+            normalized_fields.append(field_entry)
 
     if normalized_fields:
         payload["fields"] = normalized_fields
