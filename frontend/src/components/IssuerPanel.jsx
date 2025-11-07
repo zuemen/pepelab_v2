@@ -111,11 +111,11 @@ const INITIAL_CONDITION = {
 const INITIAL_MEDICATION = {
   id: `med-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://www.whocc.no/atc',
-  code: 'RX12345',
-  display: 'Omeprazole 20mg',
-  quantityText: '14 capsule',
-  doseText: 'Take 1 capsule once daily before breakfast',
-  daysSupply: 14,
+  code: 'A02BC05',
+  display: 'OMEPRAZOLE',
+  quantityText: '30 tablet',
+  doseText: 'BID 10ML',
+  daysSupply: 30,
   pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
 };
@@ -332,6 +332,11 @@ function normalizeCnEnText(value, fallback = '') {
   return cleaned || fallback;
 }
 
+function normalizeCnEnUpper(value, fallback = '') {
+  const cleaned = normalizeCnEnText(value, fallback);
+  return cleaned ? cleaned.toUpperCase() : cleaned;
+}
+
 function normalizeDate(value, fallbackMoment) {
   const parsed = dayjs(value);
   if (parsed.isValid()) {
@@ -341,10 +346,10 @@ function normalizeDate(value, fallbackMoment) {
   return fb.format('YYYY-MM-DD');
 }
 
-function normalizePath(value, fallback = 'https://example.org/consent/12345') {
+function normalizePath(value, fallback = 'IRB_2025_001') {
   const cleaned = String(value ?? '')
-    .trim()
-    .replace(/[^0-9A-Za-z/_:\.-]/g, '');
+    .replace(/[^0-9A-Za-z_-]/g, '')
+    .toUpperCase();
   return cleaned || fallback;
 }
 
@@ -401,16 +406,16 @@ function convertToGovFormat({
 
   if (scope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
-    const medCode = normalizeAlphaNumUpper(medication.code, 'RX12345');
-    const medName = normalizeCnEnText(medication.display, 'Omeprazole 20mg');
-    const doseText = normalizeCnEnText(
+    const medCode = normalizeAlphaNumUpper(medication.code, 'A02BC05');
+    const medName = normalizeCnEnUpper(medication.display, 'OMEPRAZOLE');
+    const doseText = normalizeCnEnUpper(
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      'Take 1 capsule once daily before breakfast'
+      'BID 10ML'
     );
     const qtyValue = normalizeDigits(quantityParts.value || medication.daysSupply, {
-      fallback: '14',
+      fallback: '30',
     });
-    const qtyUnit = normalizeCnEnText(quantityParts.unit || 'capsule', 'capsule');
+    const qtyUnit = normalizeCnEnUpper(quantityParts.unit || 'TABLET', 'TABLET');
     pushField('med_code', medCode);
     pushField('med_name', medName);
     pushField('dose_text', doseText);
@@ -419,9 +424,9 @@ function convertToGovFormat({
   }
 
   if (scope === 'CONSENT_CARD') {
-    const normalizedScope = normalizeCnEnText(consentScope, 'med_rx');
-    const normalizedPurpose = normalizeCnEnText(consentPurpose, 'Medication pickup at pharmacy');
-    const normalizedEnd = normalizeDate(expiry, expiry);
+    const normalizedScope = normalizeCnEnUpper(consentScope, 'MEDSSI01');
+    const normalizedPurpose = normalizeCnEnUpper(consentPurpose, 'MEDDATARESEARCH');
+    const normalizedEnd = normalizeDate(consentExpiry, expiry) || normalizeDate(expiry, expiry);
     const normalizedPath = normalizePath(consentPath);
     pushField('cons_scope', normalizedScope);
     pushField('cons_purpose', normalizedPurpose);
@@ -500,10 +505,10 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
   const [encounterHash, setEncounterHash] = useState(
     'urn:sha256:3a1f0c98c5d4a4efed2d4dfe58e8'
   );
-  const [consentExpiry, setConsentExpiry] = useState('');
-  const [consentScopeCode, setConsentScopeCode] = useState('med_rx');
-  const [consentPurpose, setConsentPurpose] = useState('Medication pickup at pharmacy');
-  const [consentPath, setConsentPath] = useState('https://example.org/consent/12345');
+  const [consentExpiry, setConsentExpiry] = useState('2025-12-31');
+  const [consentScopeCode, setConsentScopeCode] = useState('MEDSSI01');
+  const [consentPurpose, setConsentPurpose] = useState('MEDDATARESEARCH');
+  const [consentPath, setConsentPath] = useState('IRB_2025_001');
   const [medicalFields, setMedicalFields] = useState(
     DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', ')
   );
@@ -670,12 +675,19 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       return;
     }
 
+    console.log('🚀 發送 MODA 發卡請求', govPayload);
+
     try {
       const response = await client.issueWithData(govPayload, issuerToken);
       setLoading(false);
 
       if (!response.ok) {
-        setError(`(${response.status}) ${response.detail}`);
+        console.error('❌ Government API error:', response);
+        const detailText =
+          typeof response.detail === 'string'
+            ? response.detail
+            : JSON.stringify(response.detail, null, 2);
+        setError(`(${response.status}) ${detailText}`);
         return;
       }
 
@@ -691,7 +703,8 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       setSuccess(normalized);
     } catch (err) {
       setLoading(false);
-      setError(err.message || '發卡失敗，請稍後再試');
+      console.error('❌ 發卡流程失敗：', err);
+      setError(err?.message || '發卡失敗，請稍後再試');
     }
   }
 
@@ -700,7 +713,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setMedication(INITIAL_MEDICATION);
     setIncludeMedication(true);
     setEncounterHash('urn:sha256:3a1f0c98c5d4a4efed2d4dfe58e8');
-    setConsentExpiry(dayjs().add(90, 'day').format('YYYY-MM-DD'));
+    setConsentExpiry('2025-12-31');
     setConsentScopeCode('MEDSSI01');
     setConsentPurpose('MEDDATARESEARCH');
     setConsentPath('IRB_2025_001');
