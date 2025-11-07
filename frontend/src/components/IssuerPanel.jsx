@@ -104,9 +104,9 @@ const INITIAL_MEDICATION = {
   id: `med-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://www.whocc.no/atc',
   code: 'A02BC05',
-  display: 'OMEPRAZOLE',
-  quantityText: '30 tablet',
-  doseText: 'BID',
+  display: 'OMEPRAZOLE_20MG',
+  quantityText: '30TABLET',
+  doseText: 'BID_10ML',
   daysSupply: 30,
   pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
@@ -344,7 +344,7 @@ function normalizeDigits(value, { fallback = '', length } = {}) {
 function normalizeAlphaNumUpper(value, fallback = '') {
   const cleaned = String(value ?? '')
     .toUpperCase()
-    .replace(/[^0-9A-Z\u4E00-\u9FFF]/g, '')
+    .replace(/[^0-9A-Z_\u4E00-\u9FFF]/g, '')
     .trim();
   return cleaned || fallback;
 }
@@ -438,10 +438,10 @@ function convertToGovFormat({
   if (scope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
     const medCode = normalizeAlphaNumUpper(medication.code, 'A02BC05');
-    const medName = normalizeAlphaNumUpper(medication.display, 'OMEPRAZOLE');
+    const medName = normalizeAlphaNumUpper(medication.display, 'OMEPRAZOLE_20MG');
     const doseText = normalizeAlphaNumUpper(
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      'BID'
+      'BID_10ML'
     );
     const qtyValueDigits = normalizeDigits(quantityParts.value || medication.daysSupply, {
       fallback: '30',
