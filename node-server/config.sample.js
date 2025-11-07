@@ -35,7 +35,7 @@ module.exports = {
     vc_rx1: {
       med_code: 'A02BC05',
       med_name: 'OMEPRAZOLE',
-      dose_text: 'BID',
+      dose_text: 'BID_10ML',
       qty_value: '30',
       qty_unit: 'TABLET'
     },
