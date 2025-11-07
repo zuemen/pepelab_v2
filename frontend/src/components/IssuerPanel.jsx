@@ -344,7 +344,7 @@ function normalizeDigits(value, { fallback = '', length } = {}) {
 function normalizeAlphaNumUpper(value, fallback = '') {
   const cleaned = String(value ?? '')
     .toUpperCase()
-    .replace(/[^0-9A-Z\u4E00-\u9FFF]/g, '')
+    .replace(/[^0-9A-Z_\u4E00-\u9FFF]/g, '')
     .trim();
   return cleaned || fallback;
 }

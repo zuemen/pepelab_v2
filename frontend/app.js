@@ -287,6 +287,12 @@ function populateIssueSample() {
   set('orgAssigner', '臺北綜合醫院');
   set('issuedOn', defaultIssuedOn);
   set('consentExpires', defaultConsent);
+  set('consentScope', 'MEDSSI01');
+  set('cons_scope', 'MEDSSI01');
+  set('consentPurpose', 'MEDDATARESEARCH');
+  set('cons_purpose', 'MEDDATARESEARCH');
+  set('consentPath', 'IRB2025001');
+  set('cons_path', 'IRB2025001');
   set('medicationId', 'disp-001');
   set('medicationSystem', 'http://www.whocc.no/atc');
   set('medicationCode', 'A02BC05');
