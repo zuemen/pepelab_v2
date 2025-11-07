@@ -19,7 +19,7 @@ module.exports = {
     vc_cons: {
       cons_scope: 'MEDSSI01',
       cons_purpose: 'MEDDATARESEARCH',
-      cons_end: '20250507',
+      cons_end: '2025-05-07',
       cons_path: 'IRB_2025_001'
     },
     vc_cond: {

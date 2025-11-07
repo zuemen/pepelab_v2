@@ -372,15 +372,15 @@ function convertToGovFormat({
 
   const fields = [];
 
-  const pushField = (ename, content) => {
-    if (content === undefined || content === null) {
+  const pushField = (name, rawValue) => {
+    if (rawValue === undefined || rawValue === null) {
       return;
     }
-    const trimmed = String(content).trim();
-    if (!trimmed) {
+    const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
+    if (value === '' || value === null) {
       return;
     }
-    fields.push({ ename, content: trimmed });
+    fields.push({ name, value, type: 'NORMAL' });
   };
 
   if (scope === 'MEDICAL_RECORD' && payload?.condition) {
@@ -404,9 +404,10 @@ function convertToGovFormat({
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
       'BID10ML'
     );
-    const qtyValue = normalizeDigits(quantityParts.value || medication.daysSupply, {
+    const qtyValueDigits = normalizeDigits(quantityParts.value || medication.daysSupply, {
       fallback: '30',
     });
+    const qtyValue = qtyValueDigits ? Number(qtyValueDigits) : undefined;
     const qtyUnit = normalizeAlphaNumUpper(quantityParts.unit || 'TABLET', 'TABLET');
     pushField('med_code', medCode);
     pushField('med_name', medName);
@@ -418,10 +419,8 @@ function convertToGovFormat({
   if (scope === 'CONSENT_CARD') {
     const normalizedScope = normalizeAlphaNumUpper(consentScope, 'MEDSSI01');
     const normalizedPurpose = normalizeAlphaNumUpper(consentPurpose, 'MEDDATARESEARCH');
-    const endCandidate = normalizeDate(consentExpiry, expiry) || normalizeDate(expiry, expiry);
-    const normalizedEnd = normalizeDigits(endCandidate, {
-      fallback: expiry.format('YYYYMMDD'),
-    });
+    const endCandidate = normalizeDate(consentExpiry, expiry);
+    const normalizedEnd = normalizeDate(endCandidate, expiry);
     const normalizedPath = normalizePath(consentPath);
     pushField('cons_scope', normalizedScope);
     pushField('cons_purpose', normalizedPurpose);
