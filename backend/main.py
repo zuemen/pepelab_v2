@@ -135,11 +135,11 @@ def _normalize_identifier_slug(value: str) -> str:
 
 
 DEFAULT_MODA_VC_IDENTIFIERS: Dict[str, Dict[str, str]] = {
-    "vc_cons": {"vcUid": "00000000_vc_cons1", "vcCid": "vc_cons1"},
-    "vc_cond": {"vcUid": "00000000_vc_cond", "vcCid": "vc_cond"},
-    "vc_algy": {"vcUid": "00000000_vc_algy", "vcCid": "vc_algy"},
-    "vc_rx": {"vcUid": "00000000_vc_rx1", "vcCid": "vc_rx1"},
-    "vc_pid": {"vcUid": "00000000_vc_pid", "vcCid": "vc_pid"},
+    "cons1": {"vcUid": "00000000_vc_cons1", "vcCid": "vc_cons1"},
+    "cond": {"vcUid": "00000000_vc_cond", "vcCid": "vc_cond"},
+    "algy": {"vcUid": "00000000_vc_algy", "vcCid": "vc_algy"},
+    "rx1": {"vcUid": "00000000_vc_rx1", "vcCid": "vc_rx1"},
+    "pid": {"vcUid": "00000000_vc_pid", "vcCid": "vc_pid"},
 }
 
 
@@ -788,20 +788,20 @@ def _normalize_vc_uid(vc_uid: str) -> str:
 
 
 MODA_VC_SCOPE_MAP = {
-    "vc_cond": DisclosureScope.MEDICAL_RECORD,
-    "vc_algy": DisclosureScope.MEDICAL_RECORD,
-    "vc_cons": DisclosureScope.RESEARCH_ANALYTICS,
-    "vc_rx": DisclosureScope.MEDICATION_PICKUP,
-    "vc_pid": DisclosureScope.RESEARCH_ANALYTICS,
+    "cond": DisclosureScope.MEDICAL_RECORD,
+    "algy": DisclosureScope.MEDICAL_RECORD,
+    "cons1": DisclosureScope.RESEARCH_ANALYTICS,
+    "rx1": DisclosureScope.MEDICATION_PICKUP,
+    "pid": DisclosureScope.RESEARCH_ANALYTICS,
 }
 
 
 MODA_VC_FIELD_KEYS = {
-    "vc_cons": ["cons_scope", "cons_purpose", "cons_end", "cons_path"],
-    "vc_cond": ["cond_code", "cond_display", "cond_onset"],
-    "vc_algy": ["algy_code", "algy_name", "algy_severity"],
-    "vc_rx": ["med_code", "med_name", "dose_text", "qty_value", "qty_unit"],
-    "vc_pid": [
+    "cons1": ["cons_scope", "cons_purpose", "cons_end", "cons_path"],
+    "cond": ["cond_code", "cond_display", "cond_onset"],
+    "algy": ["algy_code", "algy_name", "algy_severity"],
+    "rx1": ["med_code", "med_name", "dose_text", "qty_value", "qty_unit"],
+    "pid": [
         "pid_hash",
         "pid_type",
         "pid_ver",
@@ -917,30 +917,30 @@ MODA_FIELD_LOWER_ALIASES = {
 
 
 MODA_SAMPLE_FIELD_VALUES = {
-    "vc_cons": {
+    "cons1": {
         "cons_scope": "MEDSSI01",
         "cons_purpose": "MEDDATARESEARCH",
         "cons_end": "2025-05-07",
         "cons_path": "IRB_2025_001",
     },
-    "vc_cond": {
+    "cond": {
         "cond_code": "K2970",
         "cond_display": "CHRONICGASTRITIS",
         "cond_onset": "2025-02-12",
     },
-    "vc_algy": {
+    "algy": {
         "algy_code": "ALG001",
         "algy_name": "PENICILLIN",
         "algy_severity": "2",
     },
-    "vc_rx": {
+    "rx1": {
         "med_code": "A02BC05",
         "med_name": "OMEPRAZOLE",
         "dose_text": "BID10ML",
         "qty_value": "30",
         "qty_unit": "TABLET",
     },
-    "vc_pid": {
+    "pid": {
         "pid_hash": "12345678",
         "pid_type": "01",
         "pid_ver": "01",

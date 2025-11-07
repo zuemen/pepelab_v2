@@ -129,6 +129,38 @@ const INITIAL_IDENTITY = {
   walletId: '10000001',
 };
 
+const CARD_IDENTIFIER_MIGRATIONS = {
+  MEDICATION_PICKUP: {
+    vcUid: ['00000000_vc_rx'],
+    vcCid: ['vc_rx'],
+  },
+  CONSENT_CARD: {
+    vcUid: ['00000000_vc_cons'],
+    vcCid: ['vc_cons'],
+  },
+};
+
+function applyIdentifierDefaults(scope, stored) {
+  const defaults = DEFAULT_CARD_IDENTIFIERS[scope];
+  const migrated = { ...defaults, ...(stored || {}) };
+  const migration = CARD_IDENTIFIER_MIGRATIONS[scope];
+  if (migration) {
+    if (migration.vcUid?.includes(migrated.vcUid)) {
+      migrated.vcUid = defaults.vcUid;
+    }
+    if (migration.vcCid?.includes(migrated.vcCid)) {
+      migrated.vcCid = defaults.vcCid;
+    }
+  }
+  if (!migrated.vcUid) {
+    migrated.vcUid = defaults.vcUid;
+  }
+  if (!migrated.vcCid) {
+    migrated.vcCid = defaults.vcCid;
+  }
+  return migrated;
+}
+
 function buildPayload({
   condition,
   includeMedication,
@@ -536,26 +568,17 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
       }
       const parsed = JSON.parse(stored);
       return {
-        MEDICAL_RECORD: {
-          ...DEFAULT_CARD_IDENTIFIERS.MEDICAL_RECORD,
-          ...(parsed.MEDICAL_RECORD || {}),
-        },
-        MEDICATION_PICKUP: {
-          ...DEFAULT_CARD_IDENTIFIERS.MEDICATION_PICKUP,
-          ...(parsed.MEDICATION_PICKUP || {}),
-        },
-        CONSENT_CARD: {
-          ...DEFAULT_CARD_IDENTIFIERS.CONSENT_CARD,
-          ...(parsed.CONSENT_CARD || {}),
-        },
-        ALLERGY_CARD: {
-          ...DEFAULT_CARD_IDENTIFIERS.ALLERGY_CARD,
-          ...(parsed.ALLERGY_CARD || {}),
-        },
-        IDENTITY_CARD: {
-          ...DEFAULT_CARD_IDENTIFIERS.IDENTITY_CARD,
-          ...(parsed.IDENTITY_CARD || {}),
-        },
+        MEDICAL_RECORD: applyIdentifierDefaults(
+          'MEDICAL_RECORD',
+          parsed.MEDICAL_RECORD
+        ),
+        MEDICATION_PICKUP: applyIdentifierDefaults(
+          'MEDICATION_PICKUP',
+          parsed.MEDICATION_PICKUP
+        ),
+        CONSENT_CARD: applyIdentifierDefaults('CONSENT_CARD', parsed.CONSENT_CARD),
+        ALLERGY_CARD: applyIdentifierDefaults('ALLERGY_CARD', parsed.ALLERGY_CARD),
+        IDENTITY_CARD: applyIdentifierDefaults('IDENTITY_CARD', parsed.IDENTITY_CARD),
       };
     } catch (err) {
       console.warn('Unable to restore government VC identifiers', err);
