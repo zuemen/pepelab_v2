@@ -32,11 +32,11 @@ const PRIMARY_SCOPE_OPTIONS = [
   },
   {
     value: 'MEDICATION_PICKUP',
-    label: '處方領藥卡（vc_rx）－3 天後自動刪除',
+    label: '處方領藥卡（vc_rx1）－3 天後自動刪除',
   },
   {
     value: 'CONSENT_CARD',
-    label: '數據同意卡（vc_cons）－180 天授權保留',
+    label: '數據同意卡（vc_cons1）－180 天授權保留',
   },
   {
     value: 'ALLERGY_CARD',
@@ -50,8 +50,8 @@ const PRIMARY_SCOPE_OPTIONS = [
 
 const SCOPE_TO_VC_UID = {
   MEDICAL_RECORD: '00000000_vc_cond',
-  MEDICATION_PICKUP: '00000000_vc_rx',
-  CONSENT_CARD: '00000000_vc_cons',
+  MEDICATION_PICKUP: '00000000_vc_rx1',
+  CONSENT_CARD: '00000000_vc_cons1',
   ALLERGY_CARD: '00000000_vc_algy',
   IDENTITY_CARD: '00000000_vc_pid',
 };
@@ -64,14 +64,14 @@ const DEFAULT_CARD_IDENTIFIERS = {
     apiKey: '',
   },
   MEDICATION_PICKUP: {
-    vcUid: '00000000_vc_rx',
-    vcCid: 'vc_rx',
+    vcUid: '00000000_vc_rx1',
+    vcCid: 'vc_rx1',
     vcId: '',
     apiKey: '',
   },
   CONSENT_CARD: {
-    vcUid: '00000000_vc_cons',
-    vcCid: 'vc_cons',
+    vcUid: '00000000_vc_cons1',
+    vcCid: 'vc_cons1',
     vcId: '',
     apiKey: '',
   },

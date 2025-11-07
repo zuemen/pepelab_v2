@@ -16,7 +16,7 @@ module.exports = {
 
   // 預設欄位值：依官方樣板建議，可依實際資料覆寫
   cards: {
-    vc_cons: {
+    vc_cons1: {
       cons_scope: 'MEDSSI01',
       cons_purpose: 'MEDDATARESEARCH',
       cons_end: '2025-05-07',
@@ -32,7 +32,7 @@ module.exports = {
       algy_name: 'PENICILLIN',
       algy_severity: '2'
     },
-    vc_rx: {
+    vc_rx1: {
       med_code: 'A02BC05',
       med_name: 'OMEPRAZOLE',
       dose_text: 'BID10ML',

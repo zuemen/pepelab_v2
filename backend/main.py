@@ -135,10 +135,10 @@ def _normalize_identifier_slug(value: str) -> str:
 
 
 DEFAULT_MODA_VC_IDENTIFIERS: Dict[str, Dict[str, str]] = {
-    "vc_cons": {"vcUid": "00000000_vc_cons", "vcCid": "vc_cons"},
+    "vc_cons": {"vcUid": "00000000_vc_cons1", "vcCid": "vc_cons1"},
     "vc_cond": {"vcUid": "00000000_vc_cond", "vcCid": "vc_cond"},
     "vc_algy": {"vcUid": "00000000_vc_algy", "vcCid": "vc_algy"},
-    "vc_rx": {"vcUid": "00000000_vc_rx", "vcCid": "vc_rx"},
+    "vc_rx": {"vcUid": "00000000_vc_rx1", "vcCid": "vc_rx1"},
     "vc_pid": {"vcUid": "00000000_vc_pid", "vcCid": "vc_pid"},
 }
 
