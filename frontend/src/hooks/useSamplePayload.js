@@ -47,18 +47,18 @@ export function buildSamplePayload({
             {
               system: 'http://www.whocc.no/atc',
               code: 'A02BC05',
-              display: 'Omeprazole 20mg',
+              display: 'OMEPRAZOLE',
             },
           ],
-          text: 'Omeprazole 20mg',
+          text: 'OMEPRAZOLE',
         },
-        quantity_text: '30 capsules',
+        quantity_text: '30 TABLET',
         days_supply: 30,
         performer: {
           system: 'did:example',
           value: 'did:example:rx-unit-01',
         },
-        pickup_window_end: dayjs().add(7, 'day').format('YYYY-MM-DD'),
+        pickup_window_end: dayjs().add(3, 'day').format('YYYY-MM-DD'),
       },
     ],
   };

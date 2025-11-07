@@ -364,15 +364,24 @@ def _format_gov_date(value: Optional[Union[str, date, datetime]]) -> Optional[st
 
 def _build_moda_field_entries(request: MODAIssuanceRequest) -> List[Dict[str, str]]:
     vc_slug = _normalize_vc_uid(request.vc_uid)
-    provided: Dict[str, str] = {}
+    provided: Dict[str, Dict[str, str]] = {}
     for field in request.fields:
         canonical = _canonical_alias_key(field.ename)
         if not canonical:
             continue
-        provided[canonical] = field.content or ""
+        field_type = (field.field_type or "NORMAL").strip() or "NORMAL"
+        provided[canonical] = {
+            "content": "" if field.content is None else str(field.content),
+            "type": field_type,
+        }
 
-    sample_values = MODA_SAMPLE_FIELD_VALUES.get(vc_slug, {})
-    merged = {**sample_values, **provided}
+    sample_raw = MODA_SAMPLE_FIELD_VALUES.get(vc_slug, {})
+    sample_values: Dict[str, Dict[str, str]] = {
+        key: {"content": value, "type": "NORMAL"}
+        for key, value in sample_raw.items()
+    }
+
+    merged: Dict[str, Dict[str, str]] = {**sample_values, **provided}
 
     required_order = MODA_VC_FIELD_KEYS.get(vc_slug)
     if not required_order:
@@ -394,129 +403,84 @@ def _build_moda_field_entries(request: MODAIssuanceRequest) -> List[Dict[str, st
 
     fields: List[Dict[str, str]] = []
     for key in ordered_keys:
-        value = merged.get(key, "")
-        fields.append({"ename": key, "content": value})
+        entry = merged.get(key, {"content": "", "type": "NORMAL"})
+        fields.append(
+            {
+                "ename": key,
+                "content": entry.get("content", ""),
+                "type": entry.get("type", "NORMAL") or "NORMAL",
+            }
+        )
 
     return fields
 
 
 def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        moda_request = MODAIssuanceRequest.parse_obj(raw_payload)
-    except ValidationError:
-        return raw_payload
+    """Coerce sandbox issuance payloads into the shape expected by MODA."""
 
-    payload = dict(raw_payload)
+    payload: Dict[str, Any] = dict(raw_payload or {})
 
-    slug = _normalize_vc_uid(moda_request.vc_uid)
+    vc_uid = payload.get("vcUid") or payload.get("vc_uid") or ""
+    slug = _normalize_vc_uid(vc_uid)
+
     identifiers = MODA_VC_IDENTIFIERS.get(slug, {})
-
-    payload["vcUid"] = moda_request.vc_uid or identifiers.get("vcUid")
-    if not payload.get("vcUid") and identifiers.get("vcUid"):
+    if not vc_uid and identifiers.get("vcUid"):
         payload["vcUid"] = identifiers["vcUid"]
-    if moda_request.vc_id:
-        payload["vcId"] = moda_request.vc_id
-    elif not payload.get("vcId") and identifiers.get("vcId"):
-        payload["vcId"] = identifiers["vcId"]
-    if moda_request.vc_cid:
-        payload["vcCid"] = moda_request.vc_cid
-    elif not payload.get("vcCid") and identifiers.get("vcCid"):
+    if not payload.get("vcCid") and identifiers.get("vcCid"):
         payload["vcCid"] = identifiers["vcCid"]
-    if moda_request.api_key:
-        payload["apiKey"] = moda_request.api_key
-    elif not payload.get("apiKey") and identifiers.get("apiKey"):
+    if not payload.get("vcId") and identifiers.get("vcId"):
+        payload["vcId"] = identifiers["vcId"]
+    if not payload.get("apiKey") and identifiers.get("apiKey"):
         payload["apiKey"] = identifiers["apiKey"]
-    if moda_request.issuer_id:
-        payload["issuerId"] = moda_request.issuer_id
-    if moda_request.holder_did:
-        payload["holderDid"] = moda_request.holder_did
 
-    if "issuanceDate" not in payload:
-        payload["issuanceDate"] = _format_gov_date(moda_request.issuance_date) or _format_gov_date(
-            date.today()
-        )
-    else:
-        payload["issuanceDate"] = _format_gov_date(payload["issuanceDate"])
+    issuance_value = payload.get("issuanceDate")
+    payload["issuanceDate"] = _format_gov_date(issuance_value) or _format_gov_date(date.today())
 
-    if "expiredDate" in payload:
-        payload["expiredDate"] = _format_gov_date(payload["expiredDate"])
-    elif moda_request.expired_date:
-        payload["expiredDate"] = _format_gov_date(moda_request.expired_date)
+    expiry_value = payload.get("expiredDate")
+    if expiry_value is not None:
+        payload["expiredDate"] = _format_gov_date(expiry_value)
 
-    fields = _build_moda_field_entries(moda_request)
-    payload["fields"] = fields
-
-    if slug:
-        if not payload.get("type"):
-            payload["type"] = slug
-    elif identifiers.get("vcCid") and not payload.get("type"):
-        payload["type"] = identifiers["vcCid"]
-
-    cleaned: Dict[str, Any] = {}
-    field_slug = _normalize_vc_uid(payload.get("vcUid"))
-    required_fields = MODA_VC_FIELD_KEYS.get(field_slug, []) or []
-    sample_values = MODA_SAMPLE_FIELD_VALUES.get(field_slug, {})
-
-    for key, value in payload.items():
-        if value is None:
-            continue
-        if key == "fields" and isinstance(value, list):
-            cleaned_fields = []
-            for item in value:
-                if not isinstance(item, dict):
+    normalized_fields: List[Dict[str, Any]] = []
+    raw_fields = payload.get("fields")
+    if isinstance(raw_fields, list):
+        for item in raw_fields:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name") or item.get("ename")
+            if not name:
+                continue
+            canonical_name = _canonical_alias_key(name)
+            raw_value: Any = item.get("value")
+            if raw_value is None:
+                raw_value = item.get("content")
+            if raw_value is None:
+                fallback = MODA_SAMPLE_FIELD_VALUES.get(slug, {}).get(canonical_name)
+                if fallback is None:
                     continue
-                ename = item.get("ename")
-                if not ename:
-                    continue
-                content = item.get("content", "")
-                cleaned_fields.append({"ename": ename, "content": content})
+                raw_value = fallback
 
-            if cleaned_fields:
-                field_map = {entry["ename"]: entry for entry in cleaned_fields}
-                for required_key in required_fields:
-                    entry = field_map.get(required_key)
-                    needs_fallback = not entry or not str(entry.get("content", "")).strip()
-                    if needs_fallback:
-                        fallback_value = sample_values.get(required_key)
-                        if fallback_value is not None:
-                            field_map[required_key] = {
-                                "ename": required_key,
-                                "content": fallback_value,
-                            }
+            text_value = raw_value
+            if isinstance(raw_value, (dict, list)):
+                text_value = json.dumps(raw_value, ensure_ascii=False)
+            elif isinstance(raw_value, (int, float)):
+                text_value = str(raw_value)
+            else:
+                text_value = str(raw_value).strip()
 
-                ordered_fields: List[Dict[str, str]] = []
-                for required_key in required_fields:
-                    entry = field_map.get(required_key)
-                    if not entry:
-                        continue
-                    content_text = str(entry.get("content", "")).strip()
-                    if content_text:
-                        ordered_fields.append(
-                            {
-                                "ename": required_key,
-                                "content": content_text,
-                            }
-                        )
+            if canonical_name in MODA_INTEGER_FIELDS:
+                digits = re.sub(r"[^0-9]", "", text_value)
+                text_value = digits or "0"
+            if canonical_name in MODA_DATE_FIELDS:
+                parsed = _parse_date_string(text_value)
+                if parsed:
+                    text_value = parsed.isoformat()
 
-                for entry in cleaned_fields:
-                    name = entry["ename"]
-                    if name in required_fields:
-                        continue
-                    content_text = str(entry.get("content", "")).strip()
-                    if content_text:
-                        ordered_fields.append(
-                            {
-                                "ename": name,
-                                "content": content_text,
-                            }
-                        )
+            normalized_fields.append({"name": canonical_name, "value": text_value})
 
-                if ordered_fields:
-                    cleaned[key] = ordered_fields
-            continue
-        cleaned[key] = value
+    if normalized_fields:
+        payload["fields"] = normalized_fields
 
-    return cleaned
+    return payload
 
 
 def require_issuer_token(
@@ -654,8 +618,12 @@ class ResetResponse(BaseModel):
 
 
 class MODAIssuanceField(BaseModel):
-    ename: str
-    content: Optional[str] = ""
+    ename: str = Field(..., alias="name")
+    content: Optional[Union[str, int, float]] = Field("", alias="value")
+    field_type: Optional[str] = Field("NORMAL", alias="type")
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class MODAIssuanceRequest(BaseModel):
@@ -950,10 +918,10 @@ MODA_FIELD_LOWER_ALIASES = {
 
 MODA_SAMPLE_FIELD_VALUES = {
     "vc_cons": {
-        "cons_scope": "med_rx",
-        "cons_purpose": "Medication pickup at pharmacy",
-        "cons_end": "2025-12-31",
-        "cons_path": "https://example.org/consent/12345",
+        "cons_scope": "MEDSSI01",
+        "cons_purpose": "MEDDATARESEARCH",
+        "cons_end": "2025-05-07",
+        "cons_path": "IRB_2025_001",
     },
     "vc_cond": {
         "cond_code": "K2970",
@@ -966,11 +934,11 @@ MODA_SAMPLE_FIELD_VALUES = {
         "algy_severity": "2",
     },
     "vc_rx": {
-        "med_code": "RX12345",
-        "med_name": "Omeprazole 20mg",
-        "dose_text": "Take 1 capsule once daily before breakfast",
-        "qty_value": "14",
-        "qty_unit": "capsule",
+        "med_code": "A02BC05",
+        "med_name": "OMEPRAZOLE",
+        "dose_text": "BID10ML",
+        "qty_value": "30",
+        "qty_unit": "TABLET",
     },
     "vc_pid": {
         "pid_hash": "12345678",
@@ -981,6 +949,38 @@ MODA_SAMPLE_FIELD_VALUES = {
         "wallet_id": "10000001",
     },
 }
+
+MODA_DATE_FIELDS = {"cons_end", "cond_onset", "pid_valid_to", "pickup_deadline"}
+MODA_INTEGER_FIELDS = {"qty_value", "algy_severity"}
+
+
+def _parse_date_string(value: str) -> Optional[date]:
+    for pattern in ("%Y-%m-%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(value, pattern).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _normalize_moda_field_value(field_name: str, value: str) -> str:
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return ""
+
+    if field_name in MODA_DATE_FIELDS:
+        parsed = _parse_date_string(text)
+        if parsed:
+            return parsed.isoformat()
+        return text
+
+    if field_name in MODA_INTEGER_FIELDS:
+        digits = re.sub(r"[^0-9]", "", text)
+        if digits:
+            return digits
+        return text
+
+    return text
 
 
 CAMEL_TO_SNAKE = re.compile(r"(?<!^)(?=[A-Z])")
@@ -1675,11 +1675,13 @@ def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOf
     for field in request.fields:
         if not field.ename:
             continue
-        raw_fields[field.ename] = field.content or ""
+        raw_value = field.content
+        value_text = "" if raw_value is None else str(raw_value)
+        raw_fields[field.ename] = value_text
         key = _canonical_alias_key(field.ename)
         if not key:
             continue
-        canonical_fields[key] = field.content or ""
+        canonical_fields[key] = value_text
     alias_map = _expand_aliases(canonical_fields)
 
     sample_values = MODA_SAMPLE_FIELD_VALUES.get(vc_slug, {})
