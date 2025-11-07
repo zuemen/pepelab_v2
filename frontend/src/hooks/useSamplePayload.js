@@ -52,7 +52,7 @@ export function buildSamplePayload({
           ],
           text: 'OMEPRAZOLE',
         },
-        quantity_text: '30 TABLET',
+        quantity_text: '30_TABLET',
         days_supply: 30,
         performer: {
           system: 'did:example',
