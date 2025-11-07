@@ -106,7 +106,7 @@ const INITIAL_MEDICATION = {
   code: 'A02BC05',
   display: 'OMEPRAZOLE',
   quantityText: '30 tablet',
-  doseText: 'BID10ML',
+  doseText: 'BID',
   daysSupply: 30,
   pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
@@ -441,7 +441,7 @@ function convertToGovFormat({
     const medName = normalizeAlphaNumUpper(medication.display, 'OMEPRAZOLE');
     const doseText = normalizeAlphaNumUpper(
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      'BID10ML'
+      'BID'
     );
     const qtyValueDigits = normalizeDigits(quantityParts.value || medication.daysSupply, {
       fallback: '30',
