@@ -370,7 +370,7 @@ function normalizeDate(value, fallbackMoment) {
   return fb.format('YYYY-MM-DD');
 }
 
-function normalizePath(value, fallback = 'IRB_2025_001') {
+function normalizePath(value, fallback = 'IRB2025001') {
   const cleaned = String(value ?? '')
     .replace(/[^0-9A-Za-z_-]/g, '')
     .toUpperCase();
