@@ -1165,7 +1165,7 @@ def _sample_payload() -> CredentialPayload:
         "consent": {
             "scope": "research_info",
             "purpose": "AI 胃炎趨勢研究",
-            "issuer": "MOHW-IRB-2025-001",
+            "issuer": "MOHW-IRB2025001",
             "path": "medssi://consent/irb-2025-001",
             "expires_on": (today + timedelta(days=180)).isoformat(),
         },
