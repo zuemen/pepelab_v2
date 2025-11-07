@@ -380,7 +380,7 @@ function convertToGovFormat({
     if (value === '' || value === null) {
       return;
     }
-    fields.push({ name, value, type: 'NORMAL' });
+    fields.push({ ename: name, content: value, type: 'NORMAL' });
   };
 
   if (scope === 'MEDICAL_RECORD' && payload?.condition) {
@@ -407,7 +407,7 @@ function convertToGovFormat({
     const qtyValueDigits = normalizeDigits(quantityParts.value || medication.daysSupply, {
       fallback: '30',
     });
-    const qtyValue = qtyValueDigits ? Number(qtyValueDigits) : undefined;
+    const qtyValue = qtyValueDigits ? qtyValueDigits : undefined;
     const qtyUnit = normalizeAlphaNumUpper(quantityParts.unit || 'TABLET', 'TABLET');
     pushField('med_code', medCode);
     pushField('med_name', medName);

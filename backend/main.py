@@ -406,8 +406,8 @@ def _build_moda_field_entries(request: MODAIssuanceRequest) -> List[Dict[str, st
         entry = merged.get(key, {"content": "", "type": "NORMAL"})
         fields.append(
             {
-                "name": key,
-                "value": entry.get("content", ""),
+                "ename": key,
+                "content": entry.get("content", ""),
                 "type": entry.get("type", "NORMAL") or "NORMAL",
             }
         )
@@ -482,20 +482,20 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                     content = item.get("value", "")
                 entry_type = item.get("type") or "NORMAL"
                 cleaned_fields.append(
-                    {"name": ename, "value": content, "type": entry_type}
+                    {"ename": ename, "content": content, "type": entry_type}
                 )
 
             if cleaned_fields:
-                field_map = {entry["name"]: entry for entry in cleaned_fields}
+                field_map = {entry["ename"]: entry for entry in cleaned_fields}
                 for required_key in required_fields:
                     entry = field_map.get(required_key)
-                    needs_fallback = not entry or not str(entry.get("value", "")).strip()
+                    needs_fallback = not entry or not str(entry.get("content", "")).strip()
                     if needs_fallback:
                         fallback_value = sample_values.get(required_key)
                         if fallback_value is not None:
                             field_map[required_key] = {
-                                "name": required_key,
-                                "value": fallback_value,
+                                "ename": required_key,
+                                "content": fallback_value,
                                 "type": "NORMAL",
                             }
 
@@ -504,31 +504,29 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                     entry = field_map.get(required_key)
                     if not entry:
                         continue
-                    content_text = str(entry.get("value", "")).strip()
+                    content_text = str(entry.get("content", "")).strip()
                     if content_text:
                         ordered_fields.append(
                             {
-                                "name": required_key,
-                                "value": _normalize_moda_field_value(
+                                "ename": required_key,
+                                "content": _normalize_moda_field_value(
                                     required_key, content_text
                                 ),
-                                "type": entry.get("type", "NORMAL") or "NORMAL",
                             }
                         )
 
                 for entry in cleaned_fields:
-                    name = entry["name"]
+                    name = entry["ename"]
                     if name in required_fields:
                         continue
-                    content_text = str(entry.get("value", "")).strip()
+                    content_text = str(entry.get("content", "")).strip()
                     if content_text:
                         ordered_fields.append(
                             {
-                                "name": name,
-                                "value": _normalize_moda_field_value(
+                                "ename": name,
+                                "content": _normalize_moda_field_value(
                                     name, content_text
                                 ),
-                                "type": entry.get("type", "NORMAL") or "NORMAL",
                             }
                         )
 
@@ -1020,7 +1018,7 @@ def _parse_date_string(value: str) -> Optional[date]:
     return None
 
 
-def _normalize_moda_field_value(field_name: str, value: str) -> Union[str, int]:
+def _normalize_moda_field_value(field_name: str, value: str) -> str:
     text = "" if value is None else str(value).strip()
     if not text:
         return ""
@@ -1034,10 +1032,7 @@ def _normalize_moda_field_value(field_name: str, value: str) -> Union[str, int]:
     if field_name in MODA_INTEGER_FIELDS:
         digits = re.sub(r"[^0-9]", "", text)
         if digits:
-            try:
-                return int(digits)
-            except ValueError:
-                return digits
+            return digits
         return text
 
     return text
