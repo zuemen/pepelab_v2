@@ -473,9 +473,23 @@ function convertToGovFormat({
   assignIfPresent('vcId', normalizedIdentifiers.vcId);
   assignIfPresent('apiKey', normalizedIdentifiers.apiKey);
 
+  const integerFields = new Set(['qty_value', 'algy_severity']);
+  const normalizedFields = filtered.map(({ ename, content }) => {
+    if (ename === 'cons_end' || ename === 'pid_valid_to' || ename === 'cond_onset') {
+      const normalized = normalizeDate(content, expiry);
+      return { name: ename, value: normalized };
+    }
+    if (integerFields.has(ename)) {
+      const digits = normalizeDigits(content, {});
+      const value = digits ? Number(digits) : 0;
+      return { name: ename, value };
+    }
+    return { name: ename, value: typeof content === 'string' ? content.trim() : content };
+  });
+
   return {
     ...payloadBase,
-    fields: filtered,
+    fields: normalizedFields,
   };
 }
 

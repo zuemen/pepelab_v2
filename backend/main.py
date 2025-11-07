@@ -485,8 +485,8 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                     {"ename": ename, "content": content, "type": entry_type}
                 )
 
-            if cleaned_fields:
-                field_map = {entry["ename"]: entry for entry in cleaned_fields}
+                if cleaned_fields:
+                    field_map = {entry["ename"]: entry for entry in cleaned_fields}
                 for required_key in required_fields:
                     entry = field_map.get(required_key)
                     needs_fallback = not entry or not str(entry.get("content", "")).strip()
@@ -531,7 +531,22 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                         )
 
                 if ordered_fields:
-                    cleaned[key] = ordered_fields
+                    normalized_fields: List[Dict[str, Any]] = []
+                    for entry in ordered_fields:
+                        field_name = entry.get("ename")
+                        if not field_name:
+                            continue
+                        value_text = entry.get("content", "")
+                        coerced: Any = value_text
+                        if field_name in MODA_INTEGER_FIELDS:
+                            digits = re.sub(r"[^0-9]", "", str(value_text))
+                            if digits:
+                                coerced = int(digits)
+                        normalized_fields.append(
+                            {"name": field_name, "value": coerced}
+                        )
+                    if normalized_fields:
+                        cleaned[key] = normalized_fields
             continue
         cleaned[key] = value
 
