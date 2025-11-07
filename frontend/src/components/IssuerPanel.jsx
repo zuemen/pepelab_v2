@@ -481,10 +481,11 @@ function convertToGovFormat({
     }
     if (integerFields.has(ename)) {
       const digits = normalizeDigits(content, {});
-      const value = digits ? Number(digits) : 0;
+      const value = digits ? digits : '0';
       return { name: ename, value };
     }
-    return { name: ename, value: typeof content === 'string' ? content.trim() : content };
+    const trimmed = typeof content === 'string' ? content.trim() : String(content ?? '');
+    return { name: ename, value: trimmed };
   });
 
   return {
