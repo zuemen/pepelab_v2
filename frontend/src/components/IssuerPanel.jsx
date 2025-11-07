@@ -532,7 +532,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
   const [consentExpiry, setConsentExpiry] = useState('2025-12-31');
   const [consentScopeCode, setConsentScopeCode] = useState('MEDSSI01');
   const [consentPurpose, setConsentPurpose] = useState('MEDDATARESEARCH');
-  const [consentPath, setConsentPath] = useState('IRB_2025_001');
+  const [consentPath, setConsentPath] = useState('IRB2025001');
   const [medicalFields, setMedicalFields] = useState(
     DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', ')
   );
@@ -731,7 +731,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setConsentExpiry('2025-12-31');
     setConsentScopeCode('MEDSSI01');
     setConsentPurpose('MEDDATARESEARCH');
-    setConsentPath('IRB_2025_001');
+    setConsentPath('IRB2025001');
     setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
     setMedicationFields(DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', '));
     setConsentFields(DEFAULT_DISCLOSURES.CONSENT_CARD.join(', '));
