@@ -53,6 +53,7 @@ export function buildSamplePayload({
           text: 'OMEPRAZOLE_20MG',
         },
         quantity_text: '30TABLET',
+        dosage_text: 'BID_10ML',
         days_supply: 30,
         performer: {
           system: 'did:example',

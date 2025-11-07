@@ -49,7 +49,7 @@ const plusDays = (date, days) => {
 const defaultRecordedDate = iso(today);
 const defaultIssuedOn = iso(today);
 const defaultConsent = iso(plusDays(today, 180));
-const defaultPickup = iso(plusDays(today, 7));
+const defaultPickup = iso(plusDays(today, 3));
 
 const setIfExists = (selector, value) => {
   const el = document.querySelector(selector);
@@ -64,8 +64,14 @@ setIfExists('input[name="recordedDate"]', defaultRecordedDate);
 setIfExists('input[name="issuedOn"]', defaultIssuedOn);
 setIfExists('input[name="consentExpires"]', defaultConsent);
 setIfExists('input[name="pickupWindow"]', defaultPickup);
+setIfExists('input[name="medicationCode"]', 'A02BC05');
+setIfExists('input[name="medicationDisplay"]', 'OMEPRAZOLE_20MG');
+setIfExists('input[name="medicationQuantity"]', '30TABLET');
+setIfExists('input[name="medicationDose"]', 'BID_10ML');
+setIfExists('input[name="medicationDays"]', '30');
 setIfExists('#presentation-medical-form input[name="field-condition.recordedDate"]', defaultRecordedDate);
 setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].pickup_window_end"]', defaultPickup);
+setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', 'BID_10ML');
 
 async function requestJson(url, options = {}) {
   const { accessToken, headers: customHeaders, ...rest } = options;
@@ -210,7 +216,8 @@ function buildCredentialPayload(formData) {
         ].filter((item) => item.code),
         text: formData.get('medicationDisplay') || undefined,
       },
-      quantity_text: formData.get('medicationQuantity') || '30 錠',
+      quantity_text: formData.get('medicationQuantity') || '30TABLET',
+      dosage_text: formData.get('medicationDose') || 'BID_10ML',
       days_supply: Number(medDays),
       pickup_window_end: formData.get('pickupWindow') || null,
     };
@@ -282,10 +289,11 @@ function populateIssueSample() {
   set('consentExpires', defaultConsent);
   set('medicationId', 'disp-001');
   set('medicationSystem', 'http://www.whocc.no/atc');
-  set('medicationCode', 'A02BC');
-  set('medicationDisplay', 'Proton Pump Inhibitor');
-  set('medicationQuantity', '30 錠');
-  set('medicationDays', '14');
+  set('medicationCode', 'A02BC05');
+  set('medicationDisplay', 'OMEPRAZOLE_20MG');
+  set('medicationQuantity', '30TABLET');
+  set('medicationDose', 'BID_10ML');
+  set('medicationDays', '30');
   set('pickupWindow', defaultPickup);
   set('performerSystem', 'urn:tw.gov.mohw:pharmacy');
   set('performerValue', 'pharm-7788');
@@ -303,6 +311,7 @@ function populatePresentationSample(scope) {
   if (scope === 'MEDICATION_PICKUP') {
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].medicationCodeableConcept.coding[0].code"]', formData.get('medicationCode'));
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].days_supply"]', formData.get('medicationDays'));
+    setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', formData.get('medicationDose'));
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].pickup_window_end"]', formData.get('pickupWindow'));
   }
 }
