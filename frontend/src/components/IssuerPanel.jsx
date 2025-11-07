@@ -131,12 +131,12 @@ const INITIAL_IDENTITY = {
 
 const CARD_IDENTIFIER_MIGRATIONS = {
   MEDICATION_PICKUP: {
-    vcUid: ['00000000_vc_rx'],
-    vcCid: ['vc_rx'],
+    vcUid: ['00000000_vc_rx1'],
+    vcCid: ['vc_rx1'],
   },
   CONSENT_CARD: {
-    vcUid: ['00000000_vc_cons'],
-    vcCid: ['vc_cons'],
+    vcUid: ['00000000_vc_cons1'],
+    vcCid: ['vc_cons1'],
   },
 };
 
