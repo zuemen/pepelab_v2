@@ -395,7 +395,7 @@ def _build_moda_field_entries(request: MODAIssuanceRequest) -> List[Dict[str, st
     fields: List[Dict[str, str]] = []
     for key in ordered_keys:
         value = merged.get(key, "")
-        fields.append({"type": "NORMAL", "ename": key, "content": value})
+        fields.append({"ename": key, "content": value})
 
     return fields
 
@@ -446,6 +446,12 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
     fields = _build_moda_field_entries(moda_request)
     payload["fields"] = fields
 
+    if slug:
+        if not payload.get("type"):
+            payload["type"] = slug
+    elif identifiers.get("vcCid") and not payload.get("type"):
+        payload["type"] = identifiers["vcCid"]
+
     cleaned: Dict[str, Any] = {}
     field_slug = _normalize_vc_uid(payload.get("vcUid"))
     required_fields = MODA_VC_FIELD_KEYS.get(field_slug, []) or []
@@ -463,9 +469,7 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                 if not ename:
                     continue
                 content = item.get("content", "")
-                cleaned_fields.append(
-                    {"type": item.get("type", "NORMAL"), "ename": ename, "content": content}
-                )
+                cleaned_fields.append({"ename": ename, "content": content})
 
             if cleaned_fields:
                 field_map = {entry["ename"]: entry for entry in cleaned_fields}
@@ -489,7 +493,6 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                     if content_text:
                         ordered_fields.append(
                             {
-                                "type": entry.get("type", "NORMAL"),
                                 "ename": required_key,
                                 "content": content_text,
                             }
@@ -503,7 +506,6 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
                     if content_text:
                         ordered_fields.append(
                             {
-                                "type": entry.get("type", "NORMAL"),
                                 "ename": name,
                                 "content": content_text,
                             }
@@ -948,10 +950,10 @@ MODA_FIELD_LOWER_ALIASES = {
 
 MODA_SAMPLE_FIELD_VALUES = {
     "vc_cons": {
-        "cons_scope": "MEDSSI01",
-        "cons_purpose": "MEDDATARESEARCH",
-        "cons_end": (date.today() + timedelta(days=180)).isoformat(),
-        "cons_path": "IRB_2025_001",
+        "cons_scope": "med_rx",
+        "cons_purpose": "Medication pickup at pharmacy",
+        "cons_end": "2025-12-31",
+        "cons_path": "https://example.org/consent/12345",
     },
     "vc_cond": {
         "cond_code": "K2970",
@@ -964,11 +966,11 @@ MODA_SAMPLE_FIELD_VALUES = {
         "algy_severity": "2",
     },
     "vc_rx": {
-        "med_code": "A02BC05",
-        "med_name": "OMEPRAZOLE",
-        "dose_text": "BID 10ML",
-        "qty_value": "30",
-        "qty_unit": "TABLET",
+        "med_code": "RX12345",
+        "med_name": "Omeprazole 20mg",
+        "dose_text": "Take 1 capsule once daily before breakfast",
+        "qty_value": "14",
+        "qty_unit": "capsule",
     },
     "vc_pid": {
         "pid_hash": "12345678",

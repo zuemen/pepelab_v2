@@ -56,6 +56,14 @@ const SCOPE_TO_VC_UID = {
   IDENTITY_CARD: '00000000_vc_pid',
 };
 
+const SCOPE_TO_VC_TYPE = {
+  MEDICAL_RECORD: 'vc_cond',
+  MEDICATION_PICKUP: 'vc_rx',
+  CONSENT_CARD: 'vc_cons',
+  ALLERGY_CARD: 'vc_algy',
+  IDENTITY_CARD: 'vc_pid',
+};
+
 const DEFAULT_CARD_IDENTIFIERS = {
   MEDICAL_RECORD: {
     vcUid: '00000000_vc_cond',
@@ -103,11 +111,11 @@ const INITIAL_CONDITION = {
 const INITIAL_MEDICATION = {
   id: `med-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://www.whocc.no/atc',
-  code: 'A02BC05',
-  display: 'OMEPRAZOLE20MG',
-  quantityText: '30 TABLET',
-  doseText: 'BID 10ML',
-  daysSupply: 30,
+  code: 'RX12345',
+  display: 'Omeprazole 20mg',
+  quantityText: '14 capsule',
+  doseText: 'Take 1 capsule once daily before breakfast',
+  daysSupply: 14,
   pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
 };
@@ -319,7 +327,7 @@ function normalizeAlphaNumUpper(value, fallback = '') {
 
 function normalizeCnEnText(value, fallback = '') {
   const cleaned = String(value ?? '')
-    .replace(/[^0-9A-Za-z\u4E00-\u9FFF\s-]/g, '')
+    .replace(/[^0-9A-Za-z_\u4E00-\u9FFF\s-]/g, '')
     .trim();
   return cleaned || fallback;
 }
@@ -333,11 +341,10 @@ function normalizeDate(value, fallbackMoment) {
   return fb.format('YYYY-MM-DD');
 }
 
-function normalizePath(value, fallback = 'CONSENT_001') {
+function normalizePath(value, fallback = 'https://example.org/consent/12345') {
   const cleaned = String(value ?? '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9_-]/g, '')
-    .trim();
+    .trim()
+    .replace(/[^0-9A-Za-z/_:\.-]/g, '');
   return cleaned || fallback;
 }
 
@@ -376,7 +383,7 @@ function convertToGovFormat({
     if (!trimmed) {
       return;
     }
-    fields.push({ type: 'NORMAL', ename, content: trimmed });
+    fields.push({ ename, content: trimmed });
   };
 
   if (scope === 'MEDICAL_RECORD' && payload?.condition) {
@@ -394,16 +401,16 @@ function convertToGovFormat({
 
   if (scope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
-    const medCode = normalizeAlphaNumUpper(medication.code, 'RX0001');
-    const medName = normalizeCnEnText(medication.display, 'OMEPRAZOLE');
+    const medCode = normalizeAlphaNumUpper(medication.code, 'RX12345');
+    const medName = normalizeCnEnText(medication.display, 'Omeprazole 20mg');
     const doseText = normalizeCnEnText(
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      'BID 10ML'
+      'Take 1 capsule once daily before breakfast'
     );
     const qtyValue = normalizeDigits(quantityParts.value || medication.daysSupply, {
-      fallback: '30',
+      fallback: '14',
     });
-    const qtyUnit = normalizeCnEnText(quantityParts.unit || 'TABLET', 'TABLET');
+    const qtyUnit = normalizeCnEnText(quantityParts.unit || 'capsule', 'capsule');
     pushField('med_code', medCode);
     pushField('med_name', medName);
     pushField('dose_text', doseText);
@@ -412,8 +419,8 @@ function convertToGovFormat({
   }
 
   if (scope === 'CONSENT_CARD') {
-    const normalizedScope = normalizeCnEnText(consentScope, 'MEDSSI01');
-    const normalizedPurpose = normalizeCnEnText(consentPurpose, 'MEDDATARESEARCH');
+    const normalizedScope = normalizeCnEnText(consentScope, 'med_rx');
+    const normalizedPurpose = normalizeCnEnText(consentPurpose, 'Medication pickup at pharmacy');
     const normalizedEnd = normalizeDate(expiry, expiry);
     const normalizedPath = normalizePath(consentPath);
     pushField('cons_scope', normalizedScope);
@@ -467,8 +474,15 @@ function convertToGovFormat({
   assignIfPresent('vcId', normalizedIdentifiers.vcId);
   assignIfPresent('apiKey', normalizedIdentifiers.apiKey);
 
+  const typeSlug =
+    normalizedIdentifiers.vcCid ||
+    DEFAULT_CARD_IDENTIFIERS[scope]?.vcCid ||
+    SCOPE_TO_VC_TYPE[scope] ||
+    'vc_cond';
+
   return {
     ...payloadBase,
+    type: typeSlug,
     fields: filtered,
   };
 }
@@ -487,9 +501,9 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     'urn:sha256:3a1f0c98c5d4a4efed2d4dfe58e8'
   );
   const [consentExpiry, setConsentExpiry] = useState('');
-  const [consentScopeCode, setConsentScopeCode] = useState('MEDSSI01');
-  const [consentPurpose, setConsentPurpose] = useState('MEDDATARESEARCH');
-  const [consentPath, setConsentPath] = useState('IRB_2025_001');
+  const [consentScopeCode, setConsentScopeCode] = useState('med_rx');
+  const [consentPurpose, setConsentPurpose] = useState('Medication pickup at pharmacy');
+  const [consentPath, setConsentPath] = useState('https://example.org/consent/12345');
   const [medicalFields, setMedicalFields] = useState(
     DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', ')
   );
