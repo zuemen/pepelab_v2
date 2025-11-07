@@ -47,12 +47,12 @@ export function buildSamplePayload({
             {
               system: 'http://www.whocc.no/atc',
               code: 'A02BC05',
-              display: 'OMEPRAZOLE',
+              display: 'OMEPRAZOLE_20MG',
             },
           ],
-          text: 'OMEPRAZOLE',
+          text: 'OMEPRAZOLE_20MG',
         },
-        quantity_text: '30 TABLET',
+        quantity_text: '30TABLET',
         days_supply: 30,
         performer: {
           system: 'did:example',
