@@ -19,7 +19,7 @@ module.exports = {
     vc_cons: {
       cons_scope: 'MEDSSI01',
       cons_purpose: 'MEDDATARESEARCH',
-      cons_end: '2025-12-31',
+      cons_end: '20250507',
       cons_path: 'IRB_2025_001'
     },
     vc_cond: {
@@ -35,7 +35,7 @@ module.exports = {
     vc_rx: {
       med_code: 'A02BC05',
       med_name: 'OMEPRAZOLE',
-      dose_text: 'BID 10ML',
+      dose_text: 'BID10ML',
       qty_value: '30',
       qty_unit: 'TABLET'
     },

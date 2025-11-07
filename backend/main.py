@@ -446,12 +446,6 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
     fields = _build_moda_field_entries(moda_request)
     payload["fields"] = fields
 
-    if slug:
-        if not payload.get("type"):
-            payload["type"] = slug
-    elif identifiers.get("vcCid") and not payload.get("type"):
-        payload["type"] = identifiers["vcCid"]
-
     cleaned: Dict[str, Any] = {}
     field_slug = _normalize_vc_uid(payload.get("vcUid"))
     required_fields = MODA_VC_FIELD_KEYS.get(field_slug, []) or []
@@ -952,7 +946,7 @@ MODA_SAMPLE_FIELD_VALUES = {
     "vc_cons": {
         "cons_scope": "MEDSSI01",
         "cons_purpose": "MEDDATARESEARCH",
-        "cons_end": "2025-12-31",
+        "cons_end": "20250507",
         "cons_path": "IRB_2025_001",
     },
     "vc_cond": {
@@ -968,7 +962,7 @@ MODA_SAMPLE_FIELD_VALUES = {
     "vc_rx": {
         "med_code": "A02BC05",
         "med_name": "OMEPRAZOLE",
-        "dose_text": "BID",
+        "dose_text": "BID10ML",
         "qty_value": "30",
         "qty_unit": "TABLET",
     },

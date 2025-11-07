@@ -56,14 +56,6 @@ const SCOPE_TO_VC_UID = {
   IDENTITY_CARD: '00000000_vc_pid',
 };
 
-const SCOPE_TO_VC_TYPE = {
-  MEDICAL_RECORD: 'vc_cond',
-  MEDICATION_PICKUP: 'vc_rx',
-  CONSENT_CARD: 'vc_cons',
-  ALLERGY_CARD: 'vc_algy',
-  IDENTITY_CARD: 'vc_pid',
-};
-
 const DEFAULT_CARD_IDENTIFIERS = {
   MEDICAL_RECORD: {
     vcUid: '00000000_vc_cond',
@@ -114,7 +106,7 @@ const INITIAL_MEDICATION = {
   code: 'A02BC05',
   display: 'OMEPRAZOLE',
   quantityText: '30 tablet',
-  doseText: 'BID 10ML',
+  doseText: 'BID10ML',
   daysSupply: 30,
   pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
@@ -320,7 +312,7 @@ function normalizeDigits(value, { fallback = '', length } = {}) {
 function normalizeAlphaNumUpper(value, fallback = '') {
   const cleaned = String(value ?? '')
     .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
+    .replace(/[^0-9A-Z\u4E00-\u9FFF]/g, '')
     .trim();
   return cleaned || fallback;
 }
@@ -407,15 +399,15 @@ function convertToGovFormat({
   if (scope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
     const medCode = normalizeAlphaNumUpper(medication.code, 'A02BC05');
-    const medName = normalizeCnEnUpper(medication.display, 'OMEPRAZOLE');
-    const doseText = normalizeCnEnUpper(
+    const medName = normalizeAlphaNumUpper(medication.display, 'OMEPRAZOLE');
+    const doseText = normalizeAlphaNumUpper(
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      'BID 10ML'
+      'BID10ML'
     );
     const qtyValue = normalizeDigits(quantityParts.value || medication.daysSupply, {
       fallback: '30',
     });
-    const qtyUnit = normalizeCnEnUpper(quantityParts.unit || 'TABLET', 'TABLET');
+    const qtyUnit = normalizeAlphaNumUpper(quantityParts.unit || 'TABLET', 'TABLET');
     pushField('med_code', medCode);
     pushField('med_name', medName);
     pushField('dose_text', doseText);
@@ -424,9 +416,12 @@ function convertToGovFormat({
   }
 
   if (scope === 'CONSENT_CARD') {
-    const normalizedScope = normalizeCnEnUpper(consentScope, 'MEDSSI01');
-    const normalizedPurpose = normalizeCnEnUpper(consentPurpose, 'MEDDATARESEARCH');
-    const normalizedEnd = normalizeDate(consentExpiry, expiry) || normalizeDate(expiry, expiry);
+    const normalizedScope = normalizeAlphaNumUpper(consentScope, 'MEDSSI01');
+    const normalizedPurpose = normalizeAlphaNumUpper(consentPurpose, 'MEDDATARESEARCH');
+    const endCandidate = normalizeDate(consentExpiry, expiry) || normalizeDate(expiry, expiry);
+    const normalizedEnd = normalizeDigits(endCandidate, {
+      fallback: expiry.format('YYYYMMDD'),
+    });
     const normalizedPath = normalizePath(consentPath);
     pushField('cons_scope', normalizedScope);
     pushField('cons_purpose', normalizedPurpose);
@@ -479,15 +474,8 @@ function convertToGovFormat({
   assignIfPresent('vcId', normalizedIdentifiers.vcId);
   assignIfPresent('apiKey', normalizedIdentifiers.apiKey);
 
-  const typeSlug =
-    normalizedIdentifiers.vcCid ||
-    DEFAULT_CARD_IDENTIFIERS[scope]?.vcCid ||
-    SCOPE_TO_VC_TYPE[scope] ||
-    'vc_cond';
-
   return {
     ...payloadBase,
-    type: typeSlug,
     fields: filtered,
   };
 }
