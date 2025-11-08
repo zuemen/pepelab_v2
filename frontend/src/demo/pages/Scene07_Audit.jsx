@@ -22,11 +22,15 @@ export default function Scene07_Audit() {
           </div>
         </>
       }
-      right={
-        <div className="mock-cards">
-          <div className="card">[領藥] 2025-11-05 10:32 IAL2 ✅</div>
-          <div className="card">[研究] 2025-11-05 10:41 ZKP/匿名 ✅</div>
-          <div className="tag good">不可竄改的驗證紀錄</div>
+     
+    right={
+        <div className="verify-preview">
+          <div className="result-card">
+            <div className="line"><strong>[領藥] 2025-11-05 10:32 IAL2 ✅</strong></div>
+            <div className="line"><strong>[研究] 2025-11-05 10:41 ZKP/匿名 ✅</strong> </div>
+         <div className="tag good">不可竄改的驗證紀錄</div>
+
+          </div>
         </div>
       }
     />

@@ -52,7 +52,7 @@ export default function Page4_Scenario() {
       用戶可通過 MedSSI 驗證身份，快速提供必要資料，處理保險理賠申請，並確保隱私保護。
     </p>
     <div className="actions">
-      <button className="cta" onClick={() => navigate("/scene05")}>
+      <button className="cta" onClick={() => navigate("/scene08")}>
         前往保險申請情境
       </button>
     </div>
@@ -64,6 +64,12 @@ export default function Page4_Scenario() {
         <div className="btn-row" style={{ marginTop: 28 }}>
           <button className="blue" onClick={() => navigate("/page1")}>
             回首頁
+          </button>
+           <button
+            className="gray"
+            onClick={() => (window.location.href = "http://localhost:5173/")}
+          >
+            查看技術流程
           </button>
         </div>
       </div>

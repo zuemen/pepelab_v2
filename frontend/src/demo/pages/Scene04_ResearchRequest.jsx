@@ -26,9 +26,9 @@ export default function Scene04_ResearchRequest() {
       right={
        <div className="mock">
                <div className="card">
-                 <h3>ResearchVP QR</h3>
+                 <h3>ResearchVP</h3>
                  <img src={vpImage} alt="QR Code" style={{ width: "100%", maxWidth: "600px", borderRadius: "12px" }} />
-                 <p>QR Code 是由醫院產生，並且有 5 分鐘有效期，當病人領藥時，會自動過期。</p>
+                 
                </div>
              </div>
       }

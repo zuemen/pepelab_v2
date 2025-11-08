@@ -15,7 +15,7 @@ import Scene04_Compliance from "./pages/Scene04_ResearchRequest.jsx";
 import Scene05_Issuer from "./pages/Scene05_WalletConsent.jsx";
 import Scene06_Wallet from "./pages/Scene06_VerifyResearch.jsx";
 import Scene07_Verifier from "./pages/Scene07_Audit.jsx";  
-
+import Scene08_Insurance from "./pages/Scene08_Insurance.jsx";
 // 技術版 scene router
 import SceneRouter from "./SceneRouter.jsx";
 
@@ -49,6 +49,7 @@ function RoutesWithAnimation() {
         <Route path="/scene05" element={<Scene05_Issuer />} />
         <Route path="/scene06" element={<Scene06_Wallet />} />
         <Route path="/scene07" element={<Scene07_Verifier />} />
+        <Route path="/scene08" element={<Scene08_Insurance />} />
         {/* 技術展示頁（Scene01~07） */}
         <Route path="/scene/*" element={<Page><SceneRouter /></Page>} />
 
