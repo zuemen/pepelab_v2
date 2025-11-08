@@ -67,7 +67,7 @@ const DEFAULT_CARD_IDENTIFIERS = {
     vcUid: '00000000_vc_rx1',
     vcCid: 'vc_rx1',
     vcId: '',
-    apiKey: '',
+    apiKey: 'koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy',
   },
   CONSENT_CARD: {
     vcUid: '00000000_vc_cons1',
@@ -103,12 +103,12 @@ const INITIAL_CONDITION = {
 const INITIAL_MEDICATION = {
   id: `med-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://www.whocc.no/atc',
-  code: 'A02BC05',
-  display: 'OMEPRAZOLE',
-  quantityText: '30 tablet',
-  doseText: 'BID',
-  daysSupply: 30,
-  pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
+  code: 'MNT001',
+  display: 'Serenitol',
+  quantityText: 'Bottle',
+  doseText: '每日晚餐飯後50MG',
+  daysSupply: 3,
+  pickupWindowEnd: dayjs('2025-12-31').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
 };
 
@@ -310,7 +310,7 @@ function resolveExpiry(scope, consentExpiry, medication) {
           return parsed;
         }
       }
-      return dayjs().add(3, 'day');
+      return dayjs('2025-12-31');
     }
     case 'CONSENT_CARD':
       return dayjs().add(180, 'day');
@@ -344,7 +344,7 @@ function normalizeDigits(value, { fallback = '', length } = {}) {
 function normalizeAlphaNumUpper(value, fallback = '') {
   const cleaned = String(value ?? '')
     .toUpperCase()
-    .replace(/[^0-9A-Z\u4E00-\u9FFF]/g, '')
+    .replace(/[^0-9A-Z_\u4E00-\u9FFF]/g, '')
     .trim();
   return cleaned || fallback;
 }
@@ -389,7 +389,10 @@ function convertToGovFormat({
   identity,
   identifiers = {},
 }) {
-  const issuanceDate = dayjs().format('YYYYMMDD');
+  const issuanceMoment = dayjs(payload?.issued_on);
+  const issuanceDate = issuanceMoment.isValid()
+    ? issuanceMoment.format('YYYYMMDD')
+    : '20251108';
   const expiry = resolveExpiry(scope, consentExpiry, medication);
   const expiredDate = expiry.isValid()
     ? expiry.format('YYYYMMDD')
@@ -404,7 +407,8 @@ function convertToGovFormat({
 
   const fields = [];
 
-  const pushField = (name, rawValue) => {
+  const pushField = (name, rawValue, options = {}) => {
+    const { allowEmpty = false } = options;
     if (rawValue === undefined || rawValue === null) {
       return;
     }
@@ -416,7 +420,7 @@ function convertToGovFormat({
     } else {
       value = String(value ?? '');
     }
-    if (!value) {
+    if (!value && !allowEmpty) {
       return;
     }
     fields.push({ ename: name, content: value });
@@ -437,22 +441,22 @@ function convertToGovFormat({
 
   if (scope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
-    const medCode = normalizeAlphaNumUpper(medication.code, 'A02BC05');
-    const medName = normalizeAlphaNumUpper(medication.display, 'OMEPRAZOLE');
-    const doseText = normalizeAlphaNumUpper(
+    const medCode = normalizeAlphaNumUpper(medication.code, 'MNT001');
+    const medName = normalizeCnEnText(medication.display, 'Serenitol');
+    const doseText = normalizeCnEnText(
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      'BID'
+      '每日晚餐飯後50MG'
     );
     const qtyValueDigits = normalizeDigits(quantityParts.value || medication.daysSupply, {
-      fallback: '30',
+      fallback: '3',
     });
     const qtyValue = qtyValueDigits ? qtyValueDigits : undefined;
-    const qtyUnit = normalizeAlphaNumUpper(quantityParts.unit || 'TABLET', 'TABLET');
+    const qtyUnit = normalizeCnEnText(quantityParts.unit || '', 'Bottle');
     pushField('med_code', medCode);
     pushField('med_name', medName);
     pushField('dose_text', doseText);
     pushField('qty_value', qtyValue);
-    pushField('qty_unit', qtyUnit);
+    pushField('qty_unit', qtyUnit, { allowEmpty: true });
   }
 
   if (scope === 'CONSENT_CARD') {
