@@ -71,7 +71,7 @@ setIfExists('input[name="medicationDoes"]', '每日晚餐飯後50MG');
 setIfExists('input[name="medicationDays"]', '3');
 setIfExists('#presentation-medical-form input[name="field-condition.recordedDate"]', defaultRecordedDate);
 setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].pickup_window_end"]', defaultPickup);
-setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', '每日晚餐飯後50MG');
+setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].does_text"]', '每日晚餐飯後50MG');
 
 async function requestJson(url, options = {}) {
   const { accessToken, headers: customHeaders, ...rest } = options;
@@ -217,7 +217,7 @@ function buildCredentialPayload(formData) {
         text: formData.get('medicationDisplay') || undefined,
       },
       quantity_text: formData.get('medicationQuantity') || 'Bottle',
-      dosage_text: formData.get('medicationDoes') || '每日晚餐飯後50MG',
+      does_text: formData.get('medicationDoes') || '每日晚餐飯後50MG',
       days_supply: Number(medDays),
       pickup_window_end: formData.get('pickupWindow') || null,
     };
@@ -317,7 +317,7 @@ function populatePresentationSample(scope) {
   if (scope === 'MEDICATION_PICKUP') {
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].medicationCodeableConcept.coding[0].code"]', formData.get('medicationCode'));
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].days_supply"]', formData.get('medicationDays'));
-    setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', formData.get('medicationDoes'));
+    setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].does_text"]', formData.get('medicationDoes'));
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].pickup_window_end"]', formData.get('pickupWindow'));
   }
 }
