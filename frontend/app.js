@@ -67,7 +67,7 @@ setIfExists('input[name="pickupWindow"]', defaultPickup);
 setIfExists('input[name="medicationCode"]', 'MNT001');
 setIfExists('input[name="medicationDisplay"]', 'Serenitol');
 setIfExists('input[name="medicationQuantity"]', 'Bottle');
-setIfExists('input[name="medicationDose"]', '每日晚餐飯後50MG');
+setIfExists('input[name="medicationDoes"]', '每日晚餐飯後50MG');
 setIfExists('input[name="medicationDays"]', '3');
 setIfExists('#presentation-medical-form input[name="field-condition.recordedDate"]', defaultRecordedDate);
 setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].pickup_window_end"]', defaultPickup);
@@ -217,7 +217,7 @@ function buildCredentialPayload(formData) {
         text: formData.get('medicationDisplay') || undefined,
       },
       quantity_text: formData.get('medicationQuantity') || 'Bottle',
-      dosage_text: formData.get('medicationDose') || '每日晚餐飯後50MG',
+      dosage_text: formData.get('medicationDoes') || '每日晚餐飯後50MG',
       days_supply: Number(medDays),
       pickup_window_end: formData.get('pickupWindow') || null,
     };
@@ -298,7 +298,7 @@ function populateIssueSample() {
   set('medicationCode', 'MNT001');
   set('medicationDisplay', 'Serenitol');
   set('medicationQuantity', 'Bottle');
-  set('medicationDose', '每日晚餐飯後50MG');
+  set('medicationDoes', '每日晚餐飯後50MG');
   set('medicationDays', '3');
   set('pickupWindow', defaultPickup);
   set('performerSystem', 'urn:tw.gov.mohw:pharmacy');
@@ -317,7 +317,7 @@ function populatePresentationSample(scope) {
   if (scope === 'MEDICATION_PICKUP') {
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].medicationCodeableConcept.coding[0].code"]', formData.get('medicationCode'));
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].days_supply"]', formData.get('medicationDays'));
-    setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', formData.get('medicationDose'));
+    setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', formData.get('medicationDoes'));
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].pickup_window_end"]', formData.get('pickupWindow'));
   }
 }
