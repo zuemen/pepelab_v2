@@ -879,7 +879,7 @@ MODA_FIELD_DIRECT_ALIASES = {
     "medicationList[0].doesText": "does_text",
     "dose_text": "does_text",
     "doseText": "does_text",
-    "DoseText": "does_text",
+    "doseText": "does_text",
     "pickupInfo.pickupDeadline": "pickup_info.pickup_deadline",
     "conditionInfo.conditionCode": "condition_info.condition_code",
     "conditionInfo.conditionDisplay": "condition_info.condition_display",
