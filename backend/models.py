@@ -71,8 +71,8 @@ class FHIRMedicationDispenseSummary(BaseModel):
     medicationCodeableConcept: FHIRCodeableConcept
     quantity_text: str = Field(..., description="Formatted quantity string, e.g. '30 tablets'")
     days_supply: int = Field(..., ge=1, description="Days of therapy covered by this dispense")
-    dose_text: Optional[str] = Field(
-        None, description="Dosage instructions mirrored to vc_rx 的 dose_text 欄位"
+    does_text: Optional[str] = Field(
+        None, description="Dosage instructions mirrored to vc_rx 的 does_text 欄位"
     )
     performer: Optional[FHIRIdentifier] = Field(
         None, description="Pharmacist or institution identifier"
