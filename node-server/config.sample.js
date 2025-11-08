@@ -20,7 +20,7 @@ module.exports = {
       cons_scope: 'MEDSSI01',
       cons_purpose: 'MEDDATARESEARCH',
       cons_end: '2025-12-31',
-      cons_path: 'IRB_2025_001'
+      cons_path: 'IRB2025001'
     },
     vc_cond: {
       cond_code: 'K2970',
@@ -34,9 +34,9 @@ module.exports = {
     },
     vc_rx: {
       med_code: 'A02BC05',
-      med_name: 'OMEPRAZOLE',
-      dose_text: 'BID 10ML',
-      qty_value: '30',
+      med_name: 'Serenitol',
+      does_text: '每日一次50mg晚餐後',
+      qty_value: '3',
       qty_unit: 'TABLET'
     },
     vc_pid: {

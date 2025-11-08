@@ -830,7 +830,7 @@ MODA_VC_FIELD_KEYS = {
     "vc_cons": ["cons_scope", "cons_purpose", "cons_end", "cons_path"],
     "vc_cond": ["cond_code", "cond_display", "cond_onset"],
     "vc_algy": ["algy_code", "algy_name", "algy_severity"],
-    "vc_rx": ["med_code", "med_name", "dose_text", "qty_value", "qty_unit"],
+    "vc_rx": ["med_code", "med_name", "does_text", "qty_value", "qty_unit"],
     "vc_pid": [
         "pid_hash",
         "pid_type",
@@ -847,7 +847,7 @@ MODA_SCOPE_DEFAULT_FIELDS = {
     DisclosureScope.MEDICATION_PICKUP: [
         "med_code",
         "med_name",
-        "dose_text",
+        "does_text",
         "qty_value",
         "qty_unit",
     ],
@@ -874,7 +874,7 @@ MODA_FIELD_TO_FHIR = {
     "med_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
     "qty_value": "medication_dispense[0].days_supply",
     "qty_unit": "medication_dispense[0].quantity_text",
-    "dose_text": "medication_dispense[0].dose_text",
+    "does_text": "medication_dispense[0].does_text",
     "medication_list[0].medication_code": "medication_dispense[0].medicationCodeableConcept.coding[0].code",
     "medication_list[0].medication_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
     "medication_list[0].dosage": "medication_dispense[0].days_supply",
@@ -900,7 +900,7 @@ MODA_FIELD_DIRECT_ALIASES = {
     "medicationList[0].medicationCode": "medication_list[0].medication_code",
     "medicationList[0].medicationName": "medication_list[0].medication_name",
     "medicationList[0].dosage": "medication_list[0].dosage",
-    "medicationList[0].doseText": "dose_text",
+    "medicationList[0].doesText": "does_text",
     "pickupInfo.pickupDeadline": "pickup_info.pickup_deadline",
     "conditionInfo.conditionCode": "condition_info.condition_code",
     "conditionInfo.conditionDisplay": "condition_info.condition_display",
@@ -929,7 +929,7 @@ MODA_FIELD_LOWER_ALIASES = {
     "qtyvalue": "qty_value",
     "dosage": "qty_value",
     "qtyunit": "qty_unit",
-    "dosetext": "dose_text",
+    "doestext": "does_text",
     "consentscope": "cons_scope",
     "consentpurpose": "cons_purpose",
     "consentpath": "cons_path",
@@ -951,7 +951,7 @@ MODA_SAMPLE_FIELD_VALUES = {
         "cons_scope": "MEDSSI01",
         "cons_purpose": "MEDDATARESEARCH",
         "cons_end": (date.today() + timedelta(days=180)).isoformat(),
-        "cons_path": "IRB_2025_001",
+        "cons_path": "IRB2025001",
     },
     "vc_cond": {
         "cond_code": "K2970",
@@ -966,7 +966,7 @@ MODA_SAMPLE_FIELD_VALUES = {
     "vc_rx": {
         "med_code": "A02BC05",
         "med_name": "OMEPRAZOLE",
-        "dose_text": "BID 10ML",
+        "does_text": "BID 10ML",
         "qty_value": "30",
         "qty_unit": "TABLET",
     },
@@ -1157,7 +1157,7 @@ def _sample_payload() -> CredentialPayload:
         "consent": {
             "scope": "research_info",
             "purpose": "AI 胃炎趨勢研究",
-            "issuer": "MOHW-IRB-2025-001",
+            "issuer": "MOHW-IRB2025001",
             "path": "medssi://consent/irb-2025-001",
             "expires_on": (today + timedelta(days=180)).isoformat(),
         },
@@ -1295,12 +1295,12 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
             }
         )
 
-    if alias_map.get("dose_text"):
+    if alias_map.get("does_text"):
         merge(
             {
                 "medication_dispense": [
                     {
-                        "dose_text": alias_map["dose_text"],
+                        "does_text": alias_map["does_text"],
                     }
                 ]
             }
@@ -1392,7 +1392,7 @@ def _expand_aliases(alias_map: Dict[str, str]) -> Dict[str, str]:
     copy_if_missing("med_name", "medication_list[0].medication_name")
     copy_if_missing("qty_value", "medication_list[0].dosage")
     copy_if_missing("pickup_deadline", "pickup_info.pickup_deadline")
-    copy_if_missing("dose_text", "medication_list[0].dose_text")
+    copy_if_missing("does_text", "medication_list[0].does_text")
     copy_if_missing("cons_scope", "consent.scope")
     copy_if_missing("cons_purpose", "consent.purpose")
     copy_if_missing("cons_path", "consent.path")

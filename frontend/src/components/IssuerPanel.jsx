@@ -104,9 +104,9 @@ const INITIAL_MEDICATION = {
   id: `med-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://www.whocc.no/atc',
   code: 'A02BC05',
-  display: 'OMEPRAZOLE20MG',
-  quantityText: '30 TABLET',
-  doseText: 'BID 10ML',
+  display: 'Serenitol',
+  quantityText: '3 TABLET',
+  doesText: '每日一次50mg飯後',
   daysSupply: 30,
   pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
@@ -199,7 +199,7 @@ function buildPayload({
               text: medication.display || undefined,
             },
             quantity_text: medication.quantityText,
-            dosage_text: medication.doseText || undefined,
+            dosage_text: medication.doesText || undefined,
             days_supply: Number(medication.daysSupply) || 0,
             performer: medication.performer
               ? {
@@ -395,18 +395,18 @@ function convertToGovFormat({
   if (scope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
     const medCode = normalizeAlphaNumUpper(medication.code, 'RX0001');
-    const medName = normalizeCnEnText(medication.display, 'OMEPRAZOLE');
-    const doseText = normalizeCnEnText(
-      medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      'BID 10ML'
+    const medName = normalizeCnEnText(medication.display, 'Serenitol');
+    const doesText = normalizeCnEnText(
+      medication.doesText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
+      '每日一次50mg飯後'
     );
     const qtyValue = normalizeDigits(quantityParts.value || medication.daysSupply, {
-      fallback: '30',
+      fallback: '3',
     });
     const qtyUnit = normalizeCnEnText(quantityParts.unit || 'TABLET', 'TABLET');
     pushField('med_code', medCode);
     pushField('med_name', medName);
-    pushField('dose_text', doseText);
+    pushField('does_text', doesText);
     pushField('qty_value', qtyValue);
     pushField('qty_unit', qtyUnit);
   }
@@ -489,7 +489,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
   const [consentExpiry, setConsentExpiry] = useState('');
   const [consentScopeCode, setConsentScopeCode] = useState('MEDSSI01');
   const [consentPurpose, setConsentPurpose] = useState('MEDDATARESEARCH');
-  const [consentPath, setConsentPath] = useState('IRB_2025_001');
+  const [consentPath, setConsentPath] = useState('IRB2025001');
   const [medicalFields, setMedicalFields] = useState(
     DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', ')
   );
@@ -689,7 +689,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
     setConsentExpiry(dayjs().add(90, 'day').format('YYYY-MM-DD'));
     setConsentScopeCode('MEDSSI01');
     setConsentPurpose('MEDDATARESEARCH');
-    setConsentPath('IRB_2025_001');
+    setConsentPath('IRB2025001');
     setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
     setMedicationFields(DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', '));
     setConsentFields(DEFAULT_DISCLOSURES.CONSENT_CARD.join(', '));
@@ -945,11 +945,11 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
               onChange={(event) => updateMedication('quantityText', event.target.value)}
               disabled={!includeMedication && primaryScope !== 'MEDICATION_PICKUP'}
             />
-            <label htmlFor="dose-text">用藥指示</label>
+            <label htmlFor="does-text">用藥指示</label>
             <input
-              id="dose-text"
-              value={medication.doseText || ''}
-              onChange={(event) => updateMedication('doseText', event.target.value)}
+              id="does-text"
+              value={medication.doesText || ''}
+              onChange={(event) => updateMedication('doesText', event.target.value)}
               disabled={!includeMedication && primaryScope !== 'MEDICATION_PICKUP'}
             />
             <label htmlFor="days-supply">用藥天數</label>
