@@ -1,4 +1,4 @@
-from __future__ import annotations
+1from __future__ import annotations
 
 import base64
 import io
@@ -1166,7 +1166,7 @@ def _sample_payload() -> CredentialPayload:
             "scope": "research_info",
             "purpose": "AI 胃炎趨勢研究",
             "issuer": "MOHW-IRB2025001",
-            "path": "medssi://consent/irb-2025-001",
+            "path": "medssi://consent/irb2025001",
             "expires_on": (today + timedelta(days=180)).isoformat(),
         },
         "patient_digest": {
