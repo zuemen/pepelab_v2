@@ -36,7 +36,7 @@ export function buildSamplePayload({
       system: 'urn:medssi:org',
       value: managingOrg,
     },
-    issued_on: dayjs().format('YYYY-MM-DD'),
+    issued_on: dayjs('2025-11-08').format('YYYY-MM-DD'),
     consent_expires_on: dayjs().add(60, 'day').format('YYYY-MM-DD'),
     medication_dispense: [
       {
@@ -52,14 +52,14 @@ export function buildSamplePayload({
           ],
           text: 'Serenitol',
         },
-        quantity_text: '',
-        dosage_text: '每日一次晚餐飯後50mg',
+        quantity_text: '3Bottle',
+        dosage_text: '每日晚餐飯後50MG',
         days_supply: 3,
         performer: {
           system: 'did:example',
           value: 'did:example:rx-unit-01',
         },
-        pickup_window_end: dayjs().add(3, 'day').format('YYYY-MM-DD'),
+        pickup_window_end: dayjs('2025-12-31').format('YYYY-MM-DD'),
       },
     ],
   };

@@ -47,9 +47,9 @@ const plusDays = (date, days) => {
 };
 
 const defaultRecordedDate = iso(today);
-const defaultIssuedOn = iso(today);
+const defaultIssuedOn = '2025-11-08';
 const defaultConsent = iso(plusDays(today, 180));
-const defaultPickup = iso(plusDays(today, 3));
+const defaultPickup = '2025-12-31';
 
 const setIfExists = (selector, value) => {
   const el = document.querySelector(selector);
@@ -66,12 +66,12 @@ setIfExists('input[name="consentExpires"]', defaultConsent);
 setIfExists('input[name="pickupWindow"]', defaultPickup);
 setIfExists('input[name="medicationCode"]', 'MNT001');
 setIfExists('input[name="medicationDisplay"]', 'Serenitol');
-setIfExists('input[name="medicationQuantity"]', '');
-setIfExists('input[name="medicationDose"]', '每日一次晚餐飯後50mg');
+setIfExists('input[name="medicationQuantity"]', '3Bottle');
+setIfExists('input[name="medicationDose"]', '每日晚餐飯後50MG');
 setIfExists('input[name="medicationDays"]', '3');
 setIfExists('#presentation-medical-form input[name="field-condition.recordedDate"]', defaultRecordedDate);
 setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].pickup_window_end"]', defaultPickup);
-setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', '每日一次晚餐飯後50mg');
+setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', '每日晚餐飯後50MG');
 
 async function requestJson(url, options = {}) {
   const { accessToken, headers: customHeaders, ...rest } = options;
@@ -216,8 +216,8 @@ function buildCredentialPayload(formData) {
         ].filter((item) => item.code),
         text: formData.get('medicationDisplay') || undefined,
       },
-      quantity_text: formData.get('medicationQuantity') || '',
-      dosage_text: formData.get('medicationDose') || '每日一次晚餐飯後50mg',
+      quantity_text: formData.get('medicationQuantity') || '3Bottle',
+      dosage_text: formData.get('medicationDose') || '每日晚餐飯後50MG',
       days_supply: Number(medDays),
       pickup_window_end: formData.get('pickupWindow') || null,
     };
@@ -297,8 +297,8 @@ function populateIssueSample() {
   set('medicationSystem', 'http://www.whocc.no/atc');
   set('medicationCode', 'MNT001');
   set('medicationDisplay', 'Serenitol');
-  set('medicationQuantity', '');
-  set('medicationDose', '每日一次晚餐飯後50mg');
+  set('medicationQuantity', '3Bottle');
+  set('medicationDose', '每日晚餐飯後50MG');
   set('medicationDays', '3');
   set('pickupWindow', defaultPickup);
   set('performerSystem', 'urn:tw.gov.mohw:pharmacy');

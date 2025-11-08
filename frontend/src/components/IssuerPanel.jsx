@@ -105,10 +105,10 @@ const INITIAL_MEDICATION = {
   system: 'http://www.whocc.no/atc',
   code: 'MNT001',
   display: 'Serenitol',
-  quantityText: '',
-  doseText: '每日一次晚餐飯後50mg',
+  quantityText: '3Bottle',
+  doseText: '每日晚餐飯後50MG',
   daysSupply: 3,
-  pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
+  pickupWindowEnd: dayjs('2025-12-31').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
 };
 
@@ -310,7 +310,7 @@ function resolveExpiry(scope, consentExpiry, medication) {
           return parsed;
         }
       }
-      return dayjs().add(3, 'day');
+      return dayjs('2025-12-31');
     }
     case 'CONSENT_CARD':
       return dayjs().add(180, 'day');
@@ -389,7 +389,10 @@ function convertToGovFormat({
   identity,
   identifiers = {},
 }) {
-  const issuanceDate = dayjs().format('YYYYMMDD');
+  const issuanceMoment = dayjs(payload?.issued_on);
+  const issuanceDate = issuanceMoment.isValid()
+    ? issuanceMoment.format('YYYYMMDD')
+    : '20251108';
   const expiry = resolveExpiry(scope, consentExpiry, medication);
   const expiredDate = expiry.isValid()
     ? expiry.format('YYYYMMDD')
@@ -442,13 +445,13 @@ function convertToGovFormat({
     const medName = normalizeCnEnText(medication.display, 'Serenitol');
     const doseText = normalizeCnEnText(
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      '每日一次晚餐飯後50mg'
+      '每日晚餐飯後50MG'
     );
     const qtyValueDigits = normalizeDigits(quantityParts.value || medication.daysSupply, {
       fallback: '3',
     });
     const qtyValue = qtyValueDigits ? qtyValueDigits : undefined;
-    const qtyUnit = normalizeCnEnUpper(quantityParts.unit || '', '');
+    const qtyUnit = normalizeCnEnText(quantityParts.unit || '', 'Bottle');
     pushField('med_code', medCode);
     pushField('med_name', medName);
     pushField('dose_text', doseText);
