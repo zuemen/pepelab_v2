@@ -1,155 +1,140 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
-import dayjs from 'dayjs';
 
-const DEFAULT_FIELDS = {
-  MEDICAL_RECORD: [
-    'condition.code.coding[0].code',
-    'condition.recordedDate',
-    'managing_organization.value',
-  ],
-  MEDICATION_PICKUP: [
-    'medication_dispense[0].medicationCodeableConcept.coding[0].code',
-    'medication_dispense[0].days_supply',
-    'medication_dispense[0].pickup_window_end',
-  ],
-  RESEARCH_ANALYTICS: ['condition.code.coding[0].code', 'encounter_summary_hash'],
+const VP_SCOPE_TO_REF = {
+  MEDICAL_RECORD: '00000000_vp_consent',
+  MEDICATION_PICKUP: '00000000_vp_rx_pickup',
+  RESEARCH_ANALYTICS: '00000000_vp_research',
 };
 
-function buildSamplePresentation(scope) {
-  switch (scope) {
-    case 'MEDICATION_PICKUP':
-      return {
-        'medication_dispense[0].medicationCodeableConcept.coding[0].code': 'A02BC05',
-        'medication_dispense[0].days_supply': '30',
-        'medication_dispense[0].pickup_window_end': dayjs().add(7, 'day').format('YYYY-MM-DD'),
-      };
-    case 'RESEARCH_ANALYTICS':
-      return {
-        'condition.code.coding[0].code': 'K29.7',
-        'encounter_summary_hash': 'urn:sha256:samplehash123',
-      };
-    default:
-      return {
-        'condition.code.coding[0].code': 'K29.7',
-        'condition.recordedDate': dayjs().format('YYYY-MM-DD'),
-        'managing_organization.value': 'org:tph-001',
-      };
+const POLL_INTERVAL_MS = 5000;
+
+function generateTransactionId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
   }
+  return `tx-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
 export function VerifierPanel({ client, verifierToken }) {
-  const [verifierId, setVerifierId] = useState('did:example:research-lab');
-  const [verifierName, setVerifierName] = useState('成大 AI 實驗室');
-  const [purpose, setPurpose] = useState('胃炎風險研究');
-  const [ial, setIal] = useState('NHI_CARD_PIN');
   const [scope, setScope] = useState('MEDICAL_RECORD');
-  const [fieldsText, setFieldsText] = useState(DEFAULT_FIELDS.MEDICAL_RECORD.join(', '));
-  const [validMinutes, setValidMinutes] = useState(5);
-  const [session, setSession] = useState(null);
-  const [qrPayload, setQrPayload] = useState(null);
+  const [verifierRef, setVerifierRef] = useState(VP_SCOPE_TO_REF.MEDICAL_RECORD);
+  const [transactionId, setTransactionId] = useState('');
+  const [qrCodeImage, setQrCodeImage] = useState('');
+  const [authUri, setAuthUri] = useState('');
   const [sessionError, setSessionError] = useState(null);
-  const [presentationFields, setPresentationFields] = useState({});
-  const [credentialId, setCredentialId] = useState('');
-  const [holderDid, setHolderDid] = useState('did:example:patient-001');
   const [result, setResult] = useState(null);
   const [resultError, setResultError] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [autoPoll, setAutoPoll] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
+  const [rawSession, setRawSession] = useState(null);
 
   useEffect(() => {
-    setFieldsText(DEFAULT_FIELDS[scope].join(', '));
-    setPresentationFields(buildSamplePresentation(scope));
+    setVerifierRef(VP_SCOPE_TO_REF[scope]);
   }, [scope]);
 
-  const allowedFields = useMemo(
-    () => fieldsText.split(',').map((field) => field.trim()).filter(Boolean),
-    [fieldsText]
-  );
+  useEffect(() => {
+    if (!autoPoll || !transactionId) {
+      return undefined;
+    }
+    const interval = setInterval(() => {
+      pollResult(false);
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPoll, transactionId]);
 
   async function createSession() {
     setSessionError(null);
     setResult(null);
-    setQrPayload(null);
-    const response = await client.createVerificationCode(
-      {
-        verifierId,
-        verifierName,
-        purpose,
-        ial_min: ial,
-        scope,
-        fields: allowedFields,
-        validMinutes,
-      },
-      verifierToken
-    );
+    setResultError(null);
+    const tid = generateTransactionId();
+    const ref = verifierRef || VP_SCOPE_TO_REF[scope];
 
-    if (!response.ok) {
-      setSessionError(`(${response.status}) ${response.detail}`);
-      setSession(null);
-      return;
+    try {
+      const response = await client.createVerificationCode(
+        { ref, transactionId: tid },
+        verifierToken
+      );
+
+      if (!response.ok) {
+        setSessionError(`(${response.status}) ${response.detail}`);
+        setTransactionId('');
+        setQrCodeImage('');
+        setAuthUri('');
+        setRawSession(null);
+        return;
+      }
+
+      const data = response.data || {};
+      setTransactionId(data.transactionId || tid);
+      setQrCodeImage(data.qrcodeImage || data.qrCode || data.qrcode_image || '');
+      setAuthUri(data.authUri || data.deepLink || data.auth_uri || '');
+      setRawSession(data);
+      setSessionError(null);
+    } catch (error) {
+      setSessionError(error.message || '建立驗證 Session 失敗');
+      setTransactionId('');
+      setQrCodeImage('');
+      setAuthUri('');
+      setRawSession(null);
     }
-
-    setSession(response.data.session);
-    setQrPayload(response.data.qr_payload);
-    setPresentationFields(buildSamplePresentation(scope));
-    setResult(null);
   }
 
-  function updatePresentationField(field, value) {
-    setPresentationFields((prev) => ({ ...prev, [field]: value }));
-  }
-
-  async function submitPresentation() {
-    if (!session) {
+  async function pollResult(showWaitingMessage = true) {
+    if (!transactionId) {
       setResultError('請先建立驗證 Session');
       return;
     }
-    if (!credentialId) {
-      setResultError('請提供憑證 ID');
-      return;
-    }
 
-    setLoading(true);
+    setIsPolling(true);
+    try {
+      const response = await client.submitPresentation(
+        { transactionId },
+        verifierToken
+      );
+
+      if (!response.ok) {
+        if (response.status === 400) {
+          if (showWaitingMessage) {
+            setResultError('錢包尚未回傳資料，請稍後重試。');
+          } else {
+            setResultError(null);
+          }
+        } else {
+          setResultError(`(${response.status}) ${response.detail}`);
+        }
+        return;
+      }
+
+      setResult(response.data);
+      setResultError(null);
+    } catch (error) {
+      setResultError(error.message || '查詢驗證結果失敗');
+    } finally {
+      setIsPolling(false);
+    }
+  }
+
+  function resetSession() {
+    setTransactionId('');
+    setQrCodeImage('');
+    setAuthUri('');
+    setResult(null);
     setResultError(null);
-    setResult(null);
-
-    const response = await client.submitPresentation(
-      {
-        session_id: session.session_id,
-        credential_id: credentialId,
-        holder_did: holderDid,
-        disclosed_fields: presentationFields,
-      },
-      verifierToken
-    );
-
-    setLoading(false);
-
-    if (!response.ok) {
-      setResultError(`(${response.status}) ${response.detail}`);
-      return;
-    }
-
-    setResult(response.data);
-  }
-
-  async function purgeSession() {
-    if (!session) {
-      return;
-    }
-    await client.purgeSession(session.session_id, verifierToken);
-    setSession(null);
-    setQrPayload(null);
-    setResult(null);
     setSessionError(null);
+    setRawSession(null);
+    setAutoPoll(false);
   }
+
+  const qrSource = qrCodeImage || authUri;
+  const renderAsImage = qrCodeImage && qrCodeImage.startsWith('data:image');
 
   return (
     <section aria-labelledby="verifier-heading">
       <h2 id="verifier-heading">Step 3 – 驗證端</h2>
       <div className="alert info">
-        驗證端需以 Access Token 產生一次性的掃碼 Session，支援病歷、領藥與研究三種範疇。
-        提交 VP 後會同步回傳 AI Insight 與稽核資訊。
+        驗證端呼叫政府沙盒 API 產生授權 QR Code。請先在驗證端後台建立 VP 範本並取得 ref 代碼。
       </div>
 
       <div className="grid two">
@@ -158,124 +143,77 @@ export function VerifierPanel({ client, verifierToken }) {
           <input id="verifier-token" type="text" value={verifierToken} readOnly aria-readonly="true" />
           <small className="helper">沙盒預設 J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC。</small>
 
-          <label htmlFor="verifier-id">驗證者 DID</label>
-          <input
-            id="verifier-id"
-            value={verifierId}
-            onChange={(event) => setVerifierId(event.target.value)}
-          />
-
-          <label htmlFor="verifier-name">顯示名稱</label>
-          <input
-            id="verifier-name"
-            value={verifierName}
-            onChange={(event) => setVerifierName(event.target.value)}
-          />
-
-          <label htmlFor="purpose">用途說明</label>
-          <input id="purpose" value={purpose} onChange={(event) => setPurpose(event.target.value)} />
-
           <label htmlFor="scope">驗證範圍</label>
           <select id="scope" value={scope} onChange={(event) => setScope(event.target.value)}>
-            <option value="MEDICAL_RECORD">病歷摘要授權</option>
-            <option value="MEDICATION_PICKUP">領藥流程驗證</option>
-            <option value="RESEARCH_ANALYTICS">研究合作（匿名摘要）</option>
+            <option value="MEDICAL_RECORD">授權驗證（vc_cond + vc_cons）</option>
+            <option value="MEDICATION_PICKUP">領藥驗證（vc_rx + vc_algy）</option>
+            <option value="RESEARCH_ANALYTICS">研究揭露（vc_cond + vc_cons + vc_algy）</option>
           </select>
 
-          <label htmlFor="ial-required">所需 IAL</label>
-          <select
-            id="ial-required"
-            value={ial}
-            onChange={(event) => setIal(event.target.value)}
-          >
-            <option value="MYDATA_LIGHT">MYDATA_LIGHT</option>
-            <option value="NHI_CARD_PIN">NHI_CARD_PIN</option>
-            <option value="MOICA_CERT">MOICA_CERT</option>
-          </select>
-
-          <label htmlFor="allowed-fields">可揭露欄位</label>
-          <textarea
-            id="allowed-fields"
-            value={fieldsText}
-            onChange={(event) => setFieldsText(event.target.value)}
-          />
-
-          <label htmlFor="valid-minutes">QR 有效分鐘數</label>
+          <label htmlFor="verifier-ref">驗證服務代碼 (ref)</label>
           <input
-            id="valid-minutes"
-            type="number"
-            min="1"
-            max="5"
-            value={validMinutes}
-            onChange={(event) => setValidMinutes(event.target.value)}
+            id="verifier-ref"
+            value={verifierRef}
+            onChange={(event) => setVerifierRef(event.target.value)}
           />
+          <small className="helper">請從驗證端沙盒「建立 VP」詳細資料頁複製 ref 值。</small>
 
-          <button type="button" onClick={createSession}>
-            產生驗證 QR Code
+          <button type="button" onClick={createSession} disabled={!verifierToken}>
+            產生授權 QR Code
           </button>
-          <button type="button" className="secondary" onClick={purgeSession}>
-            取消 Session
+          <button type="button" className="secondary" onClick={resetSession}>
+            重設 Session
           </button>
 
           {sessionError ? <div className="alert error">{sessionError}</div> : null}
         </div>
 
         <div className="card">
-          <h3>掃碼資訊</h3>
-          {qrPayload ? (
-            <div className="qr-container" aria-label="Verifier QR">
-              <QRCodeCanvas value={qrPayload} size={192} includeMargin />
-              <p>Session ID：{session.session_id}</p>
-              <p>到期：{new Date(session.expires_at).toLocaleString()}</p>
-            </div>
+          <h3>授權 QR Code</h3>
+          {qrSource ? (
+            renderAsImage ? (
+              <div className="qr-container" aria-label="驗證 QR Code">
+                <img src={qrCodeImage} alt="驗證 QR Code" width={192} height={192} />
+              </div>
+            ) : (
+              <div className="qr-container" aria-label="驗證 QR Code">
+                <QRCodeCanvas value={qrSource} size={192} includeMargin />
+              </div>
+            )
           ) : (
-            <p>尚未建立驗證 Session。</p>
+            <p>尚未建立 Session。</p>
           )}
+          {authUri ? (
+            <p>
+              Deep Link：<a href={authUri}>{authUri}</a>
+            </p>
+          ) : null}
+          {transactionId ? <p>Transaction ID：{transactionId}</p> : null}
+          {rawSession ? <pre>{JSON.stringify(rawSession, null, 2)}</pre> : null}
         </div>
       </div>
 
       <div className="card">
-        <h3>提交 Verifiable Presentation</h3>
-        <label htmlFor="credential-id">Credential ID</label>
-        <input
-          id="credential-id"
-          value={credentialId}
-          onChange={(event) => setCredentialId(event.target.value)}
-          placeholder="例如 cred-xxxx"
-        />
-
-        <label htmlFor="holder-did">持卡者 DID</label>
-        <input
-          id="holder-did"
-          value={holderDid}
-          onChange={(event) => setHolderDid(event.target.value)}
-        />
-
-        <label>揭露欄位內容</label>
-        {allowedFields.map((field) => (
-          <div key={field} className="field-row">
-            <span>{field}</span>
+        <h3>查詢驗證結果</h3>
+        <p>請在錢包 App 完成授權後點擊「查詢結果」。若啟用自動輪詢會每 5 秒更新一次。</p>
+        <div className="stack">
+          <button type="button" onClick={() => pollResult(true)} disabled={!transactionId || isPolling}>
+            {isPolling ? '查詢中…' : '查詢結果'}
+          </button>
+          <label htmlFor="auto-poll" className="inline">
             <input
-              value={presentationFields[field] ?? ''}
-              onChange={(event) => updatePresentationField(field, event.target.value)}
+              id="auto-poll"
+              type="checkbox"
+              checked={autoPoll}
+              onChange={(event) => setAutoPoll(event.target.checked)}
+              disabled={!transactionId}
             />
-          </div>
-        ))}
-
-        <button type="button" onClick={submitPresentation} disabled={loading}>
-          {loading ? '驗證中…' : '提交 VP'}
-        </button>
-
-        {resultError ? <div className="alert error">{resultError}</div> : null}
+            自動輪詢（每 5 秒）
+          </label>
+        </div>
+        {resultError ? <div className="alert warning">{resultError}</div> : null}
         {result ? (
-          <div className="alert success" role="status">
-            <p>驗證結果：{result.result.verified ? '通過' : '未通過'}</p>
-            <p>AI 風險分數：{result.insight.gastritis_risk_score}</p>
-            <details>
-              <summary>完整回應</summary>
-              <pre>{JSON.stringify(result, null, 2)}</pre>
-            </details>
-          </div>
+          <pre>{JSON.stringify(result, null, 2)}</pre>
         ) : null}
       </div>
     </section>

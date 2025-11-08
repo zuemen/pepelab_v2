@@ -19,7 +19,7 @@ const record = {
 };
 
 app.post('/getQRCode', async (req, res) => {
-  const { message } = req.body || {};
+  const { message, scenario } = req.body || {};
   if (typeof message !== 'string' || message.trim().length === 0) {
     return res.status(400).json({
       error: 'Invalid payload',
@@ -33,8 +33,19 @@ app.post('/getQRCode', async (req, res) => {
     createdAt: new Date().toISOString()
   };
 
+  const normalizedScenario = (scenario || 'consent').toLowerCase();
+  const scenarioRefs = config.verifier_refs || {};
+  const selectedRef = scenarioRefs[normalizedScenario] || config.verifier_ref;
+
+  if (!selectedRef) {
+    return res.status(400).json({
+      error: 'Missing verifier ref',
+      message: 'config.verifier_ref 或 verifier_refs 中必須至少提供一組驗證服務代碼。'
+    });
+  }
+
   const url = new URL('https://verifier-sandbox.wallet.gov.tw/api/oidvp/qrcode');
-  url.searchParams.set('ref', config.verifier_ref);
+  url.searchParams.set('ref', selectedRef);
   url.searchParams.set('transactionId', transactionId);
 
   try {
@@ -54,7 +65,9 @@ app.post('/getQRCode', async (req, res) => {
     return res.json({
       qrcodeImage,
       authUri,
-      transactionId
+      transactionId,
+      ref: selectedRef,
+      scenario: normalizedScenario
     });
   } catch (error) {
     console.error('Failed to retrieve QR code:', error.response?.data || error.message);

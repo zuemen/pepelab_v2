@@ -71,11 +71,55 @@ class FHIRMedicationDispenseSummary(BaseModel):
     medicationCodeableConcept: FHIRCodeableConcept
     quantity_text: str = Field(..., description="Formatted quantity string, e.g. '30 tablets'")
     days_supply: int = Field(..., ge=1, description="Days of therapy covered by this dispense")
+    does_text: Optional[str] = Field(
+        None, description="Dosage instructions mirrored to vc_rx 的 does_text 欄位"
+    )
     performer: Optional[FHIRIdentifier] = Field(
         None, description="Pharmacist or institution identifier"
     )
     pickup_window_end: Optional[date] = Field(
         None, description="Last day the medication can be picked up"
+    )
+
+
+class FHIRAllergySummary(BaseModel):
+    resourceType: Literal["AllergyIntolerance"] = "AllergyIntolerance"
+    id: str
+    code: FHIRCodeableConcept
+    criticality: Optional[str] = Field(
+        None,
+        description="FHIR criticality/severity tag for the allergy (e.g. low, high)",
+    )
+
+
+class ConsentSummary(BaseModel):
+    scope: Optional[str] = Field(None, description="Consent scope identifier")
+    purpose: Optional[str] = Field(None, description="Purpose description")
+    issuer: Optional[str] = Field(None, description="Issuing organization")
+    path: Optional[str] = Field(None, description="Reference path or URI")
+    expires_on: Optional[date] = Field(
+        None, description="Consent expiry date, mapping to cons_end"
+    )
+
+
+class PatientDigest(BaseModel):
+    hashed_id: Optional[str] = Field(None, description="Hashed personal identifier")
+    display_name: Optional[str] = Field(None, description="Masked patient name")
+    birth_date: Optional[date] = Field(None, description="Birth date in ISO format")
+    document_type: Optional[str] = Field(
+        None, description="Document type reserved for 未來身份識別憑證"
+    )
+    document_version: Optional[str] = Field(
+        None, description="Document version reserved for 未來身份識別憑證"
+    )
+    issuer: Optional[str] = Field(
+        None, description="Issuing authority reserved for 身份憑證"
+    )
+    valid_to: Optional[date] = Field(
+        None, description="Document valid-to date reserved for 身份憑證"
+    )
+    wallet_id: Optional[str] = Field(
+        None, description="Wallet identifier reserved for 身份憑證擴充"
     )
 
 
@@ -98,6 +142,18 @@ class CredentialPayload(BaseModel):
     medication_dispense: Optional[List[FHIRMedicationDispenseSummary]] = Field(
         default_factory=list,
         description="Optional medication dispense summaries linked to the visit",
+    )
+    allergies: Optional[List[FHIRAllergySummary]] = Field(
+        default_factory=list,
+        description="Optional allergy summaries bundled for VC compatibility",
+    )
+    consent: Optional[ConsentSummary] = Field(
+        None,
+        description="Consent metadata aligned with MODA sandbox fields",
+    )
+    patient_digest: Optional[PatientDigest] = Field(
+        None,
+        description="Masked patient identifiers（保留未來身份卡擴充使用）",
     )
 
 

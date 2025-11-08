@@ -6,6 +6,9 @@ import json
 import os
 import re
 import secrets
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -57,13 +60,21 @@ except Exception:  # pragma: no cover - fallback to text payloads
 app = FastAPI(title="MedSSI Sandbox APIs", version="0.6.0")
 allowed_origins_env = os.getenv(
     "MEDSSI_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173",
+    (
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,"
+        "http://127.0.0.1:5174,http://localhost:4173"
+    ),
 )
 ALLOWED_ORIGINS = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+allowed_origin_regex = os.getenv(
+    "MEDSSI_ALLOWED_ORIGIN_REGEX",
+    r"https?://(localhost|127\.0\.0\.1|192\.168\.[0-9]{1,3}\.[0-9]{1,3})(:[0-9]{2,5})?",
+).strip()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS or ["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=allowed_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -105,6 +116,79 @@ OIDVP_CLIENT_ID = os.getenv(
     "MEDSSI_OIDVP_CLIENT_ID",
     "https://verifier-oidvp.medssi.dev/api/oidvp/authorization-response",
 )
+GOV_ISSUER_BASE = os.getenv(
+    "MEDSSI_GOV_ISSUER_BASE", "https://issuer-sandbox.wallet.gov.tw"
+)
+GOV_VERIFIER_BASE = os.getenv(
+    "MEDSSI_GOV_VERIFIER_BASE", "https://verifier-sandbox.wallet.gov.tw"
+)
+
+
+print(f"🌐 Gov issuer base: {GOV_ISSUER_BASE}")
+print(f"🌐 Gov verifier base: {GOV_VERIFIER_BASE}")
+
+def _normalize_identifier_slug(value: str) -> str:
+    slug = (value or "").strip().lower()
+    if "_" in slug:
+        slug = slug.split("_")[-1]
+    return slug
+
+
+DEFAULT_MODA_VC_IDENTIFIERS: Dict[str, Dict[str, str]] = {
+    "vc_cons": {"vcUid": "00000000_vc_cons", "vcCid": "vc_cons"},
+    "vc_cond": {"vcUid": "00000000_vc_cond", "vcCid": "vc_cond"},
+    "vc_algy": {"vcUid": "00000000_vc_algy", "vcCid": "vc_algy"},
+    "vc_rx": {"vcUid": "00000000_vc_rx", "vcCid": "vc_rx"},
+    "vc_pid": {"vcUid": "00000000_vc_pid", "vcCid": "vc_pid"},
+}
+
+
+def _load_moda_identifier_config() -> Dict[str, Dict[str, str]]:
+    config = {slug: dict(values) for slug, values in DEFAULT_MODA_VC_IDENTIFIERS.items()}
+    raw = os.getenv("MEDSSI_MODA_VC_IDENTIFIERS", "").strip()
+    if not raw:
+        return config
+    try:
+        overrides = json.loads(raw)
+    except json.JSONDecodeError:
+        return config
+    if not isinstance(overrides, dict):
+        return config
+    for key, value in overrides.items():
+        slug = _normalize_identifier_slug(str(key))
+        if not slug:
+            continue
+        if not isinstance(value, dict):
+            continue
+        target = config.setdefault(slug, {})
+        for field_key, field_value in value.items():
+            if field_key not in {"vcUid", "vcId", "vcCid", "apiKey"}:
+                continue
+            if field_value is None:
+                continue
+            text = str(field_value).strip()
+            if not text:
+                continue
+            target[field_key] = text
+    return config
+
+
+MODA_VC_IDENTIFIERS = _load_moda_identifier_config()
+
+DEFAULT_VERIFIER_REF = os.getenv(
+    "MEDSSI_VERIFIER_REF_DEFAULT", "00000000_vp_consent"
+)
+DEFAULT_SCOPE_REF_MAP = {
+    DisclosureScope.MEDICAL_RECORD: os.getenv(
+        "MEDSSI_VERIFIER_REF_CONSENT", DEFAULT_VERIFIER_REF
+    ),
+    DisclosureScope.RESEARCH_ANALYTICS: os.getenv(
+        "MEDSSI_VERIFIER_REF_RESEARCH", "00000000_vp_research"
+    ),
+    DisclosureScope.MEDICATION_PICKUP: os.getenv(
+        "MEDSSI_VERIFIER_REF_RX", "00000000_vp_rx_pickup"
+    ),
+}
 
 
 def _raise_problem(*, status: int, type_: str, title: str, detail: str) -> None:
@@ -172,6 +256,265 @@ def _merge_authorization(
     if alt_token:
         return _normalize_authorization_header(alt_token)
     return None
+
+
+def _extract_token_from_request(request: Request) -> str:
+    header_value = _merge_authorization(
+        request.headers.get("authorization"), request.headers.get("access-token")
+    )
+    if not header_value:
+        _raise_problem(
+            status=401,
+            type_="https://medssi.dev/errors/missing-token",
+            title="Token required",
+            detail="Provide issuer, wallet, or verifier token.",
+        )
+    _, _, token = header_value.partition(" ")
+    return token.strip()
+
+
+def _call_remote_api(
+    *,
+    method: str,
+    base_url: str,
+    path: str,
+    token: str,
+    payload: Optional[Dict[str, Any]] = None,
+    params: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    url = base_url.rstrip("/") + path
+    if params:
+        encoded = urllib.parse.urlencode(
+            {key: value for key, value in params.items() if value is not None}, doseq=True
+        )
+        if encoded:
+            url = f"{url}?{encoded}"
+
+    data: Optional[bytes] = None
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+
+    request = urllib.request.Request(url, data=data, method=method.upper())
+    request.add_header("Content-Type", "application/json")
+    request.add_header("access-token", token)
+
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            body = response.read()
+            if not body:
+                return {}
+            encoding = response.headers.get_content_charset() or "utf-8"
+            text = body.decode(encoding)
+            if not text:
+                return {}
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                return {"raw": text}
+    except urllib.error.HTTPError as exc:
+        detail: Any = {
+            "code": str(exc.code),
+            "message": exc.reason or "Remote service error",
+        }
+        try:
+            payload_text = exc.read().decode("utf-8")
+            if payload_text:
+                detail = json.loads(payload_text)
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+            detail = {
+                "code": str(exc.code),
+                "message": exc.reason or "Remote service error",
+            }
+        raise HTTPException(status_code=exc.code or 502, detail=detail) from None
+    except urllib.error.URLError as exc:
+        _raise_problem(
+            status=502,
+            type_="https://medssi.dev/errors/remote-unavailable",
+            title="Remote service unavailable",
+            detail=str(exc.reason) if exc.reason else "Unable to reach sandbox APIs.",
+        )
+
+
+def _resolve_verifier_ref(
+    scope: Optional[DisclosureScope], ref: Optional[str]
+) -> str:
+    if ref:
+        return ref
+    if scope and scope in DEFAULT_SCOPE_REF_MAP:
+        mapped = DEFAULT_SCOPE_REF_MAP[scope]
+        if mapped:
+            return mapped
+    return DEFAULT_VERIFIER_REF
+
+
+def _format_gov_date(value: Optional[Union[str, date, datetime]]) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, date):
+        return value.strftime("%Y%m%d")
+    if isinstance(value, str):
+        digits = value.replace("-", "").strip()
+        if len(digits) == 8 and digits.isdigit():
+            return digits
+        return value
+    return str(value)
+
+
+def _build_moda_field_entries(request: MODAIssuanceRequest) -> List[Dict[str, str]]:
+    vc_slug = _normalize_vc_uid(request.vc_uid)
+    provided: Dict[str, str] = {}
+    for field in request.fields:
+        canonical = _canonical_alias_key(field.ename)
+        if not canonical:
+            continue
+        provided[canonical] = field.content or ""
+
+    sample_values = MODA_SAMPLE_FIELD_VALUES.get(vc_slug, {})
+    merged = {**sample_values, **provided}
+
+    required_order = MODA_VC_FIELD_KEYS.get(vc_slug)
+    if not required_order:
+        required_order = list(sample_values.keys()) or list(merged.keys())
+
+    ordered_keys: List[str] = []
+    for key in required_order:
+        if key and key not in ordered_keys:
+            ordered_keys.append(key)
+    for key in merged.keys():
+        if key and key not in ordered_keys:
+            ordered_keys.append(key)
+
+    if not ordered_keys:
+        ordered_keys = list(merged.keys())
+
+    if not ordered_keys and sample_values:
+        ordered_keys = list(sample_values.keys())
+
+    fields: List[Dict[str, str]] = []
+    for key in ordered_keys:
+        value = merged.get(key, "")
+        fields.append({"type": "NORMAL", "ename": key, "content": value})
+
+    return fields
+
+
+def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        moda_request = MODAIssuanceRequest.parse_obj(raw_payload)
+    except ValidationError:
+        return raw_payload
+
+    payload = dict(raw_payload)
+
+    slug = _normalize_vc_uid(moda_request.vc_uid)
+    identifiers = MODA_VC_IDENTIFIERS.get(slug, {})
+
+    payload["vcUid"] = moda_request.vc_uid or identifiers.get("vcUid")
+    if not payload.get("vcUid") and identifiers.get("vcUid"):
+        payload["vcUid"] = identifiers["vcUid"]
+    if moda_request.vc_id:
+        payload["vcId"] = moda_request.vc_id
+    elif not payload.get("vcId") and identifiers.get("vcId"):
+        payload["vcId"] = identifiers["vcId"]
+    if moda_request.vc_cid:
+        payload["vcCid"] = moda_request.vc_cid
+    elif not payload.get("vcCid") and identifiers.get("vcCid"):
+        payload["vcCid"] = identifiers["vcCid"]
+    if moda_request.api_key:
+        payload["apiKey"] = moda_request.api_key
+    elif not payload.get("apiKey") and identifiers.get("apiKey"):
+        payload["apiKey"] = identifiers["apiKey"]
+    if moda_request.issuer_id:
+        payload["issuerId"] = moda_request.issuer_id
+    if moda_request.holder_did:
+        payload["holderDid"] = moda_request.holder_did
+
+    if "issuanceDate" not in payload:
+        payload["issuanceDate"] = _format_gov_date(moda_request.issuance_date) or _format_gov_date(
+            date.today()
+        )
+    else:
+        payload["issuanceDate"] = _format_gov_date(payload["issuanceDate"])
+
+    if "expiredDate" in payload:
+        payload["expiredDate"] = _format_gov_date(payload["expiredDate"])
+    elif moda_request.expired_date:
+        payload["expiredDate"] = _format_gov_date(moda_request.expired_date)
+
+    fields = _build_moda_field_entries(moda_request)
+    payload["fields"] = fields
+
+    cleaned: Dict[str, Any] = {}
+    field_slug = _normalize_vc_uid(payload.get("vcUid"))
+    required_fields = MODA_VC_FIELD_KEYS.get(field_slug, []) or []
+    sample_values = MODA_SAMPLE_FIELD_VALUES.get(field_slug, {})
+
+    for key, value in payload.items():
+        if value is None:
+            continue
+        if key == "fields" and isinstance(value, list):
+            cleaned_fields = []
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                ename = item.get("ename")
+                if not ename:
+                    continue
+                content = item.get("content", "")
+                cleaned_fields.append(
+                    {"type": item.get("type", "NORMAL"), "ename": ename, "content": content}
+                )
+
+            if cleaned_fields:
+                field_map = {entry["ename"]: entry for entry in cleaned_fields}
+                for required_key in required_fields:
+                    entry = field_map.get(required_key)
+                    needs_fallback = not entry or not str(entry.get("content", "")).strip()
+                    if needs_fallback:
+                        fallback_value = sample_values.get(required_key)
+                        if fallback_value is not None:
+                            field_map[required_key] = {
+                                "ename": required_key,
+                                "content": fallback_value,
+                            }
+
+                ordered_fields: List[Dict[str, str]] = []
+                for required_key in required_fields:
+                    entry = field_map.get(required_key)
+                    if not entry:
+                        continue
+                    content_text = str(entry.get("content", "")).strip()
+                    if content_text:
+                        ordered_fields.append(
+                            {
+                                "type": entry.get("type", "NORMAL"),
+                                "ename": required_key,
+                                "content": content_text,
+                            }
+                        )
+
+                for entry in cleaned_fields:
+                    name = entry["ename"]
+                    if name in required_fields:
+                        continue
+                    content_text = str(entry.get("content", "")).strip()
+                    if content_text:
+                        ordered_fields.append(
+                            {
+                                "type": entry.get("type", "NORMAL"),
+                                "ename": name,
+                                "content": content_text,
+                            }
+                        )
+
+                if ordered_fields:
+                    cleaned[key] = ordered_fields
+            continue
+        cleaned[key] = value
+
+    return cleaned
 
 
 def require_issuer_token(
@@ -315,6 +658,9 @@ class MODAIssuanceField(BaseModel):
 
 class MODAIssuanceRequest(BaseModel):
     vc_uid: str = Field(..., alias="vcUid")
+    vc_id: Optional[str] = Field(None, alias="vcId")
+    vc_cid: Optional[str] = Field(None, alias="vcCid")
+    api_key: Optional[str] = Field(None, alias="apiKey")
     issuance_date: Optional[date] = Field(None, alias="issuanceDate")
     expired_date: Optional[date] = Field(None, alias="expiredDate")
     fields: List[MODAIssuanceField] = Field(default_factory=list, alias="fields")
@@ -468,18 +814,31 @@ def _make_qr_data_uri(payload: str) -> str:
 
 
 def _normalize_vc_uid(vc_uid: str) -> str:
-    slug = vc_uid.lower()
-    if "_" in slug:
-        slug = slug.split("_")[-1]
-    return slug
+    return _normalize_identifier_slug(vc_uid)
 
 
 MODA_VC_SCOPE_MAP = {
     "vc_cond": DisclosureScope.MEDICAL_RECORD,
     "vc_algy": DisclosureScope.MEDICAL_RECORD,
-    "vc_pid": DisclosureScope.MEDICAL_RECORD,
     "vc_cons": DisclosureScope.RESEARCH_ANALYTICS,
     "vc_rx": DisclosureScope.MEDICATION_PICKUP,
+    "vc_pid": DisclosureScope.RESEARCH_ANALYTICS,
+}
+
+
+MODA_VC_FIELD_KEYS = {
+    "vc_cons": ["cons_scope", "cons_purpose", "cons_end", "cons_path"],
+    "vc_cond": ["cond_code", "cond_display", "cond_onset"],
+    "vc_algy": ["algy_code", "algy_name", "algy_severity"],
+    "vc_rx": ["med_code", "med_name", "does_text", "qty_value", "qty_unit"],
+    "vc_pid": [
+        "pid_hash",
+        "pid_type",
+        "pid_ver",
+        "pid_issuer",
+        "pid_valid_to",
+        "wallet_id",
+    ],
 }
 
 
@@ -488,15 +847,21 @@ MODA_SCOPE_DEFAULT_FIELDS = {
     DisclosureScope.MEDICATION_PICKUP: [
         "med_code",
         "med_name",
+        "does_text",
         "qty_value",
         "qty_unit",
-        "pickup_deadline",
     ],
     DisclosureScope.RESEARCH_ANALYTICS: [
         "cons_scope",
         "cons_purpose",
+        "cons_end",
         "cons_path",
-        "cons_issuer",
+        "pid_hash",
+        "pid_type",
+        "pid_ver",
+        "pid_issuer",
+        "pid_valid_to",
+        "wallet_id",
     ],
 }
 
@@ -508,14 +873,26 @@ MODA_FIELD_TO_FHIR = {
     "med_code": "medication_dispense[0].medicationCodeableConcept.coding[0].code",
     "med_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
     "qty_value": "medication_dispense[0].days_supply",
-    "pickup_deadline": "medication_dispense[0].pickup_window_end",
+    "qty_unit": "medication_dispense[0].quantity_text",
+    "does_text": "medication_dispense[0].does_text",
     "medication_list[0].medication_code": "medication_dispense[0].medicationCodeableConcept.coding[0].code",
     "medication_list[0].medication_name": "medication_dispense[0].medicationCodeableConcept.coding[0].display",
     "medication_list[0].dosage": "medication_dispense[0].days_supply",
-    "pickup_info.pickup_deadline": "medication_dispense[0].pickup_window_end",
     "condition_info.condition_code": "condition.code.coding[0].code",
     "condition_info.condition_display": "condition.code.coding[0].display",
     "condition_info.condition_onset": "condition.recordedDate",
+    "algy_code": "allergies[0].code.coding[0].code",
+    "algy_name": "allergies[0].code.coding[0].display",
+    "algy_severity": "allergies[0].criticality",
+    "cons_scope": "consent.scope",
+    "cons_purpose": "consent.purpose",
+    "cons_path": "consent.path",
+    "pid_hash": "patient_digest.hashed_id",
+    "pid_type": "patient_digest.document_type",
+    "pid_ver": "patient_digest.document_version",
+    "pid_issuer": "patient_digest.issuer",
+    "pid_valid_to": "patient_digest.valid_to",
+    "wallet_id": "patient_digest.wallet_id",
 }
 
 
@@ -523,10 +900,18 @@ MODA_FIELD_DIRECT_ALIASES = {
     "medicationList[0].medicationCode": "medication_list[0].medication_code",
     "medicationList[0].medicationName": "medication_list[0].medication_name",
     "medicationList[0].dosage": "medication_list[0].dosage",
+    "medicationList[0].doesText": "does_text",
     "pickupInfo.pickupDeadline": "pickup_info.pickup_deadline",
     "conditionInfo.conditionCode": "condition_info.condition_code",
     "conditionInfo.conditionDisplay": "condition_info.condition_display",
     "conditionInfo.conditionOnset": "condition_info.condition_onset",
+    "consentInfo.consentEnd": "cons_end",
+    "identityInfo.pidHash": "pid_hash",
+    "identityInfo.pidType": "pid_type",
+    "identityInfo.pidVer": "pid_ver",
+    "identityInfo.pidIssuer": "pid_issuer",
+    "identityInfo.pidValidTo": "pid_valid_to",
+    "identityInfo.walletId": "wallet_id",
 }
 
 
@@ -544,14 +929,55 @@ MODA_FIELD_LOWER_ALIASES = {
     "qtyvalue": "qty_value",
     "dosage": "qty_value",
     "qtyunit": "qty_unit",
-    "pickupdeadline": "pickup_deadline",
+    "doestext": "does_text",
     "consentscope": "cons_scope",
     "consentpurpose": "cons_purpose",
-    "consentissuer": "cons_issuer",
     "consentpath": "cons_path",
+    "consentend": "cons_end",
+    "algycode": "algy_code",
+    "algyname": "algy_name",
+    "algyseverity": "algy_severity",
     "pidhash": "pid_hash",
-    "pidname": "pid_name",
-    "pidbirth": "pid_birth",
+    "pidtype": "pid_type",
+    "pidver": "pid_ver",
+    "pidissuer": "pid_issuer",
+    "pidvalidto": "pid_valid_to",
+    "walletid": "wallet_id",
+}
+
+
+MODA_SAMPLE_FIELD_VALUES = {
+    "vc_cons": {
+        "cons_scope": "MEDSSI01",
+        "cons_purpose": "MEDDATARESEARCH",
+        "cons_end": (date.today() + timedelta(days=180)).isoformat(),
+        "cons_path": "IRB2025001",
+    },
+    "vc_cond": {
+        "cond_code": "K2970",
+        "cond_display": "CHRONICGASTRITIS",
+        "cond_onset": "2025-02-12",
+    },
+    "vc_algy": {
+        "algy_code": "ALG001",
+        "algy_name": "PENICILLIN",
+        "algy_severity": "2",
+    },
+    "vc_rx": {
+        "med_code": "A02BC05",
+        "med_name": "OMEPRAZOLE",
+        "does_text": "BID 10ML",
+        "qty_value": "30",
+        "qty_unit": "TABLET",
+    },
+    "vc_pid": {
+        "pid_hash": "12345678",
+        "pid_type": "01",
+        "pid_ver": "01",
+        "pid_issuer": "886",
+        "pid_valid_to": (date.today() + timedelta(days=3650)).isoformat(),
+        "wallet_id": "10000001",
+    },
 }
 
 
@@ -711,6 +1137,40 @@ def _sample_payload() -> CredentialPayload:
         "issued_on": today.isoformat(),
         "consent_expires_on": None,
         "medication_dispense": [],
+        "allergies": [
+            {
+                "resourceType": "AllergyIntolerance",
+                "id": "algy-sample",
+                "code": {
+                    "coding": [
+                        {
+                            "system": "http://hl7.org/fhir/sid/icd-10",
+                            "code": "Z88.1",
+                            "display": "Penicillin allergy",
+                        }
+                    ],
+                    "text": "Penicillin allergy",
+                },
+                "criticality": "high",
+            }
+        ],
+        "consent": {
+            "scope": "research_info",
+            "purpose": "AI 胃炎趨勢研究",
+            "issuer": "MOHW-IRB2025001",
+            "path": "medssi://consent/irb-2025-001",
+            "expires_on": (today + timedelta(days=180)).isoformat(),
+        },
+        "patient_digest": {
+            "hashed_id": "hash::8f4c0d1d6c1a4b67a4f9d1234567890b",
+            "display_name": "張小華",
+            "birth_date": "1950-07-18",
+            "document_type": "NHI_CARD",
+            "document_version": "v1.0",
+            "issuer": "衛福部中央健康保險署",
+            "valid_to": (today + timedelta(days=365 * 2)).isoformat(),
+            "wallet_id": "wallet-demo-001",
+        },
     }
     return CredentialPayload.parse_obj(sample_dict)
 
@@ -835,6 +1295,17 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
             }
         )
 
+    if alias_map.get("does_text"):
+        merge(
+            {
+                "medication_dispense": [
+                    {
+                        "does_text": alias_map["does_text"],
+                    }
+                ]
+            }
+        )
+
     if alias_map.get("pickup_deadline"):
         merge(
             {
@@ -843,6 +1314,67 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
                         "pickup_window_end": alias_map["pickup_deadline"],
                     }
                 ]
+            }
+        )
+
+    if any(key in alias_map for key in ("algy_code", "algy_name", "algy_severity")):
+        merge(
+            {
+                "allergies": [
+                    {
+                        "resourceType": "AllergyIntolerance",
+                        "id": "algy-from-alias",
+                        "code": {
+                            "coding": [
+                                {
+                                    "system": "http://hl7.org/fhir/sid/icd-10",
+                                    "code": alias_map.get("algy_code", "Z88.1"),
+                                    "display": alias_map.get("algy_name", "Penicillin allergy"),
+                                }
+                            ],
+                            "text": alias_map.get("algy_name", "Penicillin allergy"),
+                        },
+                        "criticality": alias_map.get("algy_severity", "high"),
+                    }
+                ]
+            }
+        )
+
+    if any(
+        key in alias_map for key in ("cons_scope", "cons_purpose", "cons_path", "cons_end")
+    ):
+        merge(
+            {
+                "consent": {
+                    "scope": alias_map.get("cons_scope"),
+                    "purpose": alias_map.get("cons_purpose"),
+                    "path": alias_map.get("cons_path"),
+                    "expires_on": alias_map.get("cons_end"),
+                }
+            }
+        )
+
+    if any(
+        key in alias_map
+        for key in (
+            "pid_hash",
+            "pid_type",
+            "pid_ver",
+            "pid_issuer",
+            "pid_valid_to",
+            "wallet_id",
+        )
+    ):
+        merge(
+            {
+                "patient_digest": {
+                    "hashed_id": alias_map.get("pid_hash"),
+                    "document_type": alias_map.get("pid_type"),
+                    "document_version": alias_map.get("pid_ver"),
+                    "issuer": alias_map.get("pid_issuer"),
+                    "valid_to": alias_map.get("pid_valid_to"),
+                    "wallet_id": alias_map.get("wallet_id"),
+                }
             }
         )
 
@@ -860,13 +1392,17 @@ def _expand_aliases(alias_map: Dict[str, str]) -> Dict[str, str]:
     copy_if_missing("med_name", "medication_list[0].medication_name")
     copy_if_missing("qty_value", "medication_list[0].dosage")
     copy_if_missing("pickup_deadline", "pickup_info.pickup_deadline")
+    copy_if_missing("does_text", "medication_list[0].does_text")
     copy_if_missing("cons_scope", "consent.scope")
     copy_if_missing("cons_purpose", "consent.purpose")
-    copy_if_missing("cons_issuer", "consent.issuer")
     copy_if_missing("cons_path", "consent.path")
+    copy_if_missing("cons_end", "consent.expires_on")
     copy_if_missing("pid_hash", "pid_info.pid_hash")
-    copy_if_missing("pid_name", "pid_info.pid_name")
-    copy_if_missing("pid_birth", "pid_info.pid_birth")
+    copy_if_missing("pid_type", "pid_info.pid_type")
+    copy_if_missing("pid_ver", "pid_info.pid_ver")
+    copy_if_missing("pid_issuer", "pid_info.pid_issuer")
+    copy_if_missing("pid_valid_to", "pid_info.pid_valid_to")
+    copy_if_missing("wallet_id", "pid_info.wallet_id")
 
     return expanded
 
@@ -1125,6 +1661,7 @@ def _scope_for_moda_vc(vc_uid: str) -> DisclosureScope:
 
 def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOffer, str]:
     scope = _scope_for_moda_vc(request.vc_uid)
+    vc_slug = _normalize_vc_uid(request.vc_uid)
     ial = request.ial or IdentityAssuranceLevel.NHI_CARD_PIN
     holder_did = request.holder_did or "did:example:patient-demo"
     issuer_id = request.issuer_id or DEFAULT_ISSUER_ID
@@ -1142,9 +1679,18 @@ def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOf
             continue
         canonical_fields[key] = field.content or ""
     alias_map = _expand_aliases(canonical_fields)
-    policy_fields = list(dict.fromkeys(alias_map.keys()))
+
+    sample_values = MODA_SAMPLE_FIELD_VALUES.get(vc_slug, {})
+    alias_map = {**sample_values, **alias_map}
+    raw_fields = {**sample_values, **raw_fields}
+
+    policy_fields = list(
+        dict.fromkeys(list(raw_fields.keys()) + list(alias_map.keys()))
+    )
     if not policy_fields:
-        policy_fields = MODA_SCOPE_DEFAULT_FIELDS.get(scope, ["cond_code"])
+        policy_fields = MODA_VC_FIELD_KEYS.get(vc_slug) or MODA_SCOPE_DEFAULT_FIELDS.get(
+            scope, ["cond_code"]
+        )
 
     payload_overrides = _payload_overrides_from_alias(alias_map)
     payload = _coerce_payload(payload_overrides)
@@ -1169,7 +1715,7 @@ def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOf
         payload=payload,
         transaction_id=request.transaction_id,
         selected_disclosures=alias_map,
-        external_fields={**raw_fields, **alias_map},
+        external_fields={**sample_values, **raw_fields, **alias_map},
     )
 
 
@@ -1269,143 +1815,186 @@ api_public = APIRouter(prefix="/api", tags=["MODA Sandbox compatibility"])
 
 @api_public.post(
     "/qrcode/data",
-    response_model=GovIssueResponse,
+    response_model=Dict[str, Any],
     status_code=201,
     dependencies=[Depends(require_issuer_token)],
 )
-def gov_issue_with_data(payload: Dict[str, Any] = Body(...)) -> GovIssueResponse:
-    offer, qr_payload = _issue_with_data_from_payload(payload)
-    return _build_issue_response(offer, qr_payload)
+def gov_issue_with_data(
+    request: Request, payload: Dict[str, Any] = Body(...)
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    normalized = _prepare_moda_remote_payload(payload)
+    return _call_remote_api(
+        method="POST",
+        base_url=GOV_ISSUER_BASE,
+        path="/api/qrcode/data",
+        token=token,
+        payload=normalized,
+    )
 
 
 @api_public.post(
     "/medical/card/issue",
-    response_model=GovIssueResponse,
+    response_model=Dict[str, Any],
     status_code=201,
     dependencies=[Depends(require_issuer_token)],
 )
-def gov_issue_medical_card(payload: Dict[str, Any] = Body(...)) -> GovIssueResponse:
-    offer, qr_payload = _issue_with_data_from_payload(payload)
-    return _build_issue_response(offer, qr_payload)
+def gov_issue_medical_card(
+    request: Request, payload: Dict[str, Any] = Body(...)
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    normalized = _prepare_moda_remote_payload(payload)
+    return _call_remote_api(
+        method="POST",
+        base_url=GOV_ISSUER_BASE,
+        path="/api/qrcode/data",
+        token=token,
+        payload=normalized,
+    )
 
 
 @api_public.post(
     "/qrcode/nodata",
-    response_model=GovIssueResponse,
+    response_model=Dict[str, Any],
     status_code=201,
     dependencies=[Depends(require_issuer_token)],
 )
-def gov_issue_without_data(payload: Dict[str, Any] = Body(...)) -> GovIssueResponse:
-    offer, qr_payload = _issue_template_from_payload(payload)
-    return _build_issue_response(offer, qr_payload)
+def gov_issue_without_data(
+    request: Request, payload: Dict[str, Any] = Body(...)
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    normalized = _prepare_moda_remote_payload(payload)
+    return _call_remote_api(
+        method="POST",
+        base_url=GOV_ISSUER_BASE,
+        path="/api/qrcode/nodata",
+        token=token,
+        payload=normalized,
+    )
 
 
 @api_public.get(
     "/credential/nonce/{transaction_id}",
-    response_model=GovCredentialNonceResponse,
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_wallet_token)],
 )
-def gov_get_nonce(transaction_id: str) -> GovCredentialNonceResponse:
-    offer = store.get_credential_by_transaction(transaction_id)
-    if not offer:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": "61010",
-                "message": "指定VC不存在，QR Code尚未被掃描",
-            },
-        )
-    return _build_nonce_response(offer)
+def gov_get_nonce(transaction_id: str, request: Request) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    return _call_remote_api(
+        method="GET",
+        base_url=GOV_ISSUER_BASE,
+        path=f"/api/credential/nonce/{transaction_id}",
+        token=token,
+    )
 
 
 @api_public.get(
     "/credential/nonce",
-    response_model=GovCredentialNonceResponse,
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_wallet_token)],
 )
-def gov_get_nonce_query(transactionId: str = Query(..., alias="transactionId")) -> GovCredentialNonceResponse:
-    return gov_get_nonce(transactionId)
+def gov_get_nonce_query(
+    request: Request, transactionId: str = Query(..., alias="transactionId")
+) -> Dict[str, Any]:
+    return gov_get_nonce(transactionId, request)
 
 
 @api_public.put(
     "/credential/{credential_id}/{action}",
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_issuer_token)],
 )
-def gov_update_credential(credential_id: str, action: str) -> Dict[str, Any]:
-    if action.lower() != "revocation":
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "61006", "message": "不合法的VC操作類型"},
-        )
-    try:
-        store.revoke_credential(credential_id)
-    except KeyError:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "61006", "message": "不合法的VC識別碼"},
-        ) from None
-    return {"credentialStatus": CredentialStatus.REVOKED.value, "credentialId": credential_id}
+def gov_update_credential(
+    credential_id: str, action: str, request: Request
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    return _call_remote_api(
+        method="PUT",
+        base_url=GOV_ISSUER_BASE,
+        path=f"/api/credential/{credential_id}/{action}",
+        token=token,
+        payload={},
+    )
+
+
+def _forward_oidvp_qrcode(
+    *,
+    request: Request,
+    ref: Optional[str],
+    transaction_id: Optional[str],
+    scope: Optional[DisclosureScope] = None,
+    payload: Optional[OIDVPSessionRequest] = None,
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    tx_id = transaction_id
+    resolved_scope = scope
+    if payload is not None:
+        tx_id = payload.transaction_id or tx_id
+        ref = payload.ref or ref
+        resolved_scope = payload.scope or resolved_scope
+    tx_id = tx_id or str(uuid.uuid4())
+    resolved_scope = resolved_scope or DisclosureScope.MEDICAL_RECORD
+    resolved_ref = _resolve_verifier_ref(resolved_scope, ref)
+    params = {
+        "ref": resolved_ref,
+        "transactionId": tx_id,
+    }
+    response = _call_remote_api(
+        method="GET",
+        base_url=GOV_VERIFIER_BASE,
+        path="/api/oidvp/qrcode",
+        token=token,
+        params=params,
+    )
+    if isinstance(response, dict):
+        response.setdefault("transactionId", tx_id)
+        response.setdefault("ref", resolved_ref)
+    return response
 
 
 @api_public.post(
     "/oidvp/qrcode",
-    response_model=OIDVPQRCodeResponse,
-    status_code=201,
+    response_model=Dict[str, Any],
+    status_code=200,
     dependencies=[Depends(require_verifier_token)],
 )
-def gov_create_oidvp_qrcode(payload: OIDVPSessionRequest) -> OIDVPQRCodeResponse:
-    fields = payload.fields or []
-    if len(fields) == 1 and "," in fields[0]:
-        fields = [segment.strip() for segment in fields[0].split(",") if segment.strip()]
-    if not fields:
-        fallback_policy = next(
-            (
-                policy
-                for policy in _default_disclosure_policies()
-                if policy.scope == payload.scope
-            ),
-            None,
-        )
-        fields = list(fallback_policy.fields) if fallback_policy else ["condition.code.coding[0].code"]
-
-    now = datetime.utcnow()
-    transaction_id = payload.transaction_id or str(uuid.uuid4())
-    session = VerificationSession(
-        session_id=f"sess-{uuid.uuid4().hex}",
-        transaction_id=transaction_id,
-        verifier_id=payload.verifier_id,
-        verifier_name=payload.verifier_name,
-        purpose=payload.purpose or "憑證驗證",
-        required_ial=payload.ial,
+def gov_create_oidvp_qrcode(
+    payload: OIDVPSessionRequest, request: Request
+) -> Dict[str, Any]:
+    return _forward_oidvp_qrcode(
+        request=request,
+        ref=None,
+        transaction_id=None,
         scope=payload.scope,
-        allowed_fields=list(dict.fromkeys(fields)),
-        qr_token=secrets.token_urlsafe(24),
-        created_at=now,
-        expires_at=now + timedelta(minutes=payload.valid_minutes),
-        last_polled_at=now,
-        template_ref=payload.ref,
+        payload=payload,
     )
-    store.persist_verification_session(session)
-    qr_payload = _build_qr_payload(
-        session.qr_token, "vp-session", transaction_id=transaction_id
-    )
-    return OIDVPQRCodeResponse(
-        transaction_id=transaction_id,
-        qrcode_image=_make_qr_data_uri(qr_payload),
-        auth_uri=qr_payload,
-        qr_payload=qr_payload,
-        scope=session.scope,
-        ial=session.required_ial,
-        expires_at=session.expires_at,
+
+
+@api_public.get(
+    "/oidvp/qrcode",
+    response_model=Dict[str, Any],
+    dependencies=[Depends(require_verifier_token)],
+)
+def gov_create_oidvp_qrcode_get(
+    request: Request,
+    ref: Optional[str] = Query(None),
+    transaction_id: Optional[str] = Query(None, alias="transactionId"),
+    transaction_id_snake: Optional[str] = Query(None, alias="transaction_id"),
+    scope: Optional[DisclosureScope] = Query(None, alias="scope"),
+) -> Dict[str, Any]:
+    tx_id = transaction_id or transaction_id_snake
+    return _forward_oidvp_qrcode(
+        request=request, ref=ref, transaction_id=tx_id, scope=scope, payload=None
     )
 
 
 @api_public.get(
     "/medical/verification/code",
-    response_model=OIDVPQRCodeResponse,
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_verifier_token)],
 )
 def gov_get_medical_verification_code(
+    request: Request,
     ref: Optional[str] = Query(None),
     transaction_id: Optional[str] = Query(None, alias="transactionId"),
     verifier_id: str = Query("did:example:verifier", alias="verifier_id"),
@@ -1415,86 +2004,61 @@ def gov_get_medical_verification_code(
     card_type: Optional[str] = Query(None, alias="card_type"),
     ial: Optional[IdentityAssuranceLevel] = Query(None, alias="ial"),
     allowed_fields: Optional[List[str]] = Query(None, alias="allowed_fields"),
+    scope: Optional[DisclosureScope] = Query(None, alias="scope"),
     valid_for_minutes: int = Query(5, alias="valid_for_minutes", ge=1, le=10),
-) -> OIDVPQRCodeResponse:
-    scope = None
-    if card_type:
-        try:
-            scope = DisclosureScope(card_type)
-        except ValueError:
-            scope = None
-    request_fields: Optional[List[str]] = None
-    if allowed_fields:
-        if len(allowed_fields) == 1 and "," in allowed_fields[0]:
-            request_fields = [
-                segment.strip() for segment in allowed_fields[0].split(",") if segment.strip()
-            ]
-        else:
-            request_fields = [field.strip() for field in allowed_fields if field.strip()]
-
-    payload = OIDVPSessionRequest(
-        verifier_id=verifier_id,
-        verifier_name=verifier_name,
-        purpose=purpose or "憑證驗證",
-        scope=scope or DisclosureScope.MEDICAL_RECORD,
-        ial=ial or IdentityAssuranceLevel.NHI_CARD_PIN,
-        fields=request_fields,
-        valid_minutes=valid_for_minutes,
-        transaction_id=transaction_id,
-        ref=ref,
+) -> Dict[str, Any]:
+    # Government API currently accepts only ref/transactionId; additional
+    # parameters are preserved locally when we fall back to the internal
+    # sandbox. Here we simply forward the request and rely on the caller to
+    # track verifier metadata.
+    transaction = transaction_id or str(uuid.uuid4())
+    resolved_ref = _resolve_verifier_ref(scope, ref)
+    params = {
+        "ref": resolved_ref,
+        "transactionId": transaction,
+    }
+    token = _extract_token_from_request(request)
+    response = _call_remote_api(
+        method="GET",
+        base_url=GOV_VERIFIER_BASE,
+        path="/api/oidvp/qrcode",
+        token=token,
+        params=params,
     )
-    # Preserve role information by appending to verifier_name if provided so the
-    # UI can still reference it when rendering session details.
-    if verifier_role:
-        payload.verifier_name = f"{payload.verifier_name} ({verifier_role})"
-    return gov_create_oidvp_qrcode(payload)
+    if isinstance(response, dict):
+        response.setdefault("transactionId", transaction)
+        response.setdefault("ref", resolved_ref)
+    return response
 
 
 @api_public.post(
     "/oidvp/result",
-    response_model=OIDVPResultResponse,
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_verifier_token)],
 )
-def gov_fetch_oidvp_result(payload: OIDVPResultRequest) -> OIDVPResultResponse:
-    session = store.get_verification_session_by_transaction(payload.transaction_id)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "404", "message": "查無交易紀錄"},
-        )
-    result = store.latest_result_for_session(session.session_id)
-    if not result:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "400", "message": "尚未接收到使用者上傳資料"},
-        )
-    session.last_polled_at = datetime.utcnow()
-    store.persist_verification_session(session)
-    claims = [
-        {
-            "credentialType": "MedSSI.VerifiableCredential",
-            "claims": [
-                {"ename": field, "cname": field, "value": value}
-                for field, value in result.presentation.disclosed_fields.items()
-            ],
-        }
-    ]
-    description = "success" if result.verified else "failed"
-    return OIDVPResultResponse(
-        verify_result=result.verified,
-        result_description=description,
-        transaction_id=payload.transaction_id,
-        data=claims,
+def gov_fetch_oidvp_result(
+    payload: OIDVPResultRequest, request: Request
+) -> Dict[str, Any]:
+    token = _extract_token_from_request(request)
+    body = payload.dict(by_alias=True)
+    return _call_remote_api(
+        method="POST",
+        base_url=GOV_VERIFIER_BASE,
+        path="/api/oidvp/result",
+        token=token,
+        payload=body,
     )
 
 
 @api_public.post(
     "/medical/verification/result",
-    response_model=OIDVPResultResponse,
+    response_model=Dict[str, Any],
     dependencies=[Depends(require_verifier_token)],
 )
-def gov_medical_verification_result(payload: OIDVPResultRequest) -> OIDVPResultResponse:
-    return gov_fetch_oidvp_result(payload)
+def gov_medical_verification_result(
+    payload: OIDVPResultRequest, request: Request
+) -> Dict[str, Any]:
+    return gov_fetch_oidvp_result(payload, request)
 
 @api_public.get(
     "/medical/verification/session/{session_id}",
