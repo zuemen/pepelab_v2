@@ -105,7 +105,7 @@ const INITIAL_MEDICATION = {
   system: 'http://www.whocc.no/atc',
   code: 'MNT001',
   display: 'Serenitol',
-  quantityText: '3Bottle',
+  quantityText: 'Bottle',
   doseText: '每日晚餐飯後50MG',
   daysSupply: 3,
   pickupWindowEnd: dayjs('2025-12-31').format('YYYY-MM-DD'),

@@ -66,7 +66,7 @@ setIfExists('input[name="consentExpires"]', defaultConsent);
 setIfExists('input[name="pickupWindow"]', defaultPickup);
 setIfExists('input[name="medicationCode"]', 'MNT001');
 setIfExists('input[name="medicationDisplay"]', 'Serenitol');
-setIfExists('input[name="medicationQuantity"]', '3Bottle');
+setIfExists('input[name="medicationQuantity"]', 'Bottle');
 setIfExists('input[name="medicationDose"]', '每日晚餐飯後50MG');
 setIfExists('input[name="medicationDays"]', '3');
 setIfExists('#presentation-medical-form input[name="field-condition.recordedDate"]', defaultRecordedDate);
@@ -216,7 +216,7 @@ function buildCredentialPayload(formData) {
         ].filter((item) => item.code),
         text: formData.get('medicationDisplay') || undefined,
       },
-      quantity_text: formData.get('medicationQuantity') || '3Bottle',
+      quantity_text: formData.get('medicationQuantity') || 'Bottle',
       dosage_text: formData.get('medicationDose') || '每日晚餐飯後50MG',
       days_supply: Number(medDays),
       pickup_window_end: formData.get('pickupWindow') || null,
@@ -297,7 +297,7 @@ function populateIssueSample() {
   set('medicationSystem', 'http://www.whocc.no/atc');
   set('medicationCode', 'MNT001');
   set('medicationDisplay', 'Serenitol');
-  set('medicationQuantity', '3Bottle');
+  set('medicationQuantity', 'Bottle');
   set('medicationDose', '每日晚餐飯後50MG');
   set('medicationDays', '3');
   set('pickupWindow', defaultPickup);

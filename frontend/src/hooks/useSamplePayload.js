@@ -52,7 +52,7 @@ export function buildSamplePayload({
           ],
           text: 'Serenitol',
         },
-        quantity_text: '3Bottle',
+        quantity_text: 'Bottle',
         dosage_text: '每日晚餐飯後50MG',
         days_supply: 3,
         performer: {
