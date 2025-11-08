@@ -46,14 +46,15 @@ export function buildSamplePayload({
           coding: [
             {
               system: 'http://www.whocc.no/atc',
-              code: 'A02BC05',
-              display: 'OMEPRAZOLE',
+              code: 'MNT001',
+              display: 'Serenitol',
             },
           ],
-          text: 'OMEPRAZOLE',
+          text: 'Serenitol',
         },
-        quantity_text: '30 TABLET',
-        days_supply: 30,
+        quantity_text: '',
+        dosage_text: '每日一次晚餐飯後50mg',
+        days_supply: 3,
         performer: {
           system: 'did:example',
           value: 'did:example:rx-unit-01',

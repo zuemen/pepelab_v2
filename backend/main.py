@@ -940,11 +940,11 @@ MODA_SAMPLE_FIELD_VALUES = {
         "algy_severity": "2",
     },
     "rx1": {
-        "med_code": "A02BC05",
-        "med_name": "OMEPRAZOLE",
-        "dose_text": "BID",
-        "qty_value": "30",
-        "qty_unit": "TABLET",
+        "med_code": "MNT001",
+        "med_name": "Serenitol",
+        "dose_text": "每日一次晚餐飯後50mg",
+        "qty_value": "3",
+        "qty_unit": "",
     },
     "pid": {
         "pid_hash": "12345678",
@@ -1291,7 +1291,7 @@ def _payload_overrides_from_alias(alias_map: Dict[str, str]) -> Optional[Dict[st
         )
         quantity_text = qty_value
     if qty_unit:
-        quantity_text = f"{qty_value or ''} {qty_unit}".strip()
+        quantity_text = f"{qty_value or ''}{qty_unit}".strip()
     if quantity_text:
         merge(
             {
