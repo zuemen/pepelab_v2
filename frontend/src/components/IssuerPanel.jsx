@@ -106,7 +106,7 @@ const INITIAL_MEDICATION = {
   code: 'MNT001',
   display: 'Serenitol',
   quantityText: 'Bottle',
-  doseText: '每日晚餐飯後50MG',
+  doesText: '每日晚餐飯後50MG',
   daysSupply: 3,
   pickupWindowEnd: dayjs('2025-12-31').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
@@ -231,7 +231,7 @@ function buildPayload({
               text: medication.display || undefined,
             },
             quantity_text: medication.quantityText,
-            dosage_text: medication.doseText || undefined,
+            dosage_text: medication.doesText || undefined,
             days_supply: Number(medication.daysSupply) || 0,
             performer: medication.performer
               ? {
