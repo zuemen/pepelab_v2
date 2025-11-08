@@ -1,4 +1,4 @@
-1from __future__ import annotations
+from __future__ import annotations
 
 import base64
 import io
@@ -877,6 +877,9 @@ MODA_FIELD_DIRECT_ALIASES = {
     "medicationList[0].medicationName": "medication_list[0].medication_name",
     "medicationList[0].dosage": "medication_list[0].dosage",
     "medicationList[0].doesText": "does_text",
+    "dose_text": "does_text",
+    "doseText": "does_text",
+    "DoseText": "does_text",
     "pickupInfo.pickupDeadline": "pickup_info.pickup_deadline",
     "conditionInfo.conditionCode": "condition_info.condition_code",
     "conditionInfo.conditionDisplay": "condition_info.condition_display",
@@ -905,6 +908,8 @@ MODA_FIELD_LOWER_ALIASES = {
     "qtyvalue": "qty_value",
     "dosage": "qty_value",
     "qtyunit": "qty_unit",
+    "dose_text": "does_text",
+    "dosetext": "does_text",
     "doestext": "does_text",
     "consentscope": "cons_scope",
     "consentpurpose": "cons_purpose",
@@ -1679,15 +1684,16 @@ def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOf
     raw_fields: Dict[str, str] = {}
     canonical_fields: Dict[str, str] = {}
     for field in request.fields:
-        if not field.ename:
+        name = (field.ename or "").strip()
+        if not name:
             continue
         raw_value = field.content
         value_text = "" if raw_value is None else str(raw_value)
-        raw_fields[field.ename] = value_text
-        key = _canonical_alias_key(field.ename)
-        if not key:
-            continue
-        canonical_fields[key] = value_text
+        key = _canonical_alias_key(name)
+        target_key = key or name
+        raw_fields[target_key] = value_text
+        if key:
+            canonical_fields[key] = value_text
     alias_map = _expand_aliases(canonical_fields)
 
     sample_values = MODA_SAMPLE_FIELD_VALUES.get(vc_slug, {})
