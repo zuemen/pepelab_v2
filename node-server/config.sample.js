@@ -33,11 +33,11 @@ module.exports = {
       algy_severity: '2'
     },
     vc_rx1: {
-      med_code: 'A02BC05',
-      med_name: 'OMEPRAZOLE_20MG',
-      dose_text: 'BID_10ML',
-      qty_value: '30',
-      qty_unit: 'TABLET'
+      med_code: 'MNT001',
+      med_name: 'Serenitol',
+      dose_text: '每日一次晚餐飯後50mg',
+      qty_value: '3',
+      qty_unit: ''
     },
     vc_pid: {
       pid_hash: '12345678',

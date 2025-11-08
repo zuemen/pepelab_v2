@@ -64,14 +64,14 @@ setIfExists('input[name="recordedDate"]', defaultRecordedDate);
 setIfExists('input[name="issuedOn"]', defaultIssuedOn);
 setIfExists('input[name="consentExpires"]', defaultConsent);
 setIfExists('input[name="pickupWindow"]', defaultPickup);
-setIfExists('input[name="medicationCode"]', 'A02BC05');
-setIfExists('input[name="medicationDisplay"]', 'OMEPRAZOLE_20MG');
-setIfExists('input[name="medicationQuantity"]', '30TABLET');
-setIfExists('input[name="medicationDose"]', 'BID_10ML');
-setIfExists('input[name="medicationDays"]', '30');
+setIfExists('input[name="medicationCode"]', 'MNT001');
+setIfExists('input[name="medicationDisplay"]', 'Serenitol');
+setIfExists('input[name="medicationQuantity"]', '');
+setIfExists('input[name="medicationDose"]', '每日一次晚餐飯後50mg');
+setIfExists('input[name="medicationDays"]', '3');
 setIfExists('#presentation-medical-form input[name="field-condition.recordedDate"]', defaultRecordedDate);
 setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].pickup_window_end"]', defaultPickup);
-setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', 'BID_10ML');
+setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', '每日一次晚餐飯後50mg');
 
 async function requestJson(url, options = {}) {
   const { accessToken, headers: customHeaders, ...rest } = options;
@@ -216,8 +216,8 @@ function buildCredentialPayload(formData) {
         ].filter((item) => item.code),
         text: formData.get('medicationDisplay') || undefined,
       },
-      quantity_text: formData.get('medicationQuantity') || '30TABLET',
-      dosage_text: formData.get('medicationDose') || 'BID_10ML',
+      quantity_text: formData.get('medicationQuantity') || '',
+      dosage_text: formData.get('medicationDose') || '每日一次晚餐飯後50mg',
       days_supply: Number(medDays),
       pickup_window_end: formData.get('pickupWindow') || null,
     };
@@ -295,11 +295,11 @@ function populateIssueSample() {
   set('cons_path', 'IRB2025001');
   set('medicationId', 'disp-001');
   set('medicationSystem', 'http://www.whocc.no/atc');
-  set('medicationCode', 'A02BC05');
-  set('medicationDisplay', 'OMEPRAZOLE_20MG');
-  set('medicationQuantity', '30TABLET');
-  set('medicationDose', 'BID_10ML');
-  set('medicationDays', '30');
+  set('medicationCode', 'MNT001');
+  set('medicationDisplay', 'Serenitol');
+  set('medicationQuantity', '');
+  set('medicationDose', '每日一次晚餐飯後50mg');
+  set('medicationDays', '3');
   set('pickupWindow', defaultPickup);
   set('performerSystem', 'urn:tw.gov.mohw:pharmacy');
   set('performerValue', 'pharm-7788');
