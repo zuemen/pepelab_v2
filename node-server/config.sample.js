@@ -35,7 +35,7 @@ module.exports = {
     vc_rx1: {
       med_code: 'MNT001',
       med_name: 'Serenitol',
-      dose_text: '每日晚餐飯後50MG',
+      does_text: '每日晚餐飯後50MG',
       qty_value: '3',
       qty_unit: 'Bottle'
     },
