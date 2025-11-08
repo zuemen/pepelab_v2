@@ -47,9 +47,9 @@ const plusDays = (date, days) => {
 };
 
 const defaultRecordedDate = iso(today);
-const defaultIssuedOn = iso(today);
+const defaultIssuedOn = '2025-11-08';
 const defaultConsent = iso(plusDays(today, 180));
-const defaultPickup = iso(plusDays(today, 7));
+const defaultPickup = '2025-12-31';
 
 const setIfExists = (selector, value) => {
   const el = document.querySelector(selector);
@@ -64,8 +64,14 @@ setIfExists('input[name="recordedDate"]', defaultRecordedDate);
 setIfExists('input[name="issuedOn"]', defaultIssuedOn);
 setIfExists('input[name="consentExpires"]', defaultConsent);
 setIfExists('input[name="pickupWindow"]', defaultPickup);
+setIfExists('input[name="medicationCode"]', 'MNT001');
+setIfExists('input[name="medicationDisplay"]', 'Serenitol');
+setIfExists('input[name="medicationQuantity"]', '3Bottle');
+setIfExists('input[name="medicationDose"]', '每日晚餐飯後50MG');
+setIfExists('input[name="medicationDays"]', '3');
 setIfExists('#presentation-medical-form input[name="field-condition.recordedDate"]', defaultRecordedDate);
 setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].pickup_window_end"]', defaultPickup);
+setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', '每日晚餐飯後50MG');
 
 async function requestJson(url, options = {}) {
   const { accessToken, headers: customHeaders, ...rest } = options;
@@ -210,7 +216,8 @@ function buildCredentialPayload(formData) {
         ].filter((item) => item.code),
         text: formData.get('medicationDisplay') || undefined,
       },
-      quantity_text: formData.get('medicationQuantity') || '30 錠',
+      quantity_text: formData.get('medicationQuantity') || '3Bottle',
+      dosage_text: formData.get('medicationDose') || '每日晚餐飯後50MG',
       days_supply: Number(medDays),
       pickup_window_end: formData.get('pickupWindow') || null,
     };
@@ -280,12 +287,19 @@ function populateIssueSample() {
   set('orgAssigner', '臺北綜合醫院');
   set('issuedOn', defaultIssuedOn);
   set('consentExpires', defaultConsent);
+  set('consentScope', 'MEDSSI01');
+  set('cons_scope', 'MEDSSI01');
+  set('consentPurpose', 'MEDDATARESEARCH');
+  set('cons_purpose', 'MEDDATARESEARCH');
+  set('consentPath', 'IRB2025001');
+  set('cons_path', 'IRB2025001');
   set('medicationId', 'disp-001');
   set('medicationSystem', 'http://www.whocc.no/atc');
-  set('medicationCode', 'A02BC');
-  set('medicationDisplay', 'Proton Pump Inhibitor');
-  set('medicationQuantity', '30 錠');
-  set('medicationDays', '14');
+  set('medicationCode', 'MNT001');
+  set('medicationDisplay', 'Serenitol');
+  set('medicationQuantity', '3Bottle');
+  set('medicationDose', '每日晚餐飯後50MG');
+  set('medicationDays', '3');
   set('pickupWindow', defaultPickup);
   set('performerSystem', 'urn:tw.gov.mohw:pharmacy');
   set('performerValue', 'pharm-7788');
@@ -303,6 +317,7 @@ function populatePresentationSample(scope) {
   if (scope === 'MEDICATION_PICKUP') {
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].medicationCodeableConcept.coding[0].code"]', formData.get('medicationCode'));
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].days_supply"]', formData.get('medicationDays'));
+    setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].dosage_text"]', formData.get('medicationDose'));
     setIfExists('#presentation-medication-form input[name="field-medication_dispense[0].pickup_window_end"]', formData.get('pickupWindow'));
   }
 }
