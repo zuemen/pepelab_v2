@@ -1,4 +1,4 @@
-1from __future__ import annotations
+from __future__ import annotations
 
 import base64
 import io
@@ -370,8 +370,10 @@ def _build_moda_field_entries(request: MODAIssuanceRequest) -> List[Dict[str, st
         if not canonical:
             continue
         field_type = (field.field_type or "NORMAL").strip() or "NORMAL"
+        value = "" if field.content is None else str(field.content)
+        normalized_value = _normalize_moda_field_value(canonical, value)
         provided[canonical] = {
-            "content": "" if field.content is None else str(field.content),
+            "content": normalized_value,
             "type": field_type,
         }
 
@@ -404,13 +406,13 @@ def _build_moda_field_entries(request: MODAIssuanceRequest) -> List[Dict[str, st
     fields: List[Dict[str, str]] = []
     for key in ordered_keys:
         entry = merged.get(key, {"content": "", "type": "NORMAL"})
-        fields.append(
-            {
-                "ename": key,
-                "content": entry.get("content", ""),
-                "type": entry.get("type", "NORMAL") or "NORMAL",
-            }
-        )
+        normalized_entry = {
+            "ename": key,
+            "content": entry.get("content", ""),
+            "type": entry.get("type", "NORMAL") or "NORMAL",
+        }
+        normalized_entry["name"] = key
+        fields.append(normalized_entry)
 
     return fields
 
@@ -444,47 +446,25 @@ def _prepare_moda_remote_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
     raw_fields = payload.get("fields")
     if isinstance(raw_fields, list):
         for item in raw_fields:
-            if not isinstance(item, dict):
+            entry = _coerce_moda_field(item, slug)
+            if entry is None:
                 continue
-            name = item.get("name") or item.get("ename")
-            if not name:
-                continue
-            canonical_name = _canonical_alias_key(name)
-            raw_value: Any = item.get("value")
-            if raw_value is None:
-                raw_value = item.get("content")
-            if raw_value is None:
-                fallback = MODA_SAMPLE_FIELD_VALUES.get(slug, {}).get(canonical_name)
-                if fallback is None:
-                    continue
-                raw_value = fallback
-
-            text_value = raw_value
-            if isinstance(raw_value, (dict, list)):
-                text_value = json.dumps(raw_value, ensure_ascii=False)
-            elif isinstance(raw_value, (int, float)):
-                text_value = str(raw_value)
-            else:
-                text_value = str(raw_value).strip()
-
-            if canonical_name in MODA_INTEGER_FIELDS:
-                digits = re.sub(r"[^0-9]", "", text_value)
-                text_value = digits or "0"
-            if canonical_name in MODA_DATE_FIELDS:
-                parsed = _parse_date_string(text_value)
-                if parsed:
-                    text_value = parsed.isoformat()
-
-            field_entry: Dict[str, Any] = {
-                "ename": canonical_name,
-                "content": text_value,
-            }
-            if "type" in item and item.get("type") not in (None, ""):
-                field_entry["type"] = str(item.get("type")).strip()
-            normalized_fields.append(field_entry)
+            normalized_fields.append(entry)
 
     if normalized_fields:
         payload["fields"] = normalized_fields
+
+    elif isinstance(raw_fields, list):
+        coerced_fallback: List[Dict[str, Any]] = []
+        for item in raw_fields:
+            if not isinstance(item, dict):
+                continue
+            entry = _coerce_moda_field(item, slug, allow_missing_content=True)
+            if entry is None:
+                continue
+            coerced_fallback.append(entry)
+        if coerced_fallback:
+            payload["fields"] = coerced_fallback
 
     return payload
 
@@ -877,6 +857,9 @@ MODA_FIELD_DIRECT_ALIASES = {
     "medicationList[0].medicationName": "medication_list[0].medication_name",
     "medicationList[0].dosage": "medication_list[0].dosage",
     "medicationList[0].doesText": "does_text",
+    "dose_text": "does_text",
+    "doseText": "does_text",
+    "DoseText": "does_text",
     "pickupInfo.pickupDeadline": "pickup_info.pickup_deadline",
     "conditionInfo.conditionCode": "condition_info.condition_code",
     "conditionInfo.conditionDisplay": "condition_info.condition_display",
@@ -905,6 +888,8 @@ MODA_FIELD_LOWER_ALIASES = {
     "qtyvalue": "qty_value",
     "dosage": "qty_value",
     "qtyunit": "qty_unit",
+    "dose_text": "does_text",
+    "dosetext": "does_text",
     "doestext": "does_text",
     "consentscope": "cons_scope",
     "consentpurpose": "cons_purpose",
@@ -1010,6 +995,55 @@ def _canonical_alias_key(name: str) -> str:
     if camel_snake in MODA_FIELD_LOWER_ALIASES:
         return MODA_FIELD_LOWER_ALIASES[camel_snake]
     return normalized
+
+
+def _coerce_moda_field(
+    item: Dict[str, Any], slug: str, *, allow_missing_content: bool = False
+) -> Optional[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return None
+
+    name = item.get("name") or item.get("ename")
+    canonical_name = _canonical_alias_key(name)
+    if not canonical_name:
+        return None
+
+    raw_value: Any = item.get("value")
+    if raw_value is None:
+        raw_value = item.get("content")
+    if raw_value is None:
+        sample_defaults = MODA_SAMPLE_FIELD_VALUES.get(slug, {})
+        if canonical_name in sample_defaults:
+            raw_value = sample_defaults[canonical_name]
+        elif allow_missing_content:
+            raw_value = ""
+        else:
+            return None
+
+    if isinstance(raw_value, (dict, list)):
+        text_value = json.dumps(raw_value, ensure_ascii=False)
+    elif isinstance(raw_value, (int, float)):
+        text_value = str(raw_value)
+    else:
+        text_value = str(raw_value).strip()
+
+    normalized_value = _normalize_moda_field_value(canonical_name, text_value)
+
+    entry: Dict[str, Any] = {
+        "ename": canonical_name,
+        "name": canonical_name,
+        "content": normalized_value,
+    }
+
+    type_value = item.get("type")
+    if type_value in (None, ""):
+        type_value = item.get("field_type")
+    if type_value not in (None, ""):
+        entry["type"] = str(type_value).strip()
+    elif allow_missing_content:
+        entry["type"] = "NORMAL"
+
+    return entry
 
 
 MODA_SCOPE_ALIAS = {
@@ -1679,15 +1713,16 @@ def _issue_from_moda_request(request: MODAIssuanceRequest) -> Tuple[CredentialOf
     raw_fields: Dict[str, str] = {}
     canonical_fields: Dict[str, str] = {}
     for field in request.fields:
-        if not field.ename:
+        name = (field.ename or "").strip()
+        if not name:
             continue
         raw_value = field.content
         value_text = "" if raw_value is None else str(raw_value)
-        raw_fields[field.ename] = value_text
-        key = _canonical_alias_key(field.ename)
-        if not key:
-            continue
-        canonical_fields[key] = value_text
+        key = _canonical_alias_key(name)
+        target_key = key or name
+        raw_fields[target_key] = value_text
+        if key:
+            canonical_fields[key] = value_text
     alias_map = _expand_aliases(canonical_fields)
 
     sample_values = MODA_SAMPLE_FIELD_VALUES.get(vc_slug, {})
