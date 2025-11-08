@@ -443,8 +443,8 @@ function convertToGovFormat({
     const quantityParts = parseQuantityParts(medication.quantityText);
     const medCode = normalizeAlphaNumUpper(medication.code, 'MNT001');
     const medName = normalizeCnEnText(medication.display, 'Serenitol');
-    const doseText = normalizeCnEnText(
-      medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
+    const doesText = normalizeCnEnText(
+      medication.doesText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
       '每日晚餐飯後50MG'
     );
     const qtyValueDigits = normalizeDigits(quantityParts.value || medication.daysSupply, {
@@ -454,7 +454,7 @@ function convertToGovFormat({
     const qtyUnit = normalizeCnEnText(quantityParts.unit || '', 'Bottle');
     pushField('med_code', medCode);
     pushField('med_name', medName);
-    pushField('dose_text', doseText);
+    pushField('does_text', doesText);
     pushField('qty_value', qtyValue);
     pushField('qty_unit', qtyUnit, { allowEmpty: true });
   }
@@ -991,11 +991,11 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
               onChange={(event) => updateMedication('quantityText', event.target.value)}
               disabled={!includeMedication && primaryScope !== 'MEDICATION_PICKUP'}
             />
-            <label htmlFor="dose-text">用藥指示</label>
+            <label htmlFor="does-text">用藥指示</label>
             <input
-              id="dose-text"
-              value={medication.doseText || ''}
-              onChange={(event) => updateMedication('doseText', event.target.value)}
+              id="does-text"
+              value={medication.doesText || ''}
+              onChange={(event) => updateMedication('doesText', event.target.value)}
               disabled={!includeMedication && primaryScope !== 'MEDICATION_PICKUP'}
             />
             <label htmlFor="days-supply">用藥天數</label>
