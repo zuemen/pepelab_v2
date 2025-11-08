@@ -103,10 +103,10 @@ const INITIAL_CONDITION = {
 const INITIAL_MEDICATION = {
   id: `med-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://www.whocc.no/atc',
-  code: 'A02BC05',
-  display: 'OMEPRAZOLE_20MG',
+  code: 'MNT001',
+  display: 'Sereniol',
   quantityText: '30TABLET',
-  doseText: 'BID_10ML',
+  doseText: '每日晚餐飯後50mg',
   daysSupply: 30,
   pickupWindowEnd: dayjs().add(3, 'day').format('YYYY-MM-DD'),
   performer: 'did:example:rx-unit-01',
@@ -437,11 +437,11 @@ function convertToGovFormat({
 
   if (scope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
-    const medCode = normalizeAlphaNumUpper(medication.code, 'A02BC05');
-    const medName = normalizeAlphaNumUpper(medication.display, 'OMEPRAZOLE_20MG');
+    const medCode = normalizeAlphaNumUpper(medication.code, 'HNT001');
+    const medName = normalizeAlphaNumUpper(medication.display, 'Serenitol');
     const doseText = normalizeAlphaNumUpper(
       medication.doseText || medication.quantityText || `${medication.display || ''}${medication.daysSupply || ''}`,
-      'BID_10ML'
+      '每日晚餐飯後50mg'
     );
     const qtyValueDigits = normalizeDigits(quantityParts.value || medication.daysSupply, {
       fallback: '30',
