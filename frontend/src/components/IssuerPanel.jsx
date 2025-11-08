@@ -231,7 +231,7 @@ function buildPayload({
               text: medication.display || undefined,
             },
             quantity_text: medication.quantityText,
-            dosage_text: medication.doesText || undefined,
+            does_text: medication.doesText || undefined,
             days_supply: Number(medication.daysSupply) || 0,
             performer: medication.performer
               ? {
