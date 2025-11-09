@@ -2167,7 +2167,9 @@ def delete_credential(credential_id: str):
     return {"credential_id": credential_id, "status": "DELETED"}
 
 
-def _resolve_nonce_response(transaction_id: str) -> NonceResponse:
+def _resolve_nonce_response(
+    transaction_id: str, request: Optional[Request] = None
+) -> Union[NonceResponse, JSONResponse]:
     try:
         uuid.UUID(transaction_id)
     except ValueError:
@@ -2180,6 +2182,33 @@ def _resolve_nonce_response(transaction_id: str) -> NonceResponse:
 
     offer = store.get_credential_by_transaction(transaction_id)
     if not offer:
+        if request is not None:
+            token = _extract_token_from_request(request)
+            remote_payload = _call_remote_api(
+                method="GET",
+                base_url=GOV_ISSUER_BASE,
+                path=f"/api/credential/nonce/{transaction_id}",
+                token=token,
+            )
+            if isinstance(remote_payload, dict):
+                normalized_payload = dict(remote_payload)
+                normalized_payload.setdefault("transactionId", transaction_id)
+                normalized_payload.setdefault(
+                    "mode",
+                    normalized_payload.get("mode")
+                    or normalized_payload.get("issuanceMode")
+                    or "GOVERNMENT",
+                )
+                if "credentialId" in normalized_payload and "credential_id" not in normalized_payload:
+                    normalized_payload["credential_id"] = normalized_payload["credentialId"]
+                return JSONResponse(content=normalized_payload)
+            return JSONResponse(
+                content={
+                    "transactionId": transaction_id,
+                    "mode": "GOVERNMENT",
+                    "data": remote_payload,
+                }
+            )
         _raise_problem(
             status=404,
             type_="https://medssi.dev/errors/transaction-not-found",
@@ -2213,8 +2242,10 @@ def _resolve_nonce_response(transaction_id: str) -> NonceResponse:
     response_model=NonceResponse,
     dependencies=[Depends(require_issuer_or_wallet_token)],
 )
-def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceResponse:  # noqa: N802
-    return _resolve_nonce_response(transactionId)
+def get_nonce(
+    request: Request, transactionId: str = Query(..., alias="transactionId")
+) -> Union[NonceResponse, JSONResponse]:  # noqa: N802
+    return _resolve_nonce_response(transactionId, request)
 
 
 @api_v2.get(
@@ -2222,8 +2253,8 @@ def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceRe
     response_model=NonceResponse,
     dependencies=[Depends(require_issuer_or_wallet_token)],
 )
-def get_nonce_direct(transaction_id: str) -> NonceResponse:
-    return _resolve_nonce_response(transaction_id)
+def get_nonce_direct(transaction_id: str, request: Request) -> Union[NonceResponse, JSONResponse]:
+    return _resolve_nonce_response(transaction_id, request)
 
 
 @api_v2.get(
@@ -2231,8 +2262,8 @@ def get_nonce_direct(transaction_id: str) -> NonceResponse:
     response_model=NonceResponse,
     dependencies=[Depends(require_issuer_or_wallet_token)],
 )
-def get_nonce_path(transaction_id: str) -> NonceResponse:
-    return _resolve_nonce_response(transaction_id)
+def get_nonce_path(transaction_id: str, request: Request) -> Union[NonceResponse, JSONResponse]:
+    return _resolve_nonce_response(transaction_id, request)
 
 
 @api_v2.put(
