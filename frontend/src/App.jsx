@@ -12,6 +12,7 @@ export default function App() {
   const [walletToken, setWalletToken] = useState('wallet-sandbox-token');
   const [verifierToken, setVerifierToken] = useState('J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC');
   const [resetMessage, setResetMessage] = useState(null);
+  const [latestTransactionId, setLatestTransactionId] = useState('');
 
   const client = useMemo(() => createClient(baseUrl), [baseUrl]);
 
@@ -73,8 +74,18 @@ export default function App() {
       </header>
 
       <main>
-        <IssuerPanel client={client} issuerToken={issuerToken} baseUrl={baseUrl} />
-        <WalletPanel client={client} baseUrl={baseUrl} walletToken={walletToken} />
+        <IssuerPanel
+          client={client}
+          issuerToken={issuerToken}
+          baseUrl={baseUrl}
+          onLatestTransactionChange={setLatestTransactionId}
+        />
+        <WalletPanel
+          client={client}
+          baseUrl={baseUrl}
+          walletToken={walletToken}
+          latestTransactionId={latestTransactionId}
+        />
         <VerifierPanel client={client} verifierToken={verifierToken} />
       </main>
     </div>
