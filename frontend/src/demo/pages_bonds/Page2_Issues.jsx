@@ -21,7 +21,7 @@ const cards = [
 
 export default function Page2_SocialIssue() {
   return (
-    <BondsShell prev="/" next="/page3">
+    <BondsShell prev="." next="page3">
       <div className="page2">
         <h2 className="hero-title" style={{ color: "#96b5e0ff", fontSize: 40, marginBottom: 12, fontWeight: 800 }}>
           當醫療資料成為負擔

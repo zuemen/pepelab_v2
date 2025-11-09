@@ -1,5 +1,5 @@
 // src/demo/scenes/Scene04_ResearchRequest.jsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
 import vpImage from "../assets/vp.png"; // 引入圖片
 
@@ -19,7 +19,9 @@ export default function Scene04_ResearchRequest() {
             <li>全程可稽核、可到期</li>
           </ul>
           <div className="navs">
-            <button className="cta" onClick={() => navigate("/scene05")}>病人端授權</button>
+            <button className="cta" onClick={() => navigate("scene05")}>
+              病人端授權
+            </button>
           </div>
         </>
       }
