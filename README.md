@@ -98,7 +98,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 ## 快速操作
 1. **啟動後端**
    ```bash
-   uvicorn backend.main:app --reload
+   python -m uvicorn backend.main:app --reload
    ```
    - 若前端與後端不在同一網域，可透過環境變數 `MEDSSI_ALLOWED_ORIGINS`
      （以逗號分隔）設定允許的 CORS 來源，預設已涵蓋 `http://localhost:5173`
