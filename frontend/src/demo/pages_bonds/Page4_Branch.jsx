@@ -1,5 +1,5 @@
 // src/demo/pages/pages_bonds/Page4_Scenario.jsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import BondsShell from "../components/BondsShell.jsx";
 import { useDemo } from "../context";
 export default function Page4_Scenario() {
@@ -7,7 +7,7 @@ export default function Page4_Scenario() {
   const { scope, mode } = useDemo();
 
   return (
-    <BondsShell prev="/page3" next="/scene01">
+    <BondsShell prev="page3" next="scene01">
       {/* 一定要有 page4 這個 wrapper，CSS 用它當作用域 */}
       <div className="page4">
         <h2 className="hero-title" style={{ color: "#7397e4ff",
@@ -25,7 +25,7 @@ export default function Page4_Scenario() {
       5 分鐘驗證 QR、處方真偽、過敏對照、同意到期。只看「當次處方」。
     </p>
     <div className="actions">
-      <button className="cta" onClick={() => navigate("/scene01")}>
+      <button className="cta" onClick={() => navigate("scene01")}>
         前往領藥情境
       </button>
     </div>
@@ -38,7 +38,7 @@ export default function Page4_Scenario() {
       匿名診斷與檢驗摘要、可撤銷、可稽核、用畢即刪。不複製完整病歷。
     </p>
     <div className="actions">
-      <button className="cta" onClick={() => navigate("/scene04")}>
+      <button className="cta" onClick={() => navigate("scene04")}>
         前往研究情境
       </button>
     </div>
@@ -52,7 +52,7 @@ export default function Page4_Scenario() {
       用戶可通過 MedSSI 驗證身份，快速提供必要資料，處理保險理賠申請，並確保隱私保護。
     </p>
     <div className="actions">
-      <button className="cta" onClick={() => navigate("/scene08")}>
+      <button className="cta" onClick={() => navigate("scene08")}>
         前往保險申請情境
       </button>
     </div>
@@ -62,7 +62,7 @@ export default function Page4_Scenario() {
 
         {/* 技術流程入口（可選） */}
         <div className="btn-row" style={{ marginTop: 28 }}>
-          <button className="blue" onClick={() => navigate("/page1")}>
+          <button className="blue" onClick={() => navigate(".")}>
             回首頁
           </button>
            <button

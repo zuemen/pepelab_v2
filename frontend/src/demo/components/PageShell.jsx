@@ -1,14 +1,7 @@
 // src/demo/components/PageShell.jsx
-import { motion } from "framer-motion";
-
 export default function PageShell({ title, subtitle, left, right }) {
   return (
-    <motion.div
-      className="bonds-shell"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: "easeOut" }}
-    >
+    <div className="bonds-shell" style={{ animation: "fade-slide-in 0.45s ease both" }}>
       {/* 左右分欄區 */}
       <div className="bonds-layout">
         {/* 左：文字敘事區 */}
@@ -25,6 +18,6 @@ export default function PageShell({ title, subtitle, left, right }) {
           <div className="bonds-device">{right}</div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

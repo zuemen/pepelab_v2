@@ -1,5 +1,5 @@
 // src/demo/scenes/Scene03_VerifyPickup.jsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
 import { useDemo } from "../context";
 
@@ -21,8 +21,12 @@ export default function Scene03_VerifyPickup() {
           </ul>
           <p>不需打電話、不需複製病歷，藥品立即核發。</p>
           <div className="navs">
-            <button className="ghost" onClick={() => navigate("/scene02")}>← 上一幕</button>
-            <button className="cta" onClick={() => navigate("/scene04")}>切到研究情境（小翔）</button>
+            <button className="ghost" onClick={() => navigate("scene02")}>
+              ← 上一幕
+            </button>
+            <button className="cta" onClick={() => navigate("scene04")}>
+              切到研究情境（小翔）
+            </button>
           </div>
         </>
       }

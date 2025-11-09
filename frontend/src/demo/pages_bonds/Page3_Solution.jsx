@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import BondsShell from "../components/BondsShell.jsx";
 import { useDemo } from "../context.jsx";
 
@@ -7,7 +7,7 @@ export default function Page3_Solution() {
   const { scope, mode } = useDemo();
 
   return (
-    <BondsShell prev="/page2" next="/page4">
+    <BondsShell prev="page2" next="page4">
       <div className="page3">
         {/* 白底說明卡 */}
         <div className="white-card">
@@ -58,7 +58,7 @@ export default function Page3_Solution() {
         {/* 操作按鈕 */}
         <div className="btn-row">
           
-          <button className="cta" onClick={() => navigate("/page4")}>
+          <button className="cta" onClick={() => navigate("page4")}>
             進入情境
           </button>
         </div>

@@ -1,5 +1,5 @@
 // src/demo/scenes/Scene05_WalletConsent.jsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
 
 export default function Scene05_WalletConsent() {
@@ -18,8 +18,12 @@ export default function Scene05_WalletConsent() {
             <li>到期日：2026-01-31，可隨時撤銷</li>
           </ul>
           <div className="navs">
-            <button className="ghost" onClick={() => navigate("/scene04")}>← 上一幕</button>
-            <button className="cta" onClick={() => navigate("/scene06")}>同意並送出 VP</button>
+            <button className="ghost" onClick={() => navigate("scene04")}>
+              ← 上一幕
+            </button>
+            <button className="cta" onClick={() => navigate("scene06")}>
+              同意並送出 VP
+            </button>
           </div>
         </>
       }
