@@ -1,6 +1,6 @@
 // frontend/src/demo/components/BondsShell.jsx
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 
 export default function BondsShell({ bg = "#0f172a", children, prev, next }) {
   const nav = useNavigate();

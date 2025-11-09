@@ -1,8 +1,36 @@
 import axios from 'axios';
 
+function resolveSandboxPrefix(baseUrl) {
+  if (!baseUrl) {
+    return '/v2';
+  }
+  try {
+    const hasProtocol = /^https?:\/\//i.test(baseUrl);
+    const url = hasProtocol
+      ? new URL(baseUrl)
+      : new URL(baseUrl, 'http://placeholder.local');
+    const normalizedPath = url.pathname.replace(/\/+$/, '');
+    if (!normalizedPath || normalizedPath === '/' || normalizedPath === '') {
+      return '/v2';
+    }
+    if (normalizedPath === '/v2' || normalizedPath.endsWith('/v2')) {
+      return '';
+    }
+    if (normalizedPath.includes('/v2/')) {
+      return '';
+    }
+    return '/v2';
+  } catch (error) {
+    return /\/v2(?:\/|$)/.test(baseUrl) ? '' : '/v2';
+  }
+}
+
 export function createClient(baseUrl) {
+  const sanitizedBase = (baseUrl || '').replace(/\/$/, '');
+  const sandboxPrefix = resolveSandboxPrefix(sanitizedBase);
+
   const instance = axios.create({
-    baseURL: baseUrl.replace(/\/$/, ''),
+    baseURL: sanitizedBase,
     timeout: 8000,
   });
 
@@ -21,8 +49,6 @@ export function createClient(baseUrl) {
       return { ok: false, status: 0, detail: error.message };
     }
   }
-
-  const sandboxPrefix = '/v2';
 
   const accessTokenHeader = (token) =>
     token
@@ -53,12 +79,30 @@ export function createClient(baseUrl) {
         data: payload,
         headers: accessTokenHeader(token),
       }),
-    getNonce: (transactionId, token) =>
-      request({
-        url: `/api/credential/nonce/${encodeURIComponent(transactionId)}`,
+    getNonce: async (transactionId, token) => {
+      const normalizedId = encodeURIComponent(transactionId);
+
+      const primary = await request({
+        url: `${sandboxPrefix}/api/credential/nonce/${normalizedId}`,
         method: 'GET',
-        headers: accessTokenHeader(token),
-      }),
+        headers: bearerHeader(token),
+      });
+
+      if (
+        primary.ok ||
+        primary.status !== 404 ||
+        (primary.detail && typeof primary.detail !== 'string')
+      ) {
+        return primary;
+      }
+
+      return request({
+        url: `${sandboxPrefix}/api/credential/nonce`,
+        method: 'GET',
+        params: { transactionId },
+        headers: bearerHeader(token),
+      });
+    },
     createVerificationCode: (params, token) =>
       request({
         url: '/api/oidvp/qrcode',

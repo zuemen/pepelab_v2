@@ -364,9 +364,20 @@ bindForm('issue-nodata-form', async (formData, form) => {
 bindForm('nonce-form', async (formData) => {
   const transactionId = formData.get('transactionId');
   try {
-    const data = await requestJson(
-      `${API_BASE}/api/credential/nonce?transactionId=${encodeURIComponent(transactionId)}`
-    );
+    const normalizedId = encodeURIComponent(transactionId);
+    let data;
+    try {
+      data = await requestJson(
+        `${API_BASE}/api/credential/nonce/${normalizedId}`
+      );
+    } catch (error) {
+      if (error.status !== 404 || typeof error.detail !== 'string') {
+        throw error;
+      }
+      data = await requestJson(
+        `${API_BASE}/api/credential/nonce?transactionId=${encodeURIComponent(transactionId)}`
+      );
+    }
     renderJson('nonce-response', data);
   } catch (error) {
     renderJson('nonce-response', error);
