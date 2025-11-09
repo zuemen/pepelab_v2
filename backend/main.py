@@ -2247,10 +2247,42 @@ def _parse_remote_payload(raw: Any) -> Optional[CredentialPayload]:
     return None
 
 
+def _extract_credential_id_from_jwt(token: Optional[str]) -> Optional[str]:
+    if not token:
+        return None
+    try:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return None
+        payload_segment = parts[1]
+        padding = "=" * (-len(payload_segment) % 4)
+        decoded = base64.urlsafe_b64decode((payload_segment + padding).encode("utf-8"))
+        data = json.loads(decoded.decode("utf-8"))
+    except Exception:
+        return None
+
+    jti = str(data.get("jti") or "").strip()
+    if not jti:
+        return None
+
+    candidate = jti.split("/")[-1]
+    if ":" in candidate:
+        candidate = candidate.split(":")[-1]
+    candidate = candidate.strip()
+    return candidate or None
+
+
 def _import_remote_nonce(
     transaction_id: str, payload: Dict[str, Any]
 ) -> Optional[Tuple[CredentialOffer, Dict[str, Any]]]:
+    remote_jwt = payload.get("credential")
+    remote_jwt_text = str(remote_jwt).strip() if remote_jwt else None
+
     credential_id = str(payload.get("credentialId") or payload.get("credential_id") or "").strip()
+    if not credential_id and remote_jwt_text:
+        derived_id = _extract_credential_id_from_jwt(remote_jwt_text)
+        if derived_id:
+            credential_id = derived_id
     nonce_value = payload.get("nonce")
     if not credential_id or nonce_value is None:
         return None
@@ -2328,9 +2360,6 @@ def _import_remote_nonce(
 
     now = datetime.utcnow()
     credential = store.get_credential(credential_id)
-
-    remote_jwt = payload.get("credential")
-    remote_jwt_text = str(remote_jwt).strip() if remote_jwt else None
 
     if credential is None:
         external_fields: Dict[str, str] = {}
