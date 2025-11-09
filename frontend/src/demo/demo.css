@@ -539,3 +539,18 @@ button.ghost:hover {
 .verify-preview .result-card .line strong {
   color: #10b981;  /* 高亮顯示標題文字 */
 }
+
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.demo-page {
+  animation: fade-slide-in 0.45s ease both;
+}

@@ -248,6 +248,16 @@ class NonceResponse(BaseModel):
     disclosure_policies: List[DisclosurePolicy]
     payload_available: bool
     payload_template: Optional[CredentialPayload] = None
+    external_source: Optional[str] = Field(
+        None,
+        alias="externalSource",
+        description="Origin of the nonce payload when resolved from an upstream sandbox.",
+    )
+    credential_jwt: Optional[str] = Field(
+        None,
+        alias="credential",
+        description="Raw credential JWT forwarded from the upstream sandbox when available.",
+    )
 
     @root_validator(pre=True)
     def _ensure_nonce_ial(cls, values: Dict[str, Any]) -> Dict[str, Any]:

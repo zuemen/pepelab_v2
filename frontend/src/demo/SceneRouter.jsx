@@ -1,5 +1,5 @@
 // frontend/src/demo/SceneRouter.jsx
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "../router.jsx";
 
 import Scene01 from "./pages/Scene01_PickupIntro.jsx";
 import Scene02 from "./pages/Scene02_IssuerVC.jsx";

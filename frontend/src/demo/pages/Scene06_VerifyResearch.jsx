@@ -1,5 +1,5 @@
 // src/demo/scenes/Scene06_VerifyResearch.jsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
 
 export default function Scene06_VerifyResearch() {
@@ -18,8 +18,12 @@ export default function Scene06_VerifyResearch() {
       <li>依個資法 §19 規定，僅限本次研究用途，用畢即刪</li>
     </ul>
     <div className="navs">
-      <button className="ghost" onClick={() => navigate("/scene05")}>← 上一幕</button>
-      <button className="cta" onClick={() => navigate("/scene07")}>前往稽核與信任</button>
+      <button className="ghost" onClick={() => navigate("scene05")}>
+        ← 上一幕
+      </button>
+      <button className="cta" onClick={() => navigate("scene07")}>
+        前往稽核與信任
+      </button>
     </div>
   </>
 
