@@ -1876,7 +1876,7 @@ def gov_issue_without_data(
 @api_public.get(
     "/credential/nonce/{transaction_id}",
     response_model=Dict[str, Any],
-    dependencies=[Depends(require_wallet_token)],
+    dependencies=[Depends(require_issuer_token)],
 )
 def gov_get_nonce(transaction_id: str, request: Request) -> Dict[str, Any]:
     token = _extract_token_from_request(request)
@@ -1891,7 +1891,7 @@ def gov_get_nonce(transaction_id: str, request: Request) -> Dict[str, Any]:
 @api_public.get(
     "/credential/nonce",
     response_model=Dict[str, Any],
-    dependencies=[Depends(require_wallet_token)],
+    dependencies=[Depends(require_issuer_token)],
 )
 def gov_get_nonce_query(
     request: Request, transactionId: str = Query(..., alias="transactionId")
@@ -2125,14 +2125,9 @@ def delete_credential(credential_id: str):
     return {"credential_id": credential_id, "status": "DELETED"}
 
 
-@api_v2.get(
-    "/api/credential/nonce",
-    response_model=NonceResponse,
-    dependencies=[Depends(require_wallet_token)],
-)
-def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceResponse:  # noqa: N802
+def _resolve_nonce_response(transaction_id: str) -> NonceResponse:
     try:
-        uuid.UUID(transactionId)
+        uuid.UUID(transaction_id)
     except ValueError:
         _raise_problem(
             status=400,
@@ -2141,7 +2136,7 @@ def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceRe
             detail="transactionId must be a UUIDv4 string.",
         )
 
-    offer = store.get_credential_by_transaction(transactionId)
+    offer = store.get_credential_by_transaction(transaction_id)
     if not offer:
         _raise_problem(
             status=404,
@@ -2169,6 +2164,33 @@ def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceRe
         payload_available=offer.payload is not None,
         payload_template=offer.payload_template,
     )
+
+
+@api_v2.get(
+    "/api/credential/nonce",
+    response_model=NonceResponse,
+    dependencies=[Depends(require_wallet_token)],
+)
+def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceResponse:  # noqa: N802
+    return _resolve_nonce_response(transactionId)
+
+
+@api_v2.get(
+    "/api/credential/nonce/{transaction_id}",
+    response_model=NonceResponse,
+    dependencies=[Depends(require_wallet_token)],
+)
+def get_nonce_direct(transaction_id: str) -> NonceResponse:
+    return _resolve_nonce_response(transaction_id)
+
+
+@api_v2.get(
+    "/api/credential/nonce/transaction/{transaction_id}",
+    response_model=NonceResponse,
+    dependencies=[Depends(require_wallet_token)],
+)
+def get_nonce_path(transaction_id: str) -> NonceResponse:
+    return _resolve_nonce_response(transaction_id)
 
 
 @api_v2.put(
