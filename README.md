@@ -107,8 +107,6 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 2. **開啟前端**
    ```bash
    cd frontend
-   # 👀 確認此處能看到 package.json、vite.config.js 等檔案
-   ls
    npm install
    npm run dev -- --host
    ```
