@@ -368,14 +368,16 @@ bindForm('nonce-form', async (formData) => {
     let data;
     try {
       data = await requestJson(
-        `${API_BASE}/api/credential/nonce/${normalizedId}`
+        `${API_BASE}/api/credential/nonce/${normalizedId}`,
+        { accessToken: tokens.issuer }
       );
     } catch (error) {
       if (error.status !== 404 || typeof error.detail !== 'string') {
         throw error;
       }
       data = await requestJson(
-        `${API_BASE}/api/credential/nonce?transactionId=${encodeURIComponent(transactionId)}`
+        `${API_BASE}/api/credential/nonce?transactionId=${encodeURIComponent(transactionId)}`,
+        { accessToken: tokens.issuer }
       );
     }
     renderJson('nonce-response', data);

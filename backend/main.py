@@ -1876,7 +1876,7 @@ def gov_issue_without_data(
 @api_public.get(
     "/credential/nonce/{transaction_id}",
     response_model=Dict[str, Any],
-    dependencies=[Depends(require_wallet_token)],
+    dependencies=[Depends(require_issuer_token)],
 )
 def gov_get_nonce(transaction_id: str, request: Request) -> Dict[str, Any]:
     token = _extract_token_from_request(request)
@@ -1891,7 +1891,7 @@ def gov_get_nonce(transaction_id: str, request: Request) -> Dict[str, Any]:
 @api_public.get(
     "/credential/nonce",
     response_model=Dict[str, Any],
-    dependencies=[Depends(require_wallet_token)],
+    dependencies=[Depends(require_issuer_token)],
 )
 def gov_get_nonce_query(
     request: Request, transactionId: str = Query(..., alias="transactionId")
