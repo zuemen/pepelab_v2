@@ -1,12 +1,12 @@
 // src/demo/pages/Page1_Home.jsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import BondsShell from "../components/BondsShell.jsx";
 
 export default function Page1_Home() {
   const nav = useNavigate();
 
   return (
-    <BondsShell next="/page2" bg="linear-gradient(180deg,#0f172a 0%,#0b2138 100%)">
+    <BondsShell next="page2" bg="linear-gradient(180deg,#0f172a 0%,#0b2138 100%)">
       <section style={{ textAlign: "center", padding: "2rem 1rem" }}>
         {/* Hero Card */}
         <div className="hero-card">
@@ -27,7 +27,7 @@ export default function Page1_Home() {
           </p>
 
           {/* 開始探索按鈕 */}
-          <button className="cta" onClick={() => nav("/page2")}>
+          <button className="cta" onClick={() => nav("page2")}>
             開始探索
           </button>
         </div>
