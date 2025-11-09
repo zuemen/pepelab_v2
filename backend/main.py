@@ -550,6 +550,48 @@ def require_wallet_token(
     _validate_token(header_value, WALLET_ACCESS_TOKENS, "wallet")
 
 
+def require_issuer_or_wallet_token(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    access_token: Optional[str] = Header(None, alias="access-token"),
+) -> None:
+    if request.method == "OPTIONS":
+        return
+    header_value = _merge_authorization(authorization, access_token)
+    if not header_value:
+        _raise_problem(
+            status=401,
+            type_="https://medssi.dev/errors/missing-token",
+            title="Nonce access token required",
+            detail=(
+                "Provide issuer access token (Bearer <token>) to query nonce data. "
+                "Sandbox wallet tokens are also accepted for backward compatibility."
+            ),
+        )
+    scheme, _, token = header_value.partition(" ")
+    token = token.strip()
+    if scheme.lower() != "bearer" or not token:
+        _raise_problem(
+            status=401,
+            type_="https://medssi.dev/errors/invalid-token-format",
+            title="Bearer token format required",
+            detail="Authorization header must be formatted as 'Bearer <token>'.",
+        )
+    if token in ISSUER_ACCESS_TOKENS:
+        return
+    if token in WALLET_ACCESS_TOKENS:
+        return
+    _raise_problem(
+        status=403,
+        type_="https://medssi.dev/errors/token-rejected",
+        title="Access token rejected",
+        detail=(
+            "The supplied token is not valid for nonce lookup. Use the issuer access token "
+            "provided when issuing the credential (or the sandbox wallet token for legacy flows)."
+        ),
+    )
+
+
 def require_any_sandbox_token(
     request: Request,
     authorization: Optional[str] = Header(None),
@@ -1876,7 +1918,7 @@ def gov_issue_without_data(
 @api_public.get(
     "/credential/nonce/{transaction_id}",
     response_model=Dict[str, Any],
-    dependencies=[Depends(require_wallet_token)],
+    dependencies=[Depends(require_issuer_token)],
 )
 def gov_get_nonce(transaction_id: str, request: Request) -> Dict[str, Any]:
     token = _extract_token_from_request(request)
@@ -1891,7 +1933,7 @@ def gov_get_nonce(transaction_id: str, request: Request) -> Dict[str, Any]:
 @api_public.get(
     "/credential/nonce",
     response_model=Dict[str, Any],
-    dependencies=[Depends(require_wallet_token)],
+    dependencies=[Depends(require_issuer_token)],
 )
 def gov_get_nonce_query(
     request: Request, transactionId: str = Query(..., alias="transactionId")
@@ -2125,14 +2167,11 @@ def delete_credential(credential_id: str):
     return {"credential_id": credential_id, "status": "DELETED"}
 
 
-@api_v2.get(
-    "/api/credential/nonce",
-    response_model=NonceResponse,
-    dependencies=[Depends(require_wallet_token)],
-)
-def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceResponse:  # noqa: N802
+def _resolve_nonce_response(
+    transaction_id: str, request: Optional[Request] = None
+) -> Union[NonceResponse, JSONResponse]:
     try:
-        uuid.UUID(transactionId)
+        uuid.UUID(transaction_id)
     except ValueError:
         _raise_problem(
             status=400,
@@ -2141,8 +2180,35 @@ def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceRe
             detail="transactionId must be a UUIDv4 string.",
         )
 
-    offer = store.get_credential_by_transaction(transactionId)
+    offer = store.get_credential_by_transaction(transaction_id)
     if not offer:
+        if request is not None:
+            token = _extract_token_from_request(request)
+            remote_payload = _call_remote_api(
+                method="GET",
+                base_url=GOV_ISSUER_BASE,
+                path=f"/api/credential/nonce/{transaction_id}",
+                token=token,
+            )
+            if isinstance(remote_payload, dict):
+                normalized_payload = dict(remote_payload)
+                normalized_payload.setdefault("transactionId", transaction_id)
+                normalized_payload.setdefault(
+                    "mode",
+                    normalized_payload.get("mode")
+                    or normalized_payload.get("issuanceMode")
+                    or "GOVERNMENT",
+                )
+                if "credentialId" in normalized_payload and "credential_id" not in normalized_payload:
+                    normalized_payload["credential_id"] = normalized_payload["credentialId"]
+                return JSONResponse(content=normalized_payload)
+            return JSONResponse(
+                content={
+                    "transactionId": transaction_id,
+                    "mode": "GOVERNMENT",
+                    "data": remote_payload,
+                }
+            )
         _raise_problem(
             status=404,
             type_="https://medssi.dev/errors/transaction-not-found",
@@ -2169,6 +2235,35 @@ def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceRe
         payload_available=offer.payload is not None,
         payload_template=offer.payload_template,
     )
+
+
+@api_v2.get(
+    "/api/credential/nonce",
+    response_model=NonceResponse,
+    dependencies=[Depends(require_issuer_or_wallet_token)],
+)
+def get_nonce(
+    request: Request, transactionId: str = Query(..., alias="transactionId")
+) -> Union[NonceResponse, JSONResponse]:  # noqa: N802
+    return _resolve_nonce_response(transactionId, request)
+
+
+@api_v2.get(
+    "/api/credential/nonce/{transaction_id}",
+    response_model=NonceResponse,
+    dependencies=[Depends(require_issuer_or_wallet_token)],
+)
+def get_nonce_direct(transaction_id: str, request: Request) -> Union[NonceResponse, JSONResponse]:
+    return _resolve_nonce_response(transaction_id, request)
+
+
+@api_v2.get(
+    "/api/credential/nonce/transaction/{transaction_id}",
+    response_model=NonceResponse,
+    dependencies=[Depends(require_issuer_or_wallet_token)],
+)
+def get_nonce_path(transaction_id: str, request: Request) -> Union[NonceResponse, JSONResponse]:
+    return _resolve_nonce_response(transaction_id, request)
 
 
 @api_v2.put(
