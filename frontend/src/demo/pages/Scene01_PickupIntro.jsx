@@ -1,5 +1,5 @@
 // src/demo/scenes/Scene01_PickupIntro.jsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
 import { useDemo } from "../context";
 
@@ -24,11 +24,11 @@ export default function Scene01_PickupIntro() {
         <li>風險：資訊外洩、流程冗長、體驗不佳</li>
         <li>想像：一次性授權 + 最小必要 → 免翻整本病歷</li>
       </ul>
-      <div className="navs">
-        <button className="cta" onClick={() => navigate("/scene02")}>
-          啟動 MedSSI 領藥流程
-        </button>
-      </div>
+        <div className="navs">
+          <button className="cta" onClick={() => navigate("scene02")}>
+            啟動 MedSSI 領藥流程
+          </button>
+        </div>
     </div>
   }
   right={

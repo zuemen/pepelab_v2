@@ -550,6 +550,48 @@ def require_wallet_token(
     _validate_token(header_value, WALLET_ACCESS_TOKENS, "wallet")
 
 
+def require_issuer_or_wallet_token(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    access_token: Optional[str] = Header(None, alias="access-token"),
+) -> None:
+    if request.method == "OPTIONS":
+        return
+    header_value = _merge_authorization(authorization, access_token)
+    if not header_value:
+        _raise_problem(
+            status=401,
+            type_="https://medssi.dev/errors/missing-token",
+            title="Nonce access token required",
+            detail=(
+                "Provide issuer access token (Bearer <token>) to query nonce data. "
+                "Sandbox wallet tokens are also accepted for backward compatibility."
+            ),
+        )
+    scheme, _, token = header_value.partition(" ")
+    token = token.strip()
+    if scheme.lower() != "bearer" or not token:
+        _raise_problem(
+            status=401,
+            type_="https://medssi.dev/errors/invalid-token-format",
+            title="Bearer token format required",
+            detail="Authorization header must be formatted as 'Bearer <token>'.",
+        )
+    if token in ISSUER_ACCESS_TOKENS:
+        return
+    if token in WALLET_ACCESS_TOKENS:
+        return
+    _raise_problem(
+        status=403,
+        type_="https://medssi.dev/errors/token-rejected",
+        title="Access token rejected",
+        detail=(
+            "The supplied token is not valid for nonce lookup. Use the issuer access token "
+            "provided when issuing the credential (or the sandbox wallet token for legacy flows)."
+        ),
+    )
+
+
 def require_any_sandbox_token(
     request: Request,
     authorization: Optional[str] = Header(None),
@@ -1876,7 +1918,7 @@ def gov_issue_without_data(
 @api_public.get(
     "/credential/nonce/{transaction_id}",
     response_model=Dict[str, Any],
-    dependencies=[Depends(require_wallet_token)],
+    dependencies=[Depends(require_issuer_token)],
 )
 def gov_get_nonce(transaction_id: str, request: Request) -> Dict[str, Any]:
     token = _extract_token_from_request(request)
@@ -1891,7 +1933,7 @@ def gov_get_nonce(transaction_id: str, request: Request) -> Dict[str, Any]:
 @api_public.get(
     "/credential/nonce",
     response_model=Dict[str, Any],
-    dependencies=[Depends(require_wallet_token)],
+    dependencies=[Depends(require_issuer_token)],
 )
 def gov_get_nonce_query(
     request: Request, transactionId: str = Query(..., alias="transactionId")
@@ -2125,14 +2167,256 @@ def delete_credential(credential_id: str):
     return {"credential_id": credential_id, "status": "DELETED"}
 
 
-@api_v2.get(
-    "/api/credential/nonce",
-    response_model=NonceResponse,
-    dependencies=[Depends(require_wallet_token)],
-)
-def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceResponse:  # noqa: N802
+def _coerce_bool(value: Any) -> Optional[bool]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "t", "1", "yes", "y"}:
+            return True
+        if lowered in {"false", "f", "0", "no", "n"}:
+            return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return None
+
+
+def _parse_iso_datetime(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _normalize_disclosure_policies(raw: Any) -> List[DisclosurePolicy]:
+    policies: List[DisclosurePolicy] = []
+    if not raw:
+        return policies
+    for item in raw:
+        if not item:
+            continue
+        if isinstance(item, DisclosurePolicy):
+            policies.append(item)
+            continue
+        if isinstance(item, dict):
+            try:
+                policies.append(DisclosurePolicy.parse_obj(item))
+                continue
+            except ValidationError:
+                pass
+            scope_value = item.get("scope") or item.get("Scope")
+            try:
+                scope = DisclosureScope(scope_value) if scope_value else None
+            except ValueError:
+                scope = None
+            if scope is None:
+                continue
+            fields_raw = item.get("fields")
+            if isinstance(fields_raw, str):
+                fields = [segment.strip() for segment in fields_raw.split(",") if segment.strip()]
+            else:
+                fields = [str(field) for field in fields_raw or [] if field]
+            description = item.get("description")
+            policies.append(DisclosurePolicy(scope=scope, fields=fields, description=description))
+    return policies
+
+
+def _parse_remote_payload(raw: Any) -> Optional[CredentialPayload]:
+    if raw is None:
+        return None
+    if isinstance(raw, CredentialPayload):
+        return raw
+    if isinstance(raw, dict):
+        try:
+            return CredentialPayload.parse_obj(raw)
+        except ValidationError:
+            return None
+    return None
+
+
+def _extract_credential_id_from_jwt(token: Optional[str]) -> Optional[str]:
+    if not token:
+        return None
     try:
-        uuid.UUID(transactionId)
+        parts = token.split(".")
+        if len(parts) < 2:
+            return None
+        payload_segment = parts[1]
+        padding = "=" * (-len(payload_segment) % 4)
+        decoded = base64.urlsafe_b64decode((payload_segment + padding).encode("utf-8"))
+        data = json.loads(decoded.decode("utf-8"))
+    except Exception:
+        return None
+
+    jti = str(data.get("jti") or "").strip()
+    if not jti:
+        return None
+
+    candidate = jti.split("/")[-1]
+    if ":" in candidate:
+        candidate = candidate.split(":")[-1]
+    candidate = candidate.strip()
+    return candidate or None
+
+
+def _import_remote_nonce(
+    transaction_id: str, payload: Dict[str, Any]
+) -> Optional[Tuple[CredentialOffer, Dict[str, Any]]]:
+    remote_jwt = payload.get("credential")
+    remote_jwt_text = str(remote_jwt).strip() if remote_jwt else None
+
+    credential_id = str(payload.get("credentialId") or payload.get("credential_id") or "").strip()
+    if not credential_id and remote_jwt_text:
+        derived_id = _extract_credential_id_from_jwt(remote_jwt_text)
+        if derived_id:
+            credential_id = derived_id
+    nonce_value = payload.get("nonce")
+    if not credential_id or nonce_value is None:
+        return None
+
+    nonce_text = str(nonce_value).strip()
+    if not nonce_text:
+        return None
+
+    remote_transaction = str(payload.get("transactionId") or transaction_id or "").strip()
+    if not remote_transaction:
+        remote_transaction = transaction_id
+
+    status_value = payload.get("credentialStatus") or payload.get("status")
+    if isinstance(status_value, CredentialStatus):
+        status = status_value
+    else:
+        status_text = str(status_value or "").strip()
+        try:
+            status = CredentialStatus(status_text)
+        except ValueError:
+            status = CredentialStatus.ISSUED if status_text.upper() == "ACTIVE" else CredentialStatus.OFFERED
+
+    mode_value = payload.get("mode") or payload.get("issuanceMode")
+    if isinstance(mode_value, IssuanceMode):
+        mode = mode_value
+    else:
+        mode_text = str(mode_value or "").strip()
+        try:
+            mode = IssuanceMode(mode_text)
+        except ValueError:
+            available_flag = _coerce_bool(payload.get("payloadAvailable"))
+            mode = (
+                IssuanceMode.WITH_DATA
+                if available_flag
+                or (available_flag is None and payload.get("payload"))
+                else IssuanceMode.WITHOUT_DATA
+            )
+
+    ial_value = payload.get("ial")
+    if isinstance(ial_value, IdentityAssuranceLevel):
+        ial = ial_value
+    else:
+        ial_text = str(ial_value or "").strip()
+        try:
+            ial = IdentityAssuranceLevel(ial_text)
+        except ValueError:
+            ial = IdentityAssuranceLevel.NHI_CARD_PIN
+
+    expires_at = _parse_iso_datetime(payload.get("expiresAt") or payload.get("expires_at"))
+    if expires_at is None:
+        expires_at = datetime.utcnow() + timedelta(minutes=5)
+
+    policies = _normalize_disclosure_policies(payload.get("disclosurePolicies"))
+
+    primary_scope_value = payload.get("scope") or payload.get("primaryScope")
+    if isinstance(primary_scope_value, DisclosureScope):
+        primary_scope = primary_scope_value
+    else:
+        try:
+            primary_scope = (
+                DisclosureScope(str(primary_scope_value).strip()) if primary_scope_value else None
+            )
+        except ValueError:
+            primary_scope = None
+    if primary_scope is None and policies:
+        primary_scope = policies[0].scope
+    if primary_scope is None:
+        primary_scope = DisclosureScope.MEDICAL_RECORD
+
+    issuer_id_value = payload.get("issuerId") or payload.get("issuer_id")
+    issuer_id = str(issuer_id_value).strip() if issuer_id_value else DEFAULT_ISSUER_ID
+
+    payload_template = _parse_remote_payload(payload.get("payloadTemplate"))
+    payload_data = _parse_remote_payload(payload.get("payload"))
+
+    now = datetime.utcnow()
+    credential = store.get_credential(credential_id)
+
+    if credential is None:
+        external_fields: Dict[str, str] = {}
+        if remote_jwt_text:
+            external_fields["remoteCredentialJwt"] = remote_jwt_text
+        credential = CredentialOffer(
+            credential_id=credential_id,
+            transaction_id=remote_transaction or transaction_id,
+            issuer_id=issuer_id,
+            primary_scope=primary_scope,
+            ial=ial,
+            mode=mode,
+            qr_token=f"remote-{remote_transaction or transaction_id}",
+            nonce=nonce_text,
+            status=status,
+            created_at=now,
+            expires_at=expires_at,
+            last_action_at=now,
+            disclosure_policies=policies,
+            holder_did=None,
+            holder_hint=None,
+            payload=payload_data,
+            payload_template=payload_template,
+            external_fields=external_fields,
+        )
+        store.persist_credential(credential)
+    else:
+        credential.nonce = nonce_text
+        credential.status = status
+        credential.mode = mode
+        credential.expires_at = expires_at
+        if policies:
+            credential.disclosure_policies = policies
+        if payload_template is not None:
+            credential.payload_template = payload_template
+        if payload_data is not None:
+            credential.payload = payload_data
+        if remote_jwt_text:
+            credential.external_fields["remoteCredentialJwt"] = remote_jwt_text
+        credential.last_action_at = now
+        store.update_credential(credential)
+
+    payload_available_flag = _coerce_bool(payload.get("payloadAvailable"))
+    metadata = {
+        "payload_available": payload_available_flag,
+        "external_source": "GOVERNMENT",
+        "credential_jwt": remote_jwt_text,
+    }
+
+    return credential, metadata
+
+
+def _resolve_nonce_response(
+    transaction_id: str, request: Optional[Request] = None
+) -> Union[NonceResponse, JSONResponse]:
+    try:
+        uuid.UUID(transaction_id)
     except ValueError:
         _raise_problem(
             status=400,
@@ -2141,8 +2425,58 @@ def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceRe
             detail="transactionId must be a UUIDv4 string.",
         )
 
-    offer = store.get_credential_by_transaction(transactionId)
+    offer = store.get_credential_by_transaction(transaction_id)
     if not offer:
+        if request is not None:
+            token = _extract_token_from_request(request)
+            remote_payload = _call_remote_api(
+                method="GET",
+                base_url=GOV_ISSUER_BASE,
+                path=f"/api/credential/nonce/{transaction_id}",
+                token=token,
+            )
+            if isinstance(remote_payload, dict):
+                imported = _import_remote_nonce(transaction_id, remote_payload)
+                if imported:
+                    offer, metadata = imported
+                    payload_available_flag = metadata.get("payload_available")
+                    return NonceResponse(
+                        transaction_id=offer.transaction_id,
+                        credential_id=offer.credential_id,
+                        nonce=offer.nonce,
+                        ial=offer.ial,
+                        status=offer.status,
+                        expires_at=offer.expires_at,
+                        mode=offer.mode,
+                        disclosure_policies=offer.disclosure_policies,
+                        payload_available=(
+                            payload_available_flag
+                            if payload_available_flag is not None
+                            else offer.payload is not None
+                        ),
+                        payload_template=offer.payload_template,
+                        external_source=metadata.get("external_source"),
+                        credential_jwt=metadata.get("credential_jwt"),
+                    )
+                normalized_payload = dict(remote_payload)
+                normalized_payload.setdefault("transactionId", transaction_id)
+                normalized_payload.setdefault(
+                    "mode",
+                    normalized_payload.get("mode")
+                    or normalized_payload.get("issuanceMode")
+                    or "GOVERNMENT",
+                )
+                if "credentialId" in normalized_payload and "credential_id" not in normalized_payload:
+                    normalized_payload["credential_id"] = normalized_payload["credentialId"]
+                normalized_payload.setdefault("externalSource", "GOVERNMENT")
+                return JSONResponse(content=normalized_payload)
+            return JSONResponse(
+                content={
+                    "transactionId": transaction_id,
+                    "mode": "GOVERNMENT",
+                    "data": remote_payload,
+                }
+            )
         _raise_problem(
             status=404,
             type_="https://medssi.dev/errors/transaction-not-found",
@@ -2169,6 +2503,35 @@ def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceRe
         payload_available=offer.payload is not None,
         payload_template=offer.payload_template,
     )
+
+
+@api_v2.get(
+    "/api/credential/nonce",
+    response_model=NonceResponse,
+    dependencies=[Depends(require_issuer_or_wallet_token)],
+)
+def get_nonce(
+    request: Request, transactionId: str = Query(..., alias="transactionId")
+) -> Union[NonceResponse, JSONResponse]:  # noqa: N802
+    return _resolve_nonce_response(transactionId, request)
+
+
+@api_v2.get(
+    "/api/credential/nonce/{transaction_id}",
+    response_model=NonceResponse,
+    dependencies=[Depends(require_issuer_or_wallet_token)],
+)
+def get_nonce_direct(transaction_id: str, request: Request) -> Union[NonceResponse, JSONResponse]:
+    return _resolve_nonce_response(transaction_id, request)
+
+
+@api_v2.get(
+    "/api/credential/nonce/transaction/{transaction_id}",
+    response_model=NonceResponse,
+    dependencies=[Depends(require_issuer_or_wallet_token)],
+)
+def get_nonce_path(transaction_id: str, request: Request) -> Union[NonceResponse, JSONResponse]:
+    return _resolve_nonce_response(transaction_id, request)
 
 
 @api_v2.put(

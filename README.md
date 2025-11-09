@@ -30,7 +30,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 | --- | --- | --- |
 | `POST` | `/v2/api/qrcode/data` | 發行含 FHIR 資料的憑證，需指定 `primary_scope` 與 disclosure policies。 |
 | `POST` | `/v2/api/qrcode/nodata` | （開發模式）產生空白憑證範本供本地測試；官方沙盒目前未開放無個資發卡。 |
-| `GET` | `/v2/api/credential/nonce?transactionId=...` | 錢包以交易 ID 取得 nonce、模式、揭露欄位與（若提供）FHIR template。 |
+| `GET` | `/v2/api/credential/nonce/{transactionId}` | 錢包以交易 ID 取得 nonce、模式、揭露欄位與（若提供）FHIR template（亦支援 `?transactionId=` 查詢式相容舊版 SDK）。 |
 | `PUT` | `/v2/api/credential/{credential_id}/action` | 錢包接受、拒絕、撤銷或更新憑證資料，可一併送出選擇性揭露欄位。 |
 | `GET` | `/v2/api/wallet/{holder_did}/credentials` | 查詢某 Holder DID 持有的憑證列表。 |
 | `DELETE` | `/v2/api/wallet/{holder_did}/forget` | 清除某 Holder 的所有憑證／VP／驗證結果（可遺忘權）。 |
