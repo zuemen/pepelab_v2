@@ -80,10 +80,11 @@ export function createClient(baseUrl) {
         headers: accessTokenHeader(token),
       }),
     getNonce: async (transactionId, token) => {
+      const normalizedId = encodeURIComponent(transactionId);
+
       const primary = await request({
-        url: `${sandboxPrefix}/api/credential/nonce`,
+        url: `${sandboxPrefix}/api/credential/nonce/${normalizedId}`,
         method: 'GET',
-        params: { transactionId },
         headers: bearerHeader(token),
       });
 
@@ -96,8 +97,9 @@ export function createClient(baseUrl) {
       }
 
       return request({
-        url: `${sandboxPrefix}/api/credential/nonce/transaction/${encodeURIComponent(transactionId)}`,
+        url: `${sandboxPrefix}/api/credential/nonce`,
         method: 'GET',
+        params: { transactionId },
         headers: bearerHeader(token),
       });
     },

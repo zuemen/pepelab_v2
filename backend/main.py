@@ -2176,6 +2176,15 @@ def get_nonce(transactionId: str = Query(..., alias="transactionId")) -> NonceRe
 
 
 @api_v2.get(
+    "/api/credential/nonce/{transaction_id}",
+    response_model=NonceResponse,
+    dependencies=[Depends(require_wallet_token)],
+)
+def get_nonce_direct(transaction_id: str) -> NonceResponse:
+    return _resolve_nonce_response(transaction_id)
+
+
+@api_v2.get(
     "/api/credential/nonce/transaction/{transaction_id}",
     response_model=NonceResponse,
     dependencies=[Depends(require_wallet_token)],
