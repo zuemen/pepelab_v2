@@ -85,7 +85,13 @@ async function requestJson(url, options = {}) {
     data = { raw: text };
   }
   if (!response.ok) {
-    throw { status: response.status, data };
+    const detail =
+      typeof data?.detail === 'string'
+        ? data.detail
+        : typeof data?.message === 'string'
+        ? data.message
+        : undefined;
+    throw { status: response.status, data, detail };
   }
   return data;
 }
@@ -362,7 +368,11 @@ bindForm('issue-nodata-form', async (formData, form) => {
 });
 
 bindForm('nonce-form', async (formData) => {
-  const transactionId = formData.get('transactionId');
+  const transactionId = (formData.get('transactionId') || '').trim();
+  if (!transactionId) {
+    renderJson('nonce-response', { error: '請先輸入交易編號' });
+    return;
+  }
   try {
     const normalizedId = encodeURIComponent(transactionId);
     let data;
@@ -382,7 +392,28 @@ bindForm('nonce-form', async (formData) => {
     }
     renderJson('nonce-response', data);
   } catch (error) {
-    renderJson('nonce-response', error);
+    const status = error?.status ?? error?.data?.status ?? 0;
+    const detail =
+      typeof error?.detail === 'string'
+        ? error.detail
+        : typeof error?.data?.detail === 'string'
+        ? error.data.detail
+        : typeof error?.data === 'string'
+        ? error.data
+        : undefined;
+    const payload = {
+      status,
+      detail: detail || error?.data || error,
+    };
+    if (status === 404) {
+      payload.hints = [
+        '確認是否呼叫 GET /api/credential/nonce/{transactionId}（使用 path 參數，而非 query 或 body）',
+        '檢查 URL base 是否正確（若部署於 /v2，請包含該 prefix）',
+        '確認 transactionId 來源正確（需先執行 /api/qrcode/data 取得回傳值）',
+        '核對 HTTP 方法為 GET，並確定授權 Token 帶入 Authorization: Bearer <issuer token>',
+      ];
+    }
+    renderJson('nonce-response', payload);
   }
 });
 
