@@ -26,7 +26,7 @@ export default function Page3_Solution() {
 
             <div className="hero-body">
               <p className="lead">
-                想像阿銀到藥局，只需出示一個「健康通行憑證」：藥師即時驗證身份與當次處方，
+                想像阿朱到藥局，只需出示一個「健康通行憑證」：藥師即時驗證身份與當次處方，
                 而不必翻閱整份病歷。MedSSI 以 FHIR Bundle + Verifiable
                 Credential/Presentation，搭配 FHIR Path 的選擇性揭露，讓每一次分享都遵守
                 「最小必要」與「一次性授權」。

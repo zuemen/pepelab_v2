@@ -1,29 +1,30 @@
-import { useDemo } from "../context.jsx";
+// src/demo/components/PageShell.jsx
+import { motion } from "framer-motion";
 
 export default function PageShell({ title, subtitle, left, right }) {
-  // 從全域 context 取得 scope 和 mode
-  const { scope, mode } = useDemo();
-
   return (
-    <>
-      <div className="page-top">
-        <span>Scope: {scope}</span>
-        <span style={{ marginLeft: "12px" }}>Mode: {mode}</span>
-      </div>
-
-      <div className="demo-shell">
-        <div className="demo-left">
-          <h1 className="demo-title" aria-live="polite">
+    <motion.div
+      className="bonds-shell"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: "easeOut" }}
+    >
+      {/* 左右分欄區 */}
+      <div className="bonds-layout">
+        {/* 左：文字敘事區 */}
+        <div className="bonds-left">
+          <h1 className="bonds-title" aria-live="polite">
             {title}
           </h1>
-          {subtitle && <p className="demo-subtitle">{subtitle}</p>}
-          <div className="demo-left-content">{left}</div>
+          {subtitle && <p className="bonds-subtitle">{subtitle}</p>}
+          <div className="bonds-content">{left}</div>
         </div>
 
-        <div className="demo-right">
-          <div className="demo-device">{right}</div>
+        {/* 右：互動或示意畫面 */}
+        <div className="bonds-right">
+          <div className="bonds-device">{right}</div>
         </div>
       </div>
-    </>
+    </motion.div>
   );
 }
