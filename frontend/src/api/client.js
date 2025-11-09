@@ -55,9 +55,10 @@ export function createClient(baseUrl) {
       }),
     getNonce: (transactionId, token) =>
       request({
-        url: `/api/credential/nonce/${encodeURIComponent(transactionId)}`,
+        url: `${sandboxPrefix}/api/credential/nonce`,
         method: 'GET',
-        headers: accessTokenHeader(token),
+        params: { transactionId },
+        headers: bearerHeader(token),
       }),
     createVerificationCode: (params, token) =>
       request({
