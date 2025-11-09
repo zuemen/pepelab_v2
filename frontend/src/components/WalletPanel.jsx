@@ -70,7 +70,13 @@ function decodeJwt(token) {
   }
 }
 
-export function WalletPanel({ client, baseUrl, walletToken, latestTransactionId }) {
+export function WalletPanel({
+  client,
+  baseUrl,
+  walletToken,
+  latestTransactionId,
+  issuerToken,
+}) {
   const [transactionId, setTransactionId] = useState('');
   const [nonceInfo, setNonceInfo] = useState(null);
   const [nonceError, setNonceError] = useState(null);
@@ -87,6 +93,8 @@ export function WalletPanel({ client, baseUrl, walletToken, latestTransactionId 
 
   const autoTransactionRef = useRef('');
 
+  const nonceAuthToken = issuerToken || walletToken;
+
   const credentialId = useMemo(() => nonceInfo?.credential_id ?? '', [nonceInfo]);
 
   async function requestNonce(targetId) {
@@ -97,9 +105,20 @@ export function WalletPanel({ client, baseUrl, walletToken, latestTransactionId 
       setNonceError('請輸入交易編號');
       return false;
     }
-    const response = await client.getNonce(normalized, walletToken);
+    if (!nonceAuthToken) {
+      setNonceError('請先提供發行端 Access Token（Authorization: Bearer <issuer token>）');
+      return false;
+    }
+    const response = await client.getNonce(normalized, nonceAuthToken);
     if (!response.ok) {
-      setNonceError(`(${response.status}) ${response.detail}`);
+      const baseMessage = `(${response.status}) ${response.detail}`;
+      if (response.status === 401) {
+        setNonceError(
+          `${baseMessage} – 請確認於 Authorization header 使用發行端 Access Token (Bearer <issuer token>)。`
+        );
+      } else {
+        setNonceError(baseMessage);
+      }
       return false;
     }
     const data = response.data || {};
@@ -251,6 +270,7 @@ export function WalletPanel({ client, baseUrl, walletToken, latestTransactionId 
       <p className="badge">API Base URL：{baseUrl}</p>
       <div className="alert info">
         錢包需驗證 Wallet Access Token（預設 wallet-sandbox-token），系統將記錄 selective disclosure。
+        取得 nonce 時會自動以發行端 Access Token 呼叫 GET /api/credential/nonce/{transactionId}。
         可透過下方按鈕檢視錢包內的憑證並行使可遺忘權。
       </div>
 

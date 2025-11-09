@@ -84,6 +84,7 @@ export default function App() {
           client={client}
           baseUrl={baseUrl}
           walletToken={walletToken}
+          issuerToken={issuerToken}
           latestTransactionId={latestTransactionId}
         />
         <VerifierPanel client={client} verifierToken={verifierToken} />
