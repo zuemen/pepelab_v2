@@ -473,7 +473,7 @@ function convertToGovFormat({
   };
 }
 
-export function IssuerPanel({ client, issuerToken, baseUrl }) {
+export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionChange }) {
   const [issuerId, setIssuerId] = useState('did:example:hospital-001');
   const [holderDid, setHolderDid] = useState('did:example:patient-001');
   const [holderHint, setHolderHint] = useState('張小華 1962/07/18');
@@ -675,6 +675,9 @@ export function IssuerPanel({ client, issuerToken, baseUrl }) {
         raw: data,
       };
       setSuccess(normalized);
+      if (normalized.transactionId) {
+        onLatestTransactionChange?.(normalized.transactionId);
+      }
     } catch (err) {
       setLoading(false);
       setError(err.message || '發卡失敗，請稍後再試');

@@ -20,18 +20,56 @@ class InMemoryStore:
     def __init__(self) -> None:
         self._credentials: Dict[str, CredentialOffer] = {}
         self._transaction_index: Dict[str, str] = {}
+        self._credential_aliases: Dict[str, str] = {}
         self._verification_sessions: Dict[str, VerificationSession] = {}
         self._session_index: Dict[str, str] = {}
         self._presentations: Dict[str, Presentation] = {}
         self._results: Dict[str, VerificationResult] = {}
 
     # Credential lifecycle -------------------------------------------------
-    def persist_credential(self, credential: CredentialOffer) -> None:
+    def _normalize_credential_id(self, credential_id: str) -> str:
+        value = (credential_id or "").strip()
+        if not value:
+            return ""
+        candidate = value.split("/")[-1]
+        if ":" in candidate:
+            candidate = candidate.split(":")[-1]
+        return candidate
+
+    def _index_credential(self, credential: CredentialOffer) -> None:
         self._credentials[credential.credential_id] = credential
         self._transaction_index[credential.transaction_id] = credential.credential_id
+        normalized = self._normalize_credential_id(credential.credential_id)
+        self._credential_aliases[credential.credential_id] = credential.credential_id
+        if normalized:
+            self._credential_aliases[normalized] = credential.credential_id
+
+    def persist_credential(self, credential: CredentialOffer) -> None:
+        self._index_credential(credential)
 
     def get_credential(self, credential_id: str) -> Optional[CredentialOffer]:
-        return self._credentials.get(credential_id)
+        direct = self._credentials.get(credential_id)
+        if direct:
+            return direct
+
+        normalized = self._normalize_credential_id(credential_id)
+        if credential_id in self._credential_aliases:
+            mapped = self._credential_aliases[credential_id]
+            found = self._credentials.get(mapped)
+            if found:
+                return found
+        if normalized and normalized in self._credential_aliases:
+            mapped = self._credential_aliases[normalized]
+            found = self._credentials.get(mapped)
+            if found:
+                return found
+
+        if normalized and normalized != credential_id:
+            for stored_id, credential in self._credentials.items():
+                if self._normalize_credential_id(stored_id) == normalized:
+                    self._credential_aliases[normalized] = stored_id
+                    return credential
+        return None
 
     def get_credential_by_transaction(self, transaction_id: str) -> Optional[CredentialOffer]:
         credential_id = self._transaction_index.get(transaction_id)
@@ -40,8 +78,7 @@ class InMemoryStore:
         return self._credentials.get(credential_id)
 
     def update_credential(self, credential: CredentialOffer) -> None:
-        self._credentials[credential.credential_id] = credential
-        self._transaction_index[credential.transaction_id] = credential.credential_id
+        self._index_credential(credential)
 
     def list_credentials_for_holder(self, holder_did: str) -> List[CredentialOffer]:
         return [c for c in self._credentials.values() if c.holder_did == holder_did]
@@ -59,6 +96,10 @@ class InMemoryStore:
         credential = self._credentials.pop(credential_id, None)
         if credential:
             self._transaction_index.pop(credential.transaction_id, None)
+            normalized = self._normalize_credential_id(credential.credential_id)
+            self._credential_aliases.pop(credential.credential_id, None)
+            if normalized:
+                self._credential_aliases.pop(normalized, None)
 
     # Verification session lifecycle --------------------------------------
     def persist_verification_session(self, session: VerificationSession) -> None:
@@ -135,6 +176,10 @@ class InMemoryStore:
             credential = self._credentials.pop(credential_id, None)
             if credential:
                 self._transaction_index.pop(credential.transaction_id, None)
+                normalized = self._normalize_credential_id(credential.credential_id)
+                self._credential_aliases.pop(credential.credential_id, None)
+                if normalized:
+                    self._credential_aliases.pop(normalized, None)
 
         presentations_to_remove = [
             pid

@@ -1,6 +1,5 @@
 // frontend/src/demo/DemoApp.jsx
-import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { Routes, Route, useLocation, Navigate } from "../router.jsx";
 import { DemoProvider } from "./context.jsx";  // ✅ 加這行
 import "./demo.css";
 // bonds-style 頁面
@@ -21,51 +20,41 @@ import SceneRouter from "./SceneRouter.jsx";
 
 // 小動畫 wrapper
 const Page = ({ children }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 16 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -16 }}
-    transition={{ duration: 0.35 }}
-    style={{ minHeight: "100vh" }}
-  >
+  <div className="demo-page" style={{ minHeight: "100vh", transition: "opacity 0.3s ease" }}>
     {children}
-  </motion.div>
+  </div>
 );
 
 function RoutesWithAnimation() {
   const location = useLocation();
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
+    <Routes location={location}>
         {/* bonds 新開場頁 */}
-        <Route path="/" element={<Page><Page1_Home /></Page>} />
-        <Route path="/page2" element={<Page><Page2_Issues /></Page>} />
-        <Route path="/page3" element={<Page><Page3_Solution /></Page>} />
-        <Route path="/page4" element={<Page><Page4_Branch /></Page>} />
-        <Route path="/scene01" element={<Scene01_Problem />} />
-        <Route path="/scene02" element={<Scene02_SystemPain />} />
-        <Route path="/scene03" element={<Scene03_MethodMap />} />
-        <Route path="/scene04" element={<Scene04_Compliance />} />
-        <Route path="/scene05" element={<Scene05_Issuer />} />
-        <Route path="/scene06" element={<Scene06_Wallet />} />
-        <Route path="/scene07" element={<Scene07_Verifier />} />
-        <Route path="/scene08" element={<Scene08_Insurance />} />
+        <Route index element={<Page><Page1_Home /></Page>} />
+        <Route path="page2" element={<Page><Page2_Issues /></Page>} />
+        <Route path="page3" element={<Page><Page3_Solution /></Page>} />
+        <Route path="page4" element={<Page><Page4_Branch /></Page>} />
+        <Route path="scene01" element={<Scene01_Problem />} />
+        <Route path="scene02" element={<Scene02_SystemPain />} />
+        <Route path="scene03" element={<Scene03_MethodMap />} />
+        <Route path="scene04" element={<Scene04_Compliance />} />
+        <Route path="scene05" element={<Scene05_Issuer />} />
+        <Route path="scene06" element={<Scene06_Wallet />} />
+        <Route path="scene07" element={<Scene07_Verifier />} />
+        <Route path="scene08" element={<Scene08_Insurance />} />
         {/* 技術展示頁（Scene01~07） */}
-        <Route path="/scene/*" element={<Page><SceneRouter /></Page>} />
+        <Route path="scene/*" element={<Page><SceneRouter /></Page>} />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
-    </AnimatePresence>
   );
 }
 
 // ✅ 改這裡：把整個 Router 包在 DemoProvider 外層
 export default function DemoApp() {
   return (
-    <DemoProvider>  
-      <BrowserRouter basename="/demo">
-        <RoutesWithAnimation />
-      </BrowserRouter>
+    <DemoProvider>
+      <RoutesWithAnimation />
     </DemoProvider>
   );
 }

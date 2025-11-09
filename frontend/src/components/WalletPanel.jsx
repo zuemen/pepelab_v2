@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSamplePayload } from '../hooks/useSamplePayload.js';
 
 const ACTION_LABELS = {
@@ -70,7 +70,13 @@ function decodeJwt(token) {
   }
 }
 
-export function WalletPanel({ client, baseUrl, walletToken }) {
+export function WalletPanel({
+  client,
+  baseUrl,
+  walletToken,
+  latestTransactionId,
+  issuerToken,
+}) {
   const [transactionId, setTransactionId] = useState('');
   const [nonceInfo, setNonceInfo] = useState(null);
   const [nonceError, setNonceError] = useState(null);
@@ -85,36 +91,83 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
   const [forgetResult, setForgetResult] = useState(null);
   const samplePayloadBuilder = useSamplePayload(holderDid);
 
+  const autoTransactionRef = useRef('');
+
+  const nonceAuthToken = issuerToken || walletToken;
+
+  const isGovernmentFallback =
+    (nonceInfo?.externalSource || nonceInfo?.external_source) === 'GOVERNMENT';
+
   const credentialId = useMemo(() => nonceInfo?.credential_id ?? '', [nonceInfo]);
 
-  async function fetchNonce() {
+  async function requestNonce(targetId) {
     setNonceError(null);
     setNonceInfo(null);
-    if (!transactionId) {
+    const normalized = (targetId || '').trim();
+    if (!normalized) {
       setNonceError('請輸入交易編號');
-      return;
+      return false;
     }
-    const response = await client.getNonce(transactionId, walletToken);
+    if (!nonceAuthToken) {
+      setNonceError('請先提供發行端 Access Token（Authorization: Bearer <issuer token>）');
+      return false;
+    }
+    const response = await client.getNonce(normalized, nonceAuthToken);
     if (!response.ok) {
-      setNonceError(`(${response.status}) ${response.detail}`);
-      return;
+      const baseMessage = `(${response.status}) ${response.detail}`;
+      if (response.status === 401) {
+        setNonceError(
+          `${baseMessage} – 請確認於 Authorization header 使用發行端 Access Token (Bearer <issuer token>)。`
+        );
+      } else {
+        setNonceError(baseMessage);
+      }
+      return false;
     }
     const data = response.data || {};
-    if (data.credential) {
-      const parsed = decodeJwt(data.credential);
-      const parsedId = parsed?.jti
-        ? parsed.jti.split('/').pop() || parsed.jti.split(':').pop() || ''
-        : '';
-      setNonceInfo({
-        credential_id: parsedId,
-        credential_jwt: data.credential,
-        parsed,
-        mode: 'GOVERNMENT',
-      });
+    const nextInfo = { ...data };
+    if (nextInfo.externalSource && !nextInfo.external_source) {
+      nextInfo.external_source = nextInfo.externalSource;
+    }
+    const credentialJwt = data.credential;
+    if (credentialJwt) {
+      const parsed = decodeJwt(credentialJwt);
+      nextInfo.credential_jwt = credentialJwt;
+      nextInfo.parsed = parsed;
+      if (!nextInfo.credential_id && parsed?.jti) {
+        const parsedId = parsed.jti.split('/').pop() || parsed.jti.split(':').pop() || '';
+        if (parsedId) {
+          nextInfo.credential_id = parsedId;
+        }
+      }
+    }
+    if (!nextInfo.credential_id && data.credentialId) {
+      nextInfo.credential_id = data.credentialId;
+    }
+    setNonceInfo(nextInfo);
+    return true;
+  }
+
+  async function fetchNonce(nextTransactionId) {
+    const targetId = nextTransactionId ?? transactionId;
+    return requestNonce(targetId);
+  }
+
+  useEffect(() => {
+    if (!latestTransactionId) {
       return;
     }
-    setNonceInfo(data);
-  }
+    const trimmed = latestTransactionId.trim();
+    if (!trimmed) {
+      return;
+    }
+    if (trimmed === autoTransactionRef.current) {
+      return;
+    }
+    autoTransactionRef.current = trimmed;
+    setTransactionId(trimmed);
+    requestNonce(trimmed);
+  }, [latestTransactionId]);
 
   function parsePayloadDraft() {
     if (!payloadDraft) {
@@ -129,7 +182,10 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
   }
 
   async function runAction() {
-    if (nonceInfo?.mode === 'GOVERNMENT') {
+    if (
+      nonceInfo?.mode === 'GOVERNMENT' &&
+      !(nonceInfo?.externalSource || nonceInfo?.external_source)
+    ) {
       setActionError('政府沙盒憑證請透過官方數位皮夾操作，無法在此頁面進行。');
       return;
     }
@@ -226,6 +282,7 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
       <p className="badge">API Base URL：{baseUrl}</p>
       <div className="alert info">
         錢包需驗證 Wallet Access Token（預設 wallet-sandbox-token），系統將記錄 selective disclosure。
+        取得 nonce 時會自動以發行端 Access Token 呼叫 GET /api/credential/nonce/{transactionId}。
         可透過下方按鈕檢視錢包內的憑證並行使可遺忘權。
       </div>
 
@@ -241,15 +298,18 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
             onChange={(event) => setTransactionId(event.target.value)}
             placeholder="輸入發卡後回傳的 transaction_id"
           />
-          <button type="button" onClick={fetchNonce}>
+          {latestTransactionId && transactionId === latestTransactionId.trim() ? (
+            <small className="helper">已自動載入最新交易編號並完成查詢。</small>
+          ) : null}
+          <button type="button" onClick={() => fetchNonce()}>
             取得 nonce
           </button>
           {nonceError ? <div className="alert error">{nonceError}</div> : null}
 
           {nonceInfo ? (
             <div className="alert success" role="status">
-              {nonceInfo.mode === 'GOVERNMENT'
-                ? `已取得政府沙盒憑證 ${nonceInfo.credential_id || ''}`
+              {isGovernmentFallback
+                ? `已從政府沙盒同步憑證 ${nonceInfo.credential_id || ''}，可在此錢包繼續操作。`
                 : `已取得憑證 ${nonceInfo.credential_id}，狀態：${nonceInfo.status ?? '未知'}`}
             </div>
           ) : null}
@@ -300,46 +360,45 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
         <div className="card">
           <h3>揭露政策與範例</h3>
           {nonceInfo ? (
-            nonceInfo.mode === 'GOVERNMENT' ? (
-              <>
-                <p>模式：政府沙盒憑證</p>
-                {nonceInfo.credential_id ? (
-                  <p>Credential ID：{nonceInfo.credential_id}</p>
-                ) : null}
-                <p>JWT：{nonceInfo.credential_jwt?.slice(0, 48)}...</p>
-                {nonceInfo.parsed ? (
-                  <>
-                    <h4>解碼後 Payload</h4>
-                    <pre>{JSON.stringify(nonceInfo.parsed, null, 2)}</pre>
-                  </>
-                ) : null}
-                <div className="alert warning">
-                  政府憑證需透過 MODA 數位皮夾 App 操作，無法在此頁面接受或更新。
+            <>
+              {isGovernmentFallback ? (
+                <div className="alert info">
+                  已自政府沙盒帶入最新憑證資料。
+                  {nonceInfo.credential_jwt ? ' 下方可查看轉傳的 JWT 內容。' : ''}
                 </div>
-              </>
-            ) : (
-              <>
-                <p>模式：{nonceInfo.mode}</p>
-                <p>身份保證等級：{nonceInfo.ial}</p>
-                <p>到期：{nonceInfo.expires_at ? new Date(nonceInfo.expires_at).toLocaleString() : '未提供'}</p>
-                {(nonceInfo.disclosure_policies || []).map((policy) => (
-                  <div key={policy.scope} className="alert info">
-                    <strong>{policy.scope}</strong>
-                    <ul>
-                      {policy.fields.map((field) => (
-                        <li key={field}>{field}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-                {nonceInfo.payload_template ? (
-                  <details>
-                    <summary>發行端提供的 FHIR Template</summary>
-                    <pre>{JSON.stringify(nonceInfo.payload_template, null, 2)}</pre>
-                  </details>
-                ) : null}
-              </>
-            )
+              ) : null}
+              <p>模式：{nonceInfo.mode}</p>
+              <p>身份保證等級：{nonceInfo.ial}</p>
+              <p>到期：{nonceInfo.expires_at ? new Date(nonceInfo.expires_at).toLocaleString() : '未提供'}</p>
+              {(nonceInfo.disclosure_policies || []).map((policy) => (
+                <div key={policy.scope} className="alert info">
+                  <strong>{policy.scope}</strong>
+                  <ul>
+                    {policy.fields.map((field) => (
+                      <li key={field}>{field}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              {nonceInfo.payload_template ? (
+                <details>
+                  <summary>發行端提供的 FHIR Template</summary>
+                  <pre>{JSON.stringify(nonceInfo.payload_template, null, 2)}</pre>
+                </details>
+              ) : null}
+              {nonceInfo.credential_jwt ? (
+                <details>
+                  <summary>政府沙盒回傳的 Credential JWT</summary>
+                  <pre>{nonceInfo.credential_jwt}</pre>
+                  {nonceInfo.parsed ? (
+                    <>
+                      <h4>解碼後 Payload</h4>
+                      <pre>{JSON.stringify(nonceInfo.parsed, null, 2)}</pre>
+                    </>
+                  ) : null}
+                </details>
+              ) : null}
+            </>
           ) : (
             <p>請先輸入交易編號取得 nonce。</p>
           )}
