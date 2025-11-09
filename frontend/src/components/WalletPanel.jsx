@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSamplePayload } from '../hooks/useSamplePayload.js';
 
 const ACTION_LABELS = {
@@ -70,7 +70,7 @@ function decodeJwt(token) {
   }
 }
 
-export function WalletPanel({ client, baseUrl, walletToken }) {
+export function WalletPanel({ client, baseUrl, walletToken, latestTransactionId }) {
   const [transactionId, setTransactionId] = useState('');
   const [nonceInfo, setNonceInfo] = useState(null);
   const [nonceError, setNonceError] = useState(null);
@@ -85,19 +85,22 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
   const [forgetResult, setForgetResult] = useState(null);
   const samplePayloadBuilder = useSamplePayload(holderDid);
 
+  const autoTransactionRef = useRef('');
+
   const credentialId = useMemo(() => nonceInfo?.credential_id ?? '', [nonceInfo]);
 
-  async function fetchNonce() {
+  async function requestNonce(targetId) {
     setNonceError(null);
     setNonceInfo(null);
-    if (!transactionId) {
+    const normalized = (targetId || '').trim();
+    if (!normalized) {
       setNonceError('請輸入交易編號');
-      return;
+      return false;
     }
-    const response = await client.getNonce(transactionId, walletToken);
+    const response = await client.getNonce(normalized, walletToken);
     if (!response.ok) {
       setNonceError(`(${response.status}) ${response.detail}`);
-      return;
+      return false;
     }
     const data = response.data || {};
     if (data.credential) {
@@ -111,10 +114,32 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
         parsed,
         mode: 'GOVERNMENT',
       });
-      return;
+      return true;
     }
     setNonceInfo(data);
+    return true;
   }
+
+  async function fetchNonce(nextTransactionId) {
+    const targetId = nextTransactionId ?? transactionId;
+    return requestNonce(targetId);
+  }
+
+  useEffect(() => {
+    if (!latestTransactionId) {
+      return;
+    }
+    const trimmed = latestTransactionId.trim();
+    if (!trimmed) {
+      return;
+    }
+    if (trimmed === autoTransactionRef.current) {
+      return;
+    }
+    autoTransactionRef.current = trimmed;
+    setTransactionId(trimmed);
+    requestNonce(trimmed);
+  }, [latestTransactionId]);
 
   function parsePayloadDraft() {
     if (!payloadDraft) {
@@ -241,7 +266,10 @@ export function WalletPanel({ client, baseUrl, walletToken }) {
             onChange={(event) => setTransactionId(event.target.value)}
             placeholder="輸入發卡後回傳的 transaction_id"
           />
-          <button type="button" onClick={fetchNonce}>
+          {latestTransactionId && transactionId === latestTransactionId.trim() ? (
+            <small className="helper">已自動載入最新交易編號並完成查詢。</small>
+          ) : null}
+          <button type="button" onClick={() => fetchNonce()}>
             取得 nonce
           </button>
           {nonceError ? <div className="alert error">{nonceError}</div> : null}
