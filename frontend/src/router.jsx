@@ -199,8 +199,12 @@ export function Routes({ children }) {
       continue;
     }
 
+    const childBase = hasWildcard
+      ? joinSegments(patternSegments)
+      : joinSegments(patternSegments.slice(0, -1));
+
     return (
-      <RouteBaseContext.Provider value={joinSegments(patternSegments)}>
+      <RouteBaseContext.Provider value={childBase}>
         {props.element}
       </RouteBaseContext.Provider>
     );
