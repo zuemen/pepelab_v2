@@ -1,5 +1,5 @@
 // src/demo/scenes/Scene07_Audit.jsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
 
 export default function Scene07_Audit() {
@@ -18,7 +18,9 @@ export default function Scene07_Audit() {
           </ul>
           <p>信任，不只是技術；是讓病人敢於分享的力量。</p>
           <div className="navs">
-            <button className="cta" onClick={() => navigate("/page4")}>回到情境選擇</button>
+            <button className="cta" onClick={() => navigate("page4")}>
+              回到情境選擇
+            </button>
           </div>
         </>
       }

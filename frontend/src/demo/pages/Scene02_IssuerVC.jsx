@@ -1,5 +1,5 @@
 // src/demo/scenes/Scene02_IssuerVC.jsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
 import { useDemo } from "../context";
 import qrImage from "../assets/診斷卡.png"; // 引入圖片
@@ -21,8 +21,12 @@ export default function Scene02_IssuerVC() {
             <li>QR 有效 5 分鐘，逾時自動失效</li>
           </ul>
           <div className="navs">
-            <button className="ghost" onClick={() => navigate("/scene01")}>← 上一幕</button>
-            <button className="cta" onClick={() => navigate("/scene03")}>小朱用錢包掃描</button>
+            <button className="ghost" onClick={() => navigate("scene01")}>
+              ← 上一幕
+            </button>
+            <button className="cta" onClick={() => navigate("scene03")}>
+              小朱用錢包掃描
+            </button>
           </div>
         </>
       }

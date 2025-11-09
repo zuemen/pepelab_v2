@@ -1,6 +1,6 @@
 
 // src/demo/scenes/Scene08_Insurance.jsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
 
 export default function Scene08_Insurance() {
@@ -22,8 +22,9 @@ export default function Scene08_Insurance() {
             <li>權限控管：一次性授權、可稽核、用畢即刪（目的限定）</li>
           </ul>
           <div className="navs">
-            
-            <button className="cta" onClick={() => navigate("/page4")}>送出理賠 VP</button>
+            <button className="cta" onClick={() => navigate("page4")}>
+              送出理賠 VP
+            </button>
           </div>
         </>
       }
