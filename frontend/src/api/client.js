@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-function resolveSandboxPrefix(baseUrl) {
+export function resolveSandboxPrefix(baseUrl) {
   if (!baseUrl) {
     return '/v2';
   }
@@ -128,6 +128,14 @@ export function createClient(baseUrl) {
       request({
         url: `${sandboxPrefix}/api/credentials/${credentialId}/revoke`,
         method: 'POST',
+        headers: bearerHeader(token),
+      }),
+    updateCredentialStatus: (cid, action, token) =>
+      request({
+        url: `${sandboxPrefix}/api/credential/${encodeURIComponent(cid)}/${encodeURIComponent(
+          action
+        )}`,
+        method: 'PUT',
         headers: bearerHeader(token),
       }),
     deleteCredential: (credentialId, token) =>
