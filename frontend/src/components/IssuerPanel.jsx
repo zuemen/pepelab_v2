@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import { QRCodeCanvas } from 'qrcode.react';
 import { resolveSandboxPrefix } from '../api/client.js';
 import { ISSUE_LOG_STORAGE_KEY } from '../constants/storage.js';
+import { computeRevocationDetails } from '../utils/revocation.js';
 
 function decodeJwtPayload(token) {
   if (!token || typeof token !== 'string') {
@@ -638,22 +639,32 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
 
     const entryPrefix =
       typeof entry.cidSandboxPrefix === 'string' ? entry.cidSandboxPrefix : sandboxPrefix;
-    const derivedPath = normalizedCid
-      ? `${entryPrefix || ''}/api/credential/${normalizedCid}/revocation`
-      : '';
     const storedPath =
       entry.cidRevocationPath && typeof entry.cidRevocationPath === 'string'
         ? entry.cidRevocationPath
         : '';
-    const cidRevocationPath = derivedPath || storedPath;
-    const derivedUrl =
-      normalizedCid && sanitizedBaseUrl
-        ? `${sanitizedBaseUrl}${cidRevocationPath.startsWith('/') ? '' : '/'}${cidRevocationPath}`
+    const storedDisplayPath =
+      entry.cidRevocationDisplayPath && typeof entry.cidRevocationDisplayPath === 'string'
+        ? entry.cidRevocationDisplayPath
         : '';
     const storedUrl =
       entry.cidRevocationUrl && typeof entry.cidRevocationUrl === 'string'
         ? entry.cidRevocationUrl
         : '';
+    const storedDisplayUrl =
+      entry.cidRevocationDisplayUrl && typeof entry.cidRevocationDisplayUrl === 'string'
+        ? entry.cidRevocationDisplayUrl
+        : '';
+
+    const revocationDetails = computeRevocationDetails({
+      cid: normalizedCid,
+      sandboxPrefix: entryPrefix,
+      baseUrl: sanitizedBaseUrl,
+      storedPath,
+      storedUrl,
+      storedDisplayPath,
+      storedDisplayUrl,
+    });
 
     return {
       timestamp: entry.timestamp || new Date().toISOString(),
@@ -663,8 +674,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       cid: normalizedCid,
       credentialJti: normalizedJti,
       cidSandboxPrefix: entryPrefix,
-      cidRevocationPath,
-      cidRevocationUrl: derivedUrl || storedUrl,
+      cidRevocationPath: revocationDetails.path,
+      cidRevocationDisplayPath: revocationDetails.displayPath,
+      cidRevocationUrl: revocationDetails.url,
+      cidRevocationDisplayUrl: revocationDetails.displayUrl,
       hasCredential: Boolean(entry.hasCredential || normalizedCid),
       scope: normalizedScope,
       scopeLabel: PRIMARY_SCOPE_LABEL[normalizedScope] || entry.scopeLabel || normalizedScope,
@@ -1502,21 +1515,24 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         recordedEntry?.cidSandboxPrefix && typeof recordedEntry.cidSandboxPrefix === 'string'
           ? recordedEntry.cidSandboxPrefix
           : sandboxPrefix;
-      const computedPath =
-        cidValue && (recordedEntry?.cidRevocationPath || `${prefixValue || ''}/api/credential/${cidValue}/revocation`);
-      const cidRevocationPath = recordedEntry?.cidRevocationPath || computedPath || '';
-      const cidRevocationUrl =
-        recordedEntry?.cidRevocationUrl ||
-        (cidValue && sanitizedBaseUrl
-          ? `${sanitizedBaseUrl}${cidRevocationPath.startsWith('/') ? '' : '/'}${cidRevocationPath}`
-          : '');
+      const revocationDetails = computeRevocationDetails({
+        cid: cidValue,
+        sandboxPrefix: prefixValue,
+        baseUrl: sanitizedBaseUrl,
+        storedPath: recordedEntry?.cidRevocationPath || '',
+        storedUrl: recordedEntry?.cidRevocationUrl || '',
+        storedDisplayPath: recordedEntry?.cidRevocationDisplayPath || '',
+        storedDisplayUrl: recordedEntry?.cidRevocationDisplayUrl || '',
+      });
 
       setSuccess({
         ...normalized,
         cid: cidValue,
         credentialJti: jtiValue,
-        cidRevocationPath,
-        cidRevocationUrl,
+        cidRevocationPath: revocationDetails.path,
+        cidRevocationDisplayPath: revocationDetails.displayPath,
+        cidRevocationUrl: revocationDetails.url,
+        cidRevocationDisplayUrl: revocationDetails.displayUrl,
         cidLookupSource:
           recordedEntry?.cidLookupSource || (credentialJwt ? 'response' : null),
         cidLookupError: recordedEntry?.cidLookupError || null,
@@ -1674,15 +1690,31 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                     <code className="cid-summary-value">{success.credentialJti}</code>
                   </div>
                 ) : null}
-                {success.cidRevocationPath && success.cid ? (
+                {success.cidRevocationDisplayPath && success.cid ? (
                   <div className="cid-summary-row">
                     <span className="cid-summary-label">撤銷 API</span>
+                    <code className="cid-summary-value">PUT {success.cidRevocationDisplayPath}</code>
+                  </div>
+                ) : null}
+                {success.cidRevocationPath &&
+                success.cid &&
+                success.cidRevocationPath !== success.cidRevocationDisplayPath ? (
+                  <div className="cid-summary-row">
+                    <span className="cid-summary-label">沙盒路徑</span>
                     <code className="cid-summary-value">PUT {success.cidRevocationPath}</code>
                   </div>
                 ) : null}
-                {success.cidRevocationUrl && success.cid ? (
+                {success.cidRevocationDisplayUrl && success.cid ? (
                   <div className="cid-summary-row">
                     <span className="cid-summary-label">完整 URL</span>
+                    <code className="cid-summary-value">{success.cidRevocationDisplayUrl}</code>
+                  </div>
+                ) : null}
+                {success.cidRevocationUrl &&
+                success.cid &&
+                success.cidRevocationUrl !== success.cidRevocationDisplayUrl ? (
+                  <div className="cid-summary-row">
+                    <span className="cid-summary-label">沙盒 URL</span>
                     <code className="cid-summary-value">{success.cidRevocationUrl}</code>
                   </div>
                 ) : null}
@@ -2262,9 +2294,26 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
               const lookupSourceLabel = describeLookupSource(entry.cidLookupSource);
               const displayCid = entry.cid || '';
               const displayRevocationPath =
-                displayCid && entry.cidRevocationPath ? entry.cidRevocationPath : '';
+                displayCid &&
+                (entry.cidRevocationDisplayPath || entry.cidRevocationPath)
+                  ? entry.cidRevocationDisplayPath || entry.cidRevocationPath
+                  : '';
+              const sandboxRevocationPath =
+                displayCid &&
+                entry.cidRevocationPath &&
+                entry.cidRevocationPath !== displayRevocationPath
+                  ? entry.cidRevocationPath
+                  : '';
               const displayRevocationUrl =
-                displayCid && entry.cidRevocationUrl ? entry.cidRevocationUrl : '';
+                displayCid && (entry.cidRevocationDisplayUrl || entry.cidRevocationUrl)
+                  ? entry.cidRevocationDisplayUrl || entry.cidRevocationUrl
+                  : '';
+              const sandboxRevocationUrl =
+                displayCid &&
+                entry.cidRevocationUrl &&
+                entry.cidRevocationUrl !== displayRevocationUrl
+                  ? entry.cidRevocationUrl
+                  : '';
               const displayJti = entry.credentialJti || '';
               const actionKey = entry.cid ? `${entry.cid}-revocation` : null;
               const actionState = actionKey ? issueLogActions[actionKey] : null;
@@ -2308,10 +2357,22 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                         <code className="cid-summary-value">PUT {displayRevocationPath}</code>
                       </div>
                     ) : null}
+                    {sandboxRevocationPath ? (
+                      <div className="cid-summary-row">
+                        <span className="cid-summary-label">沙盒路徑</span>
+                        <code className="cid-summary-value">PUT {sandboxRevocationPath}</code>
+                      </div>
+                    ) : null}
                     {displayRevocationUrl ? (
                       <div className="cid-summary-row">
                         <span className="cid-summary-label">完整 URL</span>
                         <code className="cid-summary-value">{displayRevocationUrl}</code>
+                      </div>
+                    ) : null}
+                    {sandboxRevocationUrl ? (
+                      <div className="cid-summary-row">
+                        <span className="cid-summary-label">沙盒 URL</span>
+                        <code className="cid-summary-value">{sandboxRevocationUrl}</code>
                       </div>
                     ) : null}
                     {lookupSourceLabel ? (

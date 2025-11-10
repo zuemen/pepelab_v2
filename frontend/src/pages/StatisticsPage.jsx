@@ -205,14 +205,29 @@ function deriveCidMetadata(entry) {
   const cid = entry.cid ? String(entry.cid) : '';
   const prefix =
     typeof entry.cidSandboxPrefix === 'string' ? entry.cidSandboxPrefix : '';
-  const path =
-    entry.cidRevocationPath && typeof entry.cidRevocationPath === 'string'
+  const fallbackPath = cid ? `${prefix || ''}/api/credential/${cid}/revocation` : '';
+  const displayPath =
+    entry.cidRevocationDisplayPath && typeof entry.cidRevocationDisplayPath === 'string'
+      ? entry.cidRevocationDisplayPath
+      : entry.cidRevocationPath && typeof entry.cidRevocationPath === 'string'
       ? entry.cidRevocationPath
-      : cid
-      ? `${prefix || ''}/api/credential/${cid}/revocation`
+      : fallbackPath;
+  const sandboxPath =
+    entry.cidRevocationPath &&
+    typeof entry.cidRevocationPath === 'string' &&
+    entry.cidRevocationPath !== displayPath
+      ? entry.cidRevocationPath
       : '';
-  const url =
-    entry.cidRevocationUrl && typeof entry.cidRevocationUrl === 'string'
+  const displayUrl =
+    entry.cidRevocationDisplayUrl && typeof entry.cidRevocationDisplayUrl === 'string'
+      ? entry.cidRevocationDisplayUrl
+      : entry.cidRevocationUrl && typeof entry.cidRevocationUrl === 'string'
+      ? entry.cidRevocationUrl
+      : '';
+  const sandboxUrl =
+    entry.cidRevocationUrl &&
+    typeof entry.cidRevocationUrl === 'string' &&
+    entry.cidRevocationUrl !== displayUrl
       ? entry.cidRevocationUrl
       : '';
   const jti = entry.credentialJti
@@ -220,7 +235,7 @@ function deriveCidMetadata(entry) {
     : entry.jti
     ? String(entry.jti)
     : '';
-  return { cid, path, url, jti };
+  return { cid, displayPath, sandboxPath, displayUrl, sandboxUrl, jti };
 }
 
 function StatsCardDetail({ card }) {
@@ -270,14 +285,26 @@ function StatsCardDetail({ card }) {
                   <tr key={`${entry.cid || entry.transactionId || index}-${index}`}>
                     <td className="cid-stat-cell">
                       {meta.cid ? <code className="cid-stat-value">{meta.cid}</code> : '—'}
-                      {meta.path && meta.cid ? (
+                      {meta.displayPath && meta.cid ? (
                         <div className="cid-stat-path">
-                          <code>PUT {meta.path}</code>
+                          <code>PUT {meta.displayPath}</code>
                         </div>
                       ) : null}
-                      {meta.url && meta.cid ? (
+                      {meta.sandboxPath && meta.cid ? (
                         <div className="cid-stat-path">
-                          <code>{meta.url}</code>
+                          <span className="cid-stat-label">沙盒路徑：</span>
+                          <code>PUT {meta.sandboxPath}</code>
+                        </div>
+                      ) : null}
+                      {meta.displayUrl && meta.cid ? (
+                        <div className="cid-stat-path">
+                          <code>{meta.displayUrl}</code>
+                        </div>
+                      ) : null}
+                      {meta.sandboxUrl && meta.cid ? (
+                        <div className="cid-stat-path">
+                          <span className="cid-stat-label">沙盒 URL：</span>
+                          <code>{meta.sandboxUrl}</code>
                         </div>
                       ) : null}
                       {meta.jti ? (
