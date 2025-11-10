@@ -732,6 +732,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
   });
   const [manualEntryFeedback, setManualEntryFeedback] = useState(null);
   const [manualEntryError, setManualEntryError] = useState(null);
+  const [manualEntryLoading, setManualEntryLoading] = useState(false);
   const [govIdentifiers, setGovIdentifiers] = useState(() => {
     if (typeof window === 'undefined') {
       return DEFAULT_CARD_IDENTIFIERS;
@@ -900,18 +901,17 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     const timestamp = new Date().toISOString();
     const scopeLabel = PRIMARY_SCOPE_LABEL[primaryScope] || primaryScope;
 
-    let resolvedCredential = credentialJwt || '';
-    const initialIdentifiers = extractCredentialIdentifiers(resolvedCredential);
-    let cid = initialIdentifiers.cid;
-    let credentialJti = initialIdentifiers.jti;
-    let lookupSource = resolvedCredential ? 'response' : null;
+    let resolvedCredential = '';
+    let cid = '';
+    let credentialJti = '';
+    let lookupSource = null;
     let lookupError = null;
     let status = 'ISSUED';
     let holderFromResponse = holderDid || '';
     let collected = false;
     let collectedAtValue = null;
     let revokedAtValue = null;
-    let hasCredential = Boolean(resolvedCredential);
+    let hasCredential = false;
 
     if (transactionId) {
       try {
@@ -940,18 +940,18 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
             null;
 
           if (credentialFromNonce && typeof credentialFromNonce === 'string') {
-            if (!resolvedCredential) {
-              resolvedCredential = credentialFromNonce;
-            }
+            resolvedCredential = resolvedCredential || credentialFromNonce;
             const nonceIdentifiers = extractCredentialIdentifiers(credentialFromNonce);
             if (nonceIdentifiers.cid) {
               cid = nonceIdentifiers.cid;
-              lookupSource = lookupSource || 'nonce';
+              lookupSource = 'nonce';
             }
             if (nonceIdentifiers.jti) {
               credentialJti = nonceIdentifiers.jti;
             }
             hasCredential = true;
+          } else if (!cid) {
+            lookupError = lookupError || '官方 nonce 回應未提供 credential JWT。';
           }
 
           const derivedStatus =
@@ -998,8 +998,25 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       }
     }
 
+    if (credentialJwt) {
+      if (!resolvedCredential) {
+        resolvedCredential = credentialJwt;
+      }
+      const responseIdentifiers = extractCredentialIdentifiers(credentialJwt);
+      if (!cid && responseIdentifiers.cid) {
+        cid = responseIdentifiers.cid;
+        if (!lookupSource) {
+          lookupSource = 'response';
+        }
+      }
+      if (!credentialJti && responseIdentifiers.jti) {
+        credentialJti = responseIdentifiers.jti;
+      }
+      hasCredential = true;
+    }
+
     if (!lookupSource && transactionId) {
-      lookupSource = lookupError ? 'transaction' : lookupSource;
+      lookupSource = 'transaction';
     }
 
     const entry = {
@@ -1062,65 +1079,138 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     setManualEntry((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleManualEntrySubmit = (event) => {
+  const handleManualEntrySubmit = async (event) => {
     event.preventDefault();
+    if (manualEntryLoading) {
+      return;
+    }
     setManualEntryError(null);
     setManualEntryFeedback(null);
+    setManualEntryLoading(true);
 
     let cid = manualEntry.cid.trim();
     const credentialJti = manualEntry.credentialJti.trim();
     const transactionId = manualEntry.transactionId.trim();
     const holder = (manualEntry.holderDid || holderDid || '').trim();
 
+    let resolvedCredentialJti = credentialJti;
+    let lookupSource = 'manual';
+    let lookupError = null;
+
     if (!cid && credentialJti) {
       cid = parseCidFromJti(credentialJti);
     }
 
-    if (!cid && !transactionId) {
-      setManualEntryError('請至少輸入 CID 或交易序號。');
-      return;
+    try {
+      if (transactionId) {
+        try {
+          const response = await client.getNonce(transactionId, issuerToken);
+          if (response.ok) {
+            const data = response.data || {};
+            let credentialFromNonce = null;
+
+            if (typeof data.credential === 'string') {
+              credentialFromNonce = data.credential;
+            } else if (data.credential && typeof data.credential === 'object') {
+              credentialFromNonce =
+                data.credential.credential ||
+                data.credential.jwt ||
+                data.credential.credentialJwt ||
+                data.credential.credential_jwt ||
+                null;
+            }
+
+            credentialFromNonce =
+              credentialFromNonce ||
+              data.credentialJwt ||
+              data.credential_jwt ||
+              data.jwt ||
+              data.credentialToken ||
+              null;
+
+            if (credentialFromNonce && typeof credentialFromNonce === 'string') {
+              const identifiers = extractCredentialIdentifiers(credentialFromNonce);
+              if (!cid && identifiers.cid) {
+                cid = identifiers.cid;
+              }
+              if (!resolvedCredentialJti && identifiers.jti) {
+                resolvedCredentialJti = identifiers.jti;
+              }
+              lookupSource = 'nonce';
+            } else if (!cid) {
+              lookupError = lookupError || '官方 nonce 回應未提供 credential JWT。';
+            }
+          } else if (!cid) {
+            const detail =
+              typeof response.detail === 'string'
+                ? response.detail
+                : response.detail
+                ? JSON.stringify(response.detail)
+                : null;
+            lookupError = detail
+              ? `${response.status ? `(${response.status}) ` : ''}${detail}`
+              : '查詢官方 nonce API 失敗';
+          }
+        } catch (error) {
+          if (!cid) {
+            lookupError = error.message || '查詢官方 nonce API 失敗';
+          }
+        }
+      }
+
+      if (!cid && !transactionId) {
+        setManualEntryError('請至少輸入 CID 或交易序號。');
+        return;
+      }
+
+      if (transactionId && !cid) {
+        setManualEntryError(lookupError || '無法從官方 nonce API 解析 CID，請確認交易序號。');
+        return;
+      }
+
+      if (!holder) {
+        setManualEntryError('請提供持卡者 DID。');
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const entry = appendIssueLogEntry({
+        timestamp: now,
+        holderDid: holder,
+        issuerId: issuerId || '',
+        transactionId,
+        cid,
+        credentialJti: resolvedCredentialJti,
+        scope: manualEntry.scope,
+        scopeLabel: PRIMARY_SCOPE_LABEL[manualEntry.scope] || manualEntry.scope,
+        status: manualEntry.status,
+        collected: Boolean(manualEntry.collected),
+        collectedAt: manualEntry.collected ? now : null,
+        revokedAt: manualEntry.status === 'REVOKED' ? now : null,
+        hasCredential: Boolean(cid),
+        cidLookupSource: lookupSource,
+        cidLookupError: lookupError,
+        cidSandboxPrefix: sandboxPrefix,
+      });
+
+      if (!entry) {
+        setManualEntryError('無法建立發卡紀錄，請稍後再試。');
+        return;
+      }
+
+      setManualEntryFeedback('已加入發卡紀錄，可在下方列表追蹤狀態或撤銷。');
+      setManualEntry((prev) => ({
+        holderDid: '',
+        cid: '',
+        credentialJti: '',
+        transactionId: '',
+        scope: prev.scope,
+        status: 'ISSUED',
+        collected: false,
+      }));
+    } finally {
+      setManualEntryLoading(false);
     }
-
-    if (!holder) {
-      setManualEntryError('請提供持卡者 DID。');
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const entry = appendIssueLogEntry({
-      timestamp: now,
-      holderDid: holder,
-      issuerId: issuerId || '',
-      transactionId,
-      cid,
-      credentialJti,
-      scope: manualEntry.scope,
-      scopeLabel: PRIMARY_SCOPE_LABEL[manualEntry.scope] || manualEntry.scope,
-      status: manualEntry.status,
-      collected: Boolean(manualEntry.collected),
-      collectedAt: manualEntry.collected ? now : null,
-      revokedAt: manualEntry.status === 'REVOKED' ? now : null,
-      hasCredential: Boolean(cid),
-      cidLookupSource: 'manual',
-      cidLookupError: null,
-      cidSandboxPrefix: sandboxPrefix,
-    });
-
-    if (!entry) {
-      setManualEntryError('無法建立發卡紀錄，請稍後再試。');
-      return;
-    }
-
-    setManualEntryFeedback('已加入發卡紀錄，可在下方列表追蹤狀態或撤銷。');
-    setManualEntry((prev) => ({
-      holderDid: '',
-      cid: '',
-      credentialJti: '',
-      transactionId: '',
-      scope: prev.scope,
-      status: 'ISSUED',
-      collected: false,
-    }));
   };
 
   const resetManualEntry = () => {
@@ -2253,7 +2343,9 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
             標示為已領取（會記錄領取時間）
           </label>
           <div className="manual-entry-actions">
-            <button type="submit">加入發卡紀錄</button>
+            <button type="submit" disabled={manualEntryLoading}>
+              {manualEntryLoading ? '查詢中…' : '加入發卡紀錄'}
+            </button>
             <button type="button" className="secondary" onClick={resetManualEntry}>
               清除輸入
             </button>
