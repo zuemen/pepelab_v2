@@ -94,6 +94,24 @@ const PRIMARY_SCOPE_OPTIONS = [
   },
 ];
 
+const PRIMARY_SCOPE_LABEL = PRIMARY_SCOPE_OPTIONS.reduce((map, option) => {
+  map[option.value] = option.label;
+  return map;
+}, {});
+
+const HOLDER_PROFILES = [
+  {
+    did: 'did:example:patient-001',
+    hint: '張小華 1962/07/18',
+    label: '張小華（病歷授權）',
+  },
+  {
+    did: 'did:example:patient-002',
+    hint: '王曉梅 1984/03/02',
+    label: '王曉梅（領藥授權）',
+  },
+];
+
 const SCOPE_TO_VC_UID = {
   MEDICAL_RECORD: '00000000_vc_cond',
   MEDICATION_PICKUP: '00000000_vc_rx',
@@ -550,6 +568,29 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const normalizeIssueEntry = (entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return null;
+    }
+
+    const scope = entry.scope && PRIMARY_SCOPE_LABEL[entry.scope] ? entry.scope : null;
+    const normalizedScope = scope || entry.scope || 'MEDICAL_RECORD';
+    return {
+      timestamp: entry.timestamp || new Date().toISOString(),
+      holderDid: entry.holderDid || '',
+      issuerId: entry.issuerId || '',
+      transactionId: entry.transactionId || '',
+      cid: entry.cid || '',
+      hasCredential: Boolean(entry.hasCredential),
+      scope: normalizedScope,
+      scopeLabel: PRIMARY_SCOPE_LABEL[normalizedScope] || entry.scopeLabel || normalizedScope,
+      status: entry.status || 'ISSUED',
+      collected: Boolean(entry.collected),
+      collectedAt: entry.collectedAt || null,
+      revokedAt: entry.revokedAt || null,
+    };
+  };
+
   const [issueLog, setIssueLog] = useState(() => {
     if (typeof window === 'undefined') {
       return [];
@@ -560,12 +601,19 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
         return [];
       }
       const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed
+        .map((entry) => normalizeIssueEntry(entry))
+        .filter(Boolean)
+        .slice(0, 50);
     } catch (err) {
       console.warn('Unable to restore issuance log', err);
       return [];
     }
   });
+  const [issueLogActions, setIssueLogActions] = useState({});
   const [govIdentifiers, setGovIdentifiers] = useState(() => {
     if (typeof window === 'undefined') {
       return DEFAULT_CARD_IDENTIFIERS;
@@ -690,6 +738,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
   const recordIssue = ({ credentialJwt, transactionId }) => {
     const cid = extractCidFromCredential(credentialJwt);
     const timestamp = new Date().toISOString();
+    const scopeLabel = PRIMARY_SCOPE_LABEL[primaryScope] || primaryScope;
     const entry = {
       timestamp,
       holderDid: holderDid || '',
@@ -697,6 +746,12 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
       transactionId: transactionId || '',
       cid: cid || '',
       hasCredential: Boolean(credentialJwt),
+      scope: primaryScope,
+      scopeLabel,
+      status: 'ISSUED',
+      collected: false,
+      collectedAt: null,
+      revokedAt: null,
     };
 
     setIssueLog((previous) => {
@@ -715,6 +770,73 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
 
   const clearIssueLog = () => {
     setIssueLog([]);
+    setIssueLogActions({});
+  };
+
+  const updateIssueLogEntry = (index, updater) => {
+    setIssueLog((prev) =>
+      prev.map((entry, idx) => {
+        if (idx !== index) {
+          return entry;
+        }
+        const updated = updater(entry);
+        return normalizeIssueEntry(updated) || entry;
+      })
+    );
+  };
+
+  const toggleCollected = (index) => {
+    updateIssueLogEntry(index, (entry) => {
+      const nextCollected = !entry.collected;
+      return {
+        ...entry,
+        collected: nextCollected,
+        collectedAt: nextCollected ? new Date().toISOString() : null,
+      };
+    });
+  };
+
+  const runStatusAction = async (index, cid, action) => {
+    if (!cid) {
+      return;
+    }
+
+    const key = `${cid}-${action}`;
+    setIssueLogActions((prev) => ({
+      ...prev,
+      [key]: { loading: true, message: null, error: null },
+    }));
+
+    const response = await client.updateCredentialStatus(cid, action, issuerToken);
+
+    if (!response.ok) {
+      setIssueLogActions((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: `(${response.status}) ${response.detail}`,
+          message: null,
+        },
+      }));
+      return;
+    }
+
+    setIssueLogActions((prev) => ({
+      ...prev,
+      [key]: {
+        loading: false,
+        error: null,
+        message: '操作成功，狀態已更新。',
+      },
+    }));
+
+    if (action === 'revocation') {
+      updateIssueLogEntry(index, (entry) => ({
+        ...entry,
+        status: 'REVOKED',
+        revokedAt: new Date().toISOString(),
+      }));
+    }
   };
 
   function updateCondition(field, value) {
@@ -847,7 +969,11 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
           <input
             id="holder-did"
             value={holderDid}
-            onChange={(event) => setHolderDid(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setHolderDid(value);
+              setCondition((prev) => ({ ...prev, subject: value }));
+            }}
           />
 
           <label htmlFor="holder-hint">錢包顯示提示</label>
@@ -856,6 +982,25 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
             value={holderHint}
             onChange={(event) => setHolderHint(event.target.value)}
           />
+          <div className="quick-select">
+            <span className="quick-select-label">常用持卡者：</span>
+            {HOLDER_PROFILES.map((profile) => (
+              <button
+                key={profile.did}
+                type="button"
+                className={`secondary quick-select-button${
+                  holderDid === profile.did ? ' active' : ''
+                }`}
+                onClick={() => {
+                  setHolderDid(profile.did);
+                  setHolderHint(profile.hint);
+                  setCondition((prev) => ({ ...prev, subject: profile.did }));
+                }}
+              >
+                {profile.label}
+              </button>
+            ))}
+          </div>
 
           <label htmlFor="primary-scope">憑證主用途</label>
           <select
@@ -1218,7 +1363,7 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
         {issueLog.length === 0 ? (
           <p>
             尚未紀錄任何電子卡。政府沙盒回應 200 時，系統會解析 credential JWT 的 jti 欄位並自動寫入 CID
-            與交易序號，方便稽核。
+            與交易序號，方便稽核。可在此標示是否完成取卡並依需求觸發 PUT /api/credential/{{cid}}/revocation。
           </p>
         ) : (
           <ul className="issue-log">
@@ -1232,20 +1377,58 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
                 : entry.hasCredential
                 ? '解析失敗'
                 : '官方回應未提供 credential';
+              const collectedLabel = entry.collected
+                ? entry.collectedAt
+                  ? `已領取（${new Date(entry.collectedAt).toLocaleString()}）`
+                  : '已標示領取'
+                : '尚未領取';
+              const statusLabel =
+                entry.status === 'REVOKED'
+                  ? `已撤銷${entry.revokedAt ? `（${new Date(entry.revokedAt).toLocaleString()}）` : ''}`
+                  : '已發行';
+              const actionKey = entry.cid ? `${entry.cid}-revocation` : null;
+              const actionState = actionKey ? issueLogActions[actionKey] : null;
+              const revokeDisabled =
+                !entry.cid || entry.status === 'REVOKED' || Boolean(actionState?.loading);
               return (
                 <li key={key}>
                   <div className="issue-log-row">
                     <strong>{entry.holderDid || '未知持卡者'}</strong>
                     <span className="meta">{timestamp}</span>
                   </div>
+                  <div className="meta">用途：{entry.scopeLabel}</div>
                   <div className="meta">CID：{cidLabel}</div>
                   <div className="meta">交易序號：{entry.transactionId || '未提供'}</div>
                   <div className="meta">發行者：{entry.issuerId || '未設定'}</div>
+                  <div className="meta">狀態：{statusLabel}</div>
+                  <div className="meta">領取紀錄：{collectedLabel}</div>
+                  <div className="issue-log-actions">
+                    <button type="button" className="secondary" onClick={() => toggleCollected(index)}>
+                      {entry.collected ? '標示為未領取' : '標示為已領取'}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => runStatusAction(index, entry.cid, 'revocation')}
+                      disabled={revokeDisabled}
+                    >
+                      {actionState?.loading ? '撤銷中…' : '撤銷此憑證'}
+                    </button>
+                  </div>
+                  {actionState?.error ? (
+                    <div className="issue-log-feedback error">{actionState.error}</div>
+                  ) : null}
+                  {actionState?.message ? (
+                    <div className="issue-log-feedback success">{actionState.message}</div>
+                  ) : null}
                 </li>
               );
             })}
           </ul>
         )}
+        <p className="hint">
+          ※ 「撤銷此憑證」將使用 PUT /api/credential/&lt;cid&gt;/revocation，請確認操作為不可逆並於執行前再次核對。
+        </p>
         <button
           type="button"
           className="secondary"

@@ -8,6 +8,17 @@ const ACTION_LABELS = {
   UPDATE: '更新 Payload',
 };
 
+const SAMPLE_HOLDER_PROFILES = [
+  {
+    did: 'did:example:patient-001',
+    label: '張小華（病歷授權）',
+  },
+  {
+    did: 'did:example:patient-002',
+    label: '王曉梅（領藥授權）',
+  },
+];
+
 function resolvePath(source, path) {
   if (!source) return null;
   const segments = path.split('.');
@@ -320,6 +331,21 @@ export function WalletPanel({
             value={holderDid}
             onChange={(event) => setHolderDid(event.target.value)}
           />
+          <div className="quick-select">
+            <span className="quick-select-label">快速選擇：</span>
+            {SAMPLE_HOLDER_PROFILES.map((profile) => (
+              <button
+                key={profile.did}
+                type="button"
+                className={`secondary quick-select-button${
+                  holderDid === profile.did ? ' active' : ''
+                }`}
+                onClick={() => setHolderDid(profile.did)}
+              >
+                {profile.label}
+              </button>
+            ))}
+          </div>
 
           <label htmlFor="action-select">操作</label>
           <select
