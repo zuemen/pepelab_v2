@@ -21,7 +21,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 後端採 FastAPI + in-memory store（`backend/main.py`、`backend/store.py`）。選擇性揭露政策以 `DisclosurePolicy` 列表儲存，欄位使用 FHIR 路徑；驗證流程檢查 IAL、scope、欄位範圍與資料一致性，再交由 `InsightEngine` 輸出胃炎趨勢或領藥提醒。
 
 前端改以 React + Vite 重構（`frontend/`），提供高對比、大字體的操作面板：
-1. **發行端**：填寫 FHIR Condition / MedicationDispense 欄位、設定 scope 與欄位，並將 `modadigitalwallet://credential_offer?...` Deep Link 轉為可掃描的 QR Code，同步在頁面上登錄成功發卡的持卡者 DID、CID 與交易序號，方便後續追蹤。
+1. **發行端**：填寫 FHIR Condition / MedicationDispense 欄位、設定 scope 與欄位，並將 `modadigitalwallet://credential_offer?...` Deep Link 轉為可掃描的 QR Code，同步在頁面上登錄成功發卡的持卡者 DID、CID 與交易序號，方便後續追蹤。頁面新增「持卡者憑證狀態」面板，可即時呼叫 `/api/wallet/{holder_did}/credentials`、補登或手動新增 CID，再透過 `PUT /api/credential/{cid}/revocation` 或可遺忘權 API 清除卡片。
 2. **驗證端**：依照病歷或領藥情境選擇 scope，要求指定 IAL，產生 QR Code、送出 VP 並查看 AI Insight。
 
 ## 後端 API
@@ -125,7 +125,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
    - 腳本會呼叫 `/v2/api/system/reset`，確保每次示範前從乾淨狀態開始。
 4. **建議 demo 流程**
     1. 在 Step 1 按「載入示例」，挑選主用途（病歷／領藥／同意），送出「含資料」發卡並掃描 QR。
-    2. 觀察下方發卡紀錄卡片，自動解析 credential JWT 的 CID、交易序號與持卡者 DID，必要時立即觸發 `PUT /api/credential/{cid}/revocation`。
+    2. 觀察下方發卡紀錄卡片，自動解析 credential JWT 的 CID、交易序號與持卡者 DID，可手動補登或從錢包清單加入，必要時立即觸發 `PUT /api/credential/{cid}/revocation` 或行使可遺忘權。
     3. Step 2（驗證端）產生驗證 QR Code（可切換三種 scope），照欄位提示填入 VP 後送出，並觀察 AI Insight 與稽核資訊。
     4. 如需重新示範，可在發卡紀錄區按「清除發卡紀錄」，或於頁首使用「重設沙盒資料」快速還原初始狀態。
 

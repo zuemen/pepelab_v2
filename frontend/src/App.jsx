@@ -8,6 +8,7 @@ const DEFAULT_BASE_URL = import.meta.env.VITE_MEDSSI_API || 'http://localhost:80
 export default function App() {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
   const [issuerToken, setIssuerToken] = useState('koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy');
+  const [walletToken, setWalletToken] = useState('wallet-sandbox-token');
   const [verifierToken, setVerifierToken] = useState('J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC');
   const [resetMessage, setResetMessage] = useState(null);
 
@@ -47,6 +48,14 @@ export default function App() {
               />
             </div>
             <div>
+              <label htmlFor="wallet-token-input">錢包 Access Token</label>
+              <input
+                id="wallet-token-input"
+                value={walletToken}
+                onChange={(event) => setWalletToken(event.target.value)}
+              />
+            </div>
+            <div>
               <label htmlFor="verifier-token-input">驗證端 Access Token</label>
               <input
                 id="verifier-token-input"
@@ -63,7 +72,12 @@ export default function App() {
       </header>
 
       <main>
-        <IssuerPanel client={client} issuerToken={issuerToken} baseUrl={baseUrl} />
+        <IssuerPanel
+          client={client}
+          issuerToken={issuerToken}
+          walletToken={walletToken}
+          baseUrl={baseUrl}
+        />
         <VerifierPanel client={client} verifierToken={verifierToken} />
       </main>
     </div>

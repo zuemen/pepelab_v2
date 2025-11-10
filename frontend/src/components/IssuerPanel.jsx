@@ -537,10 +537,11 @@ function convertToGovFormat({
   };
 }
 
-export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionChange }) {
+export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLatestTransactionChange }) {
   const [issuerId, setIssuerId] = useState('did:example:hospital-001');
   const [holderDid, setHolderDid] = useState('did:example:patient-001');
   const [holderHint, setHolderHint] = useState('張小華 1962/07/18');
+  const [holderInventoryDid, setHolderInventoryDid] = useState('did:example:patient-001');
   const [ial, setIal] = useState('NHI_CARD_PIN');
   const [validMinutes, setValidMinutes] = useState(5);
   const [primaryScope, setPrimaryScope] = useState('MEDICAL_RECORD');
@@ -568,6 +569,12 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [holderInventory, setHolderInventory] = useState([]);
+  const [holderInventoryLoading, setHolderInventoryLoading] = useState(false);
+  const [holderInventoryError, setHolderInventoryError] = useState(null);
+  const [holderInventoryFetchedAt, setHolderInventoryFetchedAt] = useState(null);
+  const [holderInventoryActions, setHolderInventoryActions] = useState({});
+  const [forgetState, setForgetState] = useState({ loading: false, error: null, message: null });
   const normalizeIssueEntry = (entry) => {
     if (!entry || typeof entry !== 'object') {
       return null;
@@ -614,6 +621,16 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
     }
   });
   const [issueLogActions, setIssueLogActions] = useState({});
+  const [manualEntry, setManualEntry] = useState({
+    holderDid: '',
+    cid: '',
+    transactionId: '',
+    scope: 'MEDICAL_RECORD',
+    status: 'ISSUED',
+    collected: false,
+  });
+  const [manualEntryFeedback, setManualEntryFeedback] = useState(null);
+  const [manualEntryError, setManualEntryError] = useState(null);
   const [govIdentifiers, setGovIdentifiers] = useState(() => {
     if (typeof window === 'undefined') {
       return DEFAULT_CARD_IDENTIFIERS;
@@ -651,6 +668,10 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
       return DEFAULT_CARD_IDENTIFIERS;
     }
   });
+
+  useEffect(() => {
+    setHolderInventoryDid(holderDid);
+  }, [holderDid]);
 
   useEffect(() => {
     if (primaryScope === 'MEDICATION_PICKUP' && !includeMedication) {
@@ -735,6 +756,39 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
     ]
   );
 
+  const issueLogStats = useMemo(() => {
+    const total = issueLog.length;
+    const revoked = issueLog.filter((entry) => entry.status === 'REVOKED').length;
+    const collected = issueLog.filter((entry) => entry.collected).length;
+    const pending = total - collected;
+    const active = total - revoked;
+    return { total, revoked, collected, pending, active };
+  }, [issueLog]);
+
+  const holderAccessToken = useMemo(() => walletToken || issuerToken, [walletToken, issuerToken]);
+
+  const appendIssueLogEntry = (rawEntry) => {
+    const entry = normalizeIssueEntry(rawEntry);
+    if (!entry) {
+      return null;
+    }
+
+    setIssueLog((previous) => {
+      const filtered = previous.filter((item) => {
+        if (entry.transactionId && item.transactionId === entry.transactionId) {
+          return false;
+        }
+        if (entry.cid && item.cid === entry.cid) {
+          return false;
+        }
+        return true;
+      });
+      return [entry, ...filtered].slice(0, 50);
+    });
+
+    return entry;
+  };
+
   const recordIssue = ({ credentialJwt, transactionId }) => {
     const cid = extractCidFromCredential(credentialJwt);
     const timestamp = new Date().toISOString();
@@ -754,23 +808,18 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
       revokedAt: null,
     };
 
-    setIssueLog((previous) => {
-      const filtered = previous.filter((item) => {
-        if (entry.transactionId && item.transactionId === entry.transactionId) {
-          return false;
-        }
-        if (entry.cid && item.cid === entry.cid) {
-          return false;
-        }
-        return true;
-      });
-      return [entry, ...filtered].slice(0, 50);
-    });
+    appendIssueLogEntry(entry);
   };
 
   const clearIssueLog = () => {
     setIssueLog([]);
     setIssueLogActions({});
+    setManualEntryError(null);
+    setManualEntryFeedback(null);
+  };
+
+  const removeIssueLogEntry = (index) => {
+    setIssueLog((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const updateIssueLogEntry = (index, updater) => {
@@ -794,6 +843,276 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
         collectedAt: nextCollected ? new Date().toISOString() : null,
       };
     });
+  };
+
+  const handleManualEntryChange = (field, value) => {
+    setManualEntry((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleManualEntrySubmit = (event) => {
+    event.preventDefault();
+    setManualEntryError(null);
+    setManualEntryFeedback(null);
+
+    const cid = manualEntry.cid.trim();
+    const transactionId = manualEntry.transactionId.trim();
+    const holder = (manualEntry.holderDid || holderDid || '').trim();
+
+    if (!cid && !transactionId) {
+      setManualEntryError('請至少輸入 CID 或交易序號。');
+      return;
+    }
+
+    if (!holder) {
+      setManualEntryError('請提供持卡者 DID。');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const entry = appendIssueLogEntry({
+      timestamp: now,
+      holderDid: holder,
+      issuerId: issuerId || '',
+      transactionId,
+      cid,
+      scope: manualEntry.scope,
+      scopeLabel: PRIMARY_SCOPE_LABEL[manualEntry.scope] || manualEntry.scope,
+      status: manualEntry.status,
+      collected: Boolean(manualEntry.collected),
+      collectedAt: manualEntry.collected ? now : null,
+      revokedAt: manualEntry.status === 'REVOKED' ? now : null,
+      hasCredential: Boolean(cid),
+    });
+
+    if (!entry) {
+      setManualEntryError('無法建立發卡紀錄，請稍後再試。');
+      return;
+    }
+
+    setManualEntryFeedback('已加入發卡紀錄，可在下方列表追蹤狀態或撤銷。');
+    setManualEntry((prev) => ({
+      holderDid: '',
+      cid: '',
+      transactionId: '',
+      scope: prev.scope,
+      status: 'ISSUED',
+      collected: false,
+    }));
+  };
+
+  const resetManualEntry = () => {
+    setManualEntry((prev) => ({
+      holderDid: '',
+      cid: '',
+      transactionId: '',
+      scope: prev.scope,
+      status: 'ISSUED',
+      collected: false,
+    }));
+    setManualEntryError(null);
+    setManualEntryFeedback(null);
+  };
+
+  const recordInventoryCredential = (credential) => {
+    if (!credential) {
+      return;
+    }
+
+    const cid =
+      credential.credential_id ||
+      credential.credentialId ||
+      credential.cid ||
+      credential.id ||
+      '';
+    if (!cid) {
+      setManualEntryError('此憑證未提供 CID，請手動輸入後再加入紀錄。');
+      return;
+    }
+
+    setManualEntryError(null);
+    setManualEntryFeedback(null);
+
+    const normalizedStatus = (credential.status || '').toString().toUpperCase();
+    const isRevoked = normalizedStatus.includes('REVOK');
+    const isCollected = ['ACCEPTED', 'COLLECTED', 'ACTIVE', 'ISSUED'].includes(normalizedStatus);
+    const now = new Date().toISOString();
+
+    appendIssueLogEntry({
+      timestamp:
+        credential.issued_at ||
+        credential.issuedAt ||
+        credential.created_at ||
+        credential.createdAt ||
+        now,
+      holderDid: credential.holder_did || holderInventoryDid || holderDid || '',
+      issuerId: issuerId || '',
+      transactionId:
+        credential.transaction_id ||
+        credential.transactionId ||
+        credential.request_id ||
+        credential.requestId ||
+        '',
+      cid,
+      scope: credential.primary_scope || credential.scope || 'MEDICAL_RECORD',
+      scopeLabel:
+        PRIMARY_SCOPE_LABEL[credential.primary_scope] ||
+        PRIMARY_SCOPE_LABEL[credential.scope] ||
+        credential.primary_scope ||
+        credential.scope ||
+        'MEDICAL_RECORD',
+      status: isRevoked ? 'REVOKED' : 'ISSUED',
+      collected: !isRevoked && isCollected,
+      collectedAt:
+        !isRevoked && isCollected
+          ? credential.updated_at ||
+            credential.updatedAt ||
+            credential.accepted_at ||
+            credential.acceptedAt ||
+            now
+          : null,
+      revokedAt:
+        isRevoked
+          ? credential.updated_at ||
+            credential.updatedAt ||
+            credential.revoked_at ||
+            credential.revokedAt ||
+            now
+          : null,
+      hasCredential: true,
+    });
+    setManualEntryFeedback('已將錢包清單中的憑證加入發卡紀錄。');
+  };
+
+  const loadHolderInventory = async (targetDid) => {
+    const did = (targetDid || holderInventoryDid || '').trim();
+    setHolderInventoryError(null);
+    if (!did) {
+      setHolderInventoryError('請輸入持卡者 DID。');
+      return;
+    }
+    if (!holderAccessToken) {
+      setHolderInventoryError('請提供錢包或發行端 Access Token。');
+      return;
+    }
+
+    setHolderInventoryLoading(true);
+    try {
+      const response = await client.listHolderCredentials(did, holderAccessToken);
+      setHolderInventoryLoading(false);
+      if (!response.ok) {
+        setHolderInventory([]);
+        setHolderInventoryFetchedAt(null);
+        setHolderInventoryError(`(${response.status}) ${response.detail}`);
+        return;
+      }
+
+      const data = response.data || {};
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data.credentials)
+        ? data.credentials
+        : [];
+      setHolderInventory(
+        list.map((item) => ({
+          ...item,
+          credential_id: item.credential_id || item.credentialId || item.cid || '',
+          status: item.status || item.state || '',
+          primary_scope: item.primary_scope || item.scope || '',
+        }))
+      );
+      setHolderInventoryFetchedAt(new Date().toISOString());
+      setHolderInventoryActions({});
+    } catch (err) {
+      setHolderInventoryLoading(false);
+      setHolderInventoryError(err.message || '載入錢包資料失敗，請稍後再試。');
+    }
+  };
+
+  const forgetHolderInventory = async () => {
+    const did = (holderInventoryDid || '').trim();
+    setForgetState({ loading: true, error: null, message: null });
+
+    if (!did) {
+      setForgetState({ loading: false, error: '請輸入持卡者 DID。', message: null });
+      return;
+    }
+
+    if (!holderAccessToken) {
+      setForgetState({
+        loading: false,
+        error: '請提供錢包或發行端 Access Token。',
+        message: null,
+      });
+      return;
+    }
+
+    const response = await client.forgetHolder(did, holderAccessToken);
+    if (!response.ok) {
+      setForgetState({ loading: false, error: `(${response.status}) ${response.detail}`, message: null });
+      return;
+    }
+
+    setForgetState({ loading: false, error: null, message: '已向錢包請求可遺忘權。' });
+    setHolderInventory([]);
+    setHolderInventoryFetchedAt(new Date().toISOString());
+    setHolderInventoryActions({});
+  };
+
+  const revokeInventoryCredential = async (credential) => {
+    const cid = credential?.credential_id || credential?.credentialId || credential?.cid;
+    if (!cid) {
+      return;
+    }
+
+    const key = `inventory-${cid}`;
+    setHolderInventoryActions((prev) => ({
+      ...prev,
+      [key]: { loading: true, error: null, message: null },
+    }));
+
+    const response = await client.updateCredentialStatus(cid, 'revocation', issuerToken);
+
+    if (!response.ok) {
+      setHolderInventoryActions((prev) => ({
+        ...prev,
+        [key]: { loading: false, error: `(${response.status}) ${response.detail}`, message: null },
+      }));
+      return;
+    }
+
+    const now = new Date().toISOString();
+    setHolderInventoryActions((prev) => ({
+      ...prev,
+      [key]: { loading: false, error: null, message: '已撤銷，列表將重新整理。' },
+    }));
+
+    appendIssueLogEntry({
+      timestamp: now,
+      holderDid: credential?.holder_did || holderInventoryDid || holderDid || '',
+      issuerId: issuerId || '',
+      transactionId:
+        credential?.transaction_id ||
+        credential?.transactionId ||
+        credential?.request_id ||
+        credential?.requestId ||
+        '',
+      cid,
+      scope: credential?.primary_scope || credential?.scope || primaryScope,
+      scopeLabel:
+        PRIMARY_SCOPE_LABEL[credential?.primary_scope] ||
+        PRIMARY_SCOPE_LABEL[credential?.scope] ||
+        credential?.primary_scope ||
+        credential?.scope ||
+        primaryScope,
+      status: 'REVOKED',
+      collected: true,
+      collectedAt:
+        credential?.updated_at || credential?.updatedAt || credential?.accepted_at || credential?.acceptedAt || now,
+      revokedAt: now,
+      hasCredential: true,
+    });
+
+    await loadHolderInventory(holderInventoryDid);
   };
 
   const runStatusAction = async (index, cid, action) => {
@@ -1355,11 +1674,217 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
         </div>
       ) : null}
 
+      <div className="card inventory-card" aria-live="polite">
+        <div className="issue-log-header">
+          <h3>持卡者憑證狀態</h3>
+          {holderInventoryFetchedAt ? (
+            <span className="badge">
+              更新於 {new Date(holderInventoryFetchedAt).toLocaleString()}
+            </span>
+          ) : null}
+        </div>
+        <p>
+          直接透過錢包 API 查詢指定 DID 目前持有的電子卡，並可一鍵補登到發卡紀錄或由發行端觸發撤銷／可遺忘權。
+          若政府沙盒尚未回應，可先按「刷新持卡紀錄」同步最新清單。
+        </p>
+        <label htmlFor="inventory-holder-did">持卡者 DID</label>
+        <input
+          id="inventory-holder-did"
+          value={holderInventoryDid}
+          onChange={(event) => setHolderInventoryDid(event.target.value)}
+          placeholder={holderDid}
+        />
+        <div className="quick-select">
+          <span className="quick-select-label">快速帶入：</span>
+          {HOLDER_PROFILES.map((profile) => (
+            <button
+              key={`inventory-${profile.did}`}
+              type="button"
+              className={`secondary quick-select-button${
+                holderInventoryDid === profile.did ? ' active' : ''
+              }`}
+              onClick={() => setHolderInventoryDid(profile.did)}
+            >
+              {profile.label}
+            </button>
+          ))}
+        </div>
+        <div className="inventory-actions-row">
+          <button type="button" onClick={() => loadHolderInventory()} disabled={holderInventoryLoading}>
+            {holderInventoryLoading ? '同步中…' : '刷新持卡紀錄'}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={forgetHolderInventory}
+            disabled={forgetState.loading}
+          >
+            {forgetState.loading ? '執行中…' : '行使可遺忘權'}
+          </button>
+        </div>
+        {holderInventoryError ? <div className="alert error">{holderInventoryError}</div> : null}
+        {forgetState.error ? <div className="alert error">{forgetState.error}</div> : null}
+        {forgetState.message ? <div className="alert success">{forgetState.message}</div> : null}
+        {holderInventoryLoading ? (
+          <p>錢包資料載入中…</p>
+        ) : holderInventory.length ? (
+          <ul className="inventory-list">
+            {holderInventory.map((credential, index) => {
+              const hasRealCid = Boolean(
+                credential.credential_id || credential.credentialId || credential.cid
+              );
+              const cid = hasRealCid
+                ? credential.credential_id || credential.credentialId || credential.cid
+                : `unknown-${index}`;
+              const scopeLabel = credential.primary_scope
+                ? PRIMARY_SCOPE_LABEL[credential.primary_scope] || credential.primary_scope
+                : credential.scope
+                ? PRIMARY_SCOPE_LABEL[credential.scope] || credential.scope
+                : '未提供用途';
+              const statusText = credential.status || credential.state || '未知狀態';
+              const issuedAt =
+                credential.issued_at ||
+                credential.issuedAt ||
+                credential.created_at ||
+                credential.createdAt ||
+                null;
+              const updatedAt = credential.updated_at || credential.updatedAt || null;
+              const actionKey = `inventory-${hasRealCid ? cid : index}`;
+              const actionState = holderInventoryActions[actionKey];
+              const revokeDisabled = !hasRealCid || Boolean(actionState?.loading);
+              return (
+                <li key={actionKey}>
+                  <div className="issue-log-row">
+                    <strong>{cid || '未提供 CID'}</strong>
+                    <span className="meta">狀態：{statusText}</span>
+                  </div>
+                  <div className="meta">用途：{scopeLabel}</div>
+                  <div className="meta">
+                    持卡者：{credential.holder_did || holderInventoryDid || '未提供'}
+                  </div>
+                  <div className="meta">交易序號：{credential.transaction_id || credential.transactionId || '未提供'}</div>
+                  <div className="meta">
+                    發卡時間：{issuedAt ? new Date(issuedAt).toLocaleString() : '未提供'}
+                  </div>
+                  {updatedAt ? (
+                    <div className="meta">最後更新：{new Date(updatedAt).toLocaleString()}</div>
+                  ) : null}
+                  <div className="issue-log-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => recordInventoryCredential(credential)}
+                    >
+                      加入發卡紀錄
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => revokeInventoryCredential(credential)}
+                      disabled={revokeDisabled}
+                    >
+                      {actionState?.loading ? '撤銷中…' : '撤銷此卡'}
+                    </button>
+                  </div>
+                  {actionState?.error ? (
+                    <div className="issue-log-feedback error">{actionState.error}</div>
+                  ) : null}
+                  {actionState?.message ? (
+                    <div className="issue-log-feedback success">{actionState.message}</div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p>尚未載入錢包資料，請先刷新持卡紀錄。</p>
+        )}
+      </div>
+
       <div className="card issue-log-card" aria-live="polite">
         <div className="issue-log-header">
           <h3>發卡紀錄</h3>
           <span className="badge">已記錄 {issueLog.length} 張</span>
         </div>
+        <div className="issue-log-summary">
+          <span className="stat-pill">全部 {issueLogStats.total}</span>
+          <span className="stat-pill">待領取 {Math.max(issueLogStats.pending, 0)}</span>
+          <span className="stat-pill">已領取 {issueLogStats.collected}</span>
+          <span className="stat-pill">已撤銷 {issueLogStats.revoked}</span>
+        </div>
+        <form className="issue-log-manual" onSubmit={handleManualEntrySubmit}>
+          <h4>手動補登／外部查詢結果</h4>
+          <div className="manual-entry-grid">
+            <div>
+              <label htmlFor="manual-holder-did">持卡者 DID</label>
+              <input
+                id="manual-holder-did"
+                value={manualEntry.holderDid}
+                onChange={(event) => handleManualEntryChange('holderDid', event.target.value)}
+                placeholder={holderDid}
+              />
+            </div>
+            <div>
+              <label htmlFor="manual-cid">憑證 CID</label>
+              <input
+                id="manual-cid"
+                value={manualEntry.cid}
+                onChange={(event) => handleManualEntryChange('cid', event.target.value)}
+                placeholder="a16187e9-…"
+              />
+            </div>
+            <div>
+              <label htmlFor="manual-transaction">交易序號</label>
+              <input
+                id="manual-transaction"
+                value={manualEntry.transactionId}
+                onChange={(event) => handleManualEntryChange('transactionId', event.target.value)}
+                placeholder="nonce 查詢時回傳的 transactionId"
+              />
+            </div>
+            <div>
+              <label htmlFor="manual-scope">用途</label>
+              <select
+                id="manual-scope"
+                value={manualEntry.scope}
+                onChange={(event) => handleManualEntryChange('scope', event.target.value)}
+              >
+                {PRIMARY_SCOPE_OPTIONS.map((option) => (
+                  <option key={`manual-scope-${option.value}`} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="manual-status">狀態</label>
+              <select
+                id="manual-status"
+                value={manualEntry.status}
+                onChange={(event) => handleManualEntryChange('status', event.target.value)}
+              >
+                <option value="ISSUED">已發行／可領取</option>
+                <option value="REVOKED">已撤銷</option>
+              </select>
+            </div>
+          </div>
+          <label className="checkbox-inline">
+            <input
+              type="checkbox"
+              checked={manualEntry.collected}
+              onChange={(event) => handleManualEntryChange('collected', event.target.checked)}
+            />
+            標示為已領取（會記錄領取時間）
+          </label>
+          <div className="manual-entry-actions">
+            <button type="submit">加入發卡紀錄</button>
+            <button type="button" className="secondary" onClick={resetManualEntry}>
+              清除輸入
+            </button>
+          </div>
+          {manualEntryError ? <div className="alert error">{manualEntryError}</div> : null}
+          {manualEntryFeedback ? <div className="alert success">{manualEntryFeedback}</div> : null}
+        </form>
         {issueLog.length === 0 ? (
           <p>
             尚未紀錄任何電子卡。政府沙盒回應 200 時，系統會解析 credential JWT 的 jti 欄位並自動寫入 CID
@@ -1413,6 +1938,13 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
                       disabled={revokeDisabled}
                     >
                       {actionState?.loading ? '撤銷中…' : '撤銷此憑證'}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => removeIssueLogEntry(index)}
+                    >
+                      從紀錄中移除
                     </button>
                   </div>
                   {actionState?.error ? (
