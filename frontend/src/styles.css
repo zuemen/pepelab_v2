@@ -148,6 +148,12 @@ button:not(:disabled):hover {
   padding: 1rem;
 }
 
+.hint {
+  color: #4d6385;
+  font-size: 0.9rem;
+  margin: 0.25rem 0 1rem;
+}
+
 .field-row {
   display: flex;
   align-items: center;
@@ -262,6 +268,35 @@ pre {
   opacity: 0.7;
 }
 
+.sandbox-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.sandbox-nav a {
+  text-decoration: none;
+  padding: 0.45rem 1.25rem;
+  border-radius: 999px;
+  background: #ecf2fc;
+  color: #17427d;
+  font-weight: 500;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+.sandbox-nav a:hover {
+  background: #d5e4ff;
+  transform: translateY(-1px);
+}
+
+.sandbox-nav a.active {
+  background: linear-gradient(135deg, #1f7adb, #63a0f3);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 12px 24px rgba(31, 122, 219, 0.25);
+}
+
 .issue-log-card {
   margin-top: 1.5rem;
 }
@@ -346,6 +381,88 @@ pre {
   color: #17427d;
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+.stat-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.stat-tile {
+  background: #f7faff;
+  border-radius: 12px;
+  border: 1px solid #d9e6ff;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  color: #4d6385;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  color: #17427d;
+  font-weight: 700;
+}
+
+.stat-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.stat-detail-label {
+  font-size: 0.85rem;
+  color: #4d6385;
+}
+
+.stat-detail-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #17427d;
+}
+
+.stat-table-wrapper {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid #d9e6ff;
+}
+
+.stat-table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.stat-table-wrapper th,
+.stat-table-wrapper td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(23, 66, 125, 0.12);
+  font-size: 0.9rem;
+}
+
+.stat-table-wrapper th {
+  background: #f1f5ff;
+  color: #113a6d;
+  font-weight: 600;
+}
+
+.stat-table-wrapper tbody tr:hover {
+  background: rgba(23, 66, 125, 0.04);
+}
+
+.empty {
+  color: #4d6385;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
 }
 
 .issue-log-manual {

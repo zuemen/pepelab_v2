@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { IssuerPanel } from './components/IssuerPanel.jsx';
-import { VerifierPanel } from './components/VerifierPanel.jsx';
+import { Routes, Route, Navigate, Link, useLocation } from './router.jsx';
+import { IssuerPage } from './pages/IssuerPage.jsx';
+import { VerifierPage } from './pages/VerifierPage.jsx';
+import { StatisticsPage } from './pages/StatisticsPage.jsx';
 import { createClient } from './api/client.js';
 
 const DEFAULT_BASE_URL = import.meta.env.VITE_MEDSSI_API || 'http://localhost:8000';
@@ -21,6 +23,23 @@ export default function App() {
       return;
     }
     setResetMessage(`已於 ${new Date(response.data.timestamp).toLocaleString()} 重設沙盒資料。`);
+  }
+
+  const location = useLocation();
+  const currentPath = location.pathname === '/' ? '/issuer' : location.pathname;
+
+  const navItems = [
+    { to: 'issuer', label: '發卡頁' },
+    { to: 'verifier', label: '驗證頁' },
+    { to: 'stats', label: '統計頁' },
+  ];
+
+  function isActivePath(target) {
+    const normalized = target.startsWith('/') ? target : `/${target}`;
+    return (
+      currentPath === normalized ||
+      (currentPath.startsWith(normalized) && currentPath.charAt(normalized.length) === '/')
+    );
   }
 
   return (
@@ -72,13 +91,37 @@ export default function App() {
       </header>
 
       <main>
-        <IssuerPanel
-          client={client}
-          issuerToken={issuerToken}
-          walletToken={walletToken}
-          baseUrl={baseUrl}
-        />
-        <VerifierPanel client={client} verifierToken={verifierToken} />
+        <nav className="sandbox-nav" aria-label="沙盒功能頁籤">
+          {navItems.map((item) => (
+            <Link key={item.to} to={item.to} className={isActivePath(item.to) ? 'active' : ''}>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <Routes>
+          <Route index element={<Navigate to="issuer" replace />} />
+          <Route
+            path="issuer"
+            element={(
+              <IssuerPage
+                client={client}
+                issuerToken={issuerToken}
+                walletToken={walletToken}
+                baseUrl={baseUrl}
+              />
+            )}
+          />
+          <Route
+            path="verifier"
+            element={<VerifierPage client={client} verifierToken={verifierToken} />}
+          />
+          <Route
+            path="stats"
+            element={<StatisticsPage />}
+          />
+          <Route path="*" element={<Navigate to="issuer" replace />} />
+        </Routes>
       </main>
     </div>
   );

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { QRCodeCanvas } from 'qrcode.react';
 
-const ISSUE_LOG_STORAGE_KEY = 'medssi_issue_log';
+export const ISSUE_LOG_STORAGE_KEY = 'medssi_issue_log';
 
 function decodeJwtPayload(token) {
   if (!token || typeof token !== 'string') {
@@ -689,6 +689,12 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     if (typeof window !== 'undefined') {
       try {
         window.localStorage.setItem(ISSUE_LOG_STORAGE_KEY, JSON.stringify(issueLog));
+        const eventDetail = { issueLog };
+        if (typeof window.CustomEvent === 'function') {
+          window.dispatchEvent(new CustomEvent('medssi:issue-log-updated', { detail: eventDetail }));
+        } else {
+          window.dispatchEvent(new Event('medssi:issue-log-updated'));
+        }
       } catch (err) {
         console.warn('Unable to persist issuance log', err);
       }
