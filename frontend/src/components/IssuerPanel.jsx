@@ -48,6 +48,23 @@ function extractCidFromCredential(credentialJwt) {
   }
 }
 
+function describeLookupSource(source) {
+  switch (source) {
+    case 'response':
+      return '政府 API 回應';
+    case 'nonce':
+      return 'nonce 查詢';
+    case 'manual':
+      return '手動登錄';
+    case 'wallet':
+      return '錢包同步';
+    case 'transaction':
+      return '待官方查詢';
+    default:
+      return null;
+  }
+}
+
 const DEFAULT_DISCLOSURES = {
   MEDICAL_RECORD: [
     'condition.code.coding[0].code',
@@ -595,6 +612,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       collected: Boolean(entry.collected),
       collectedAt: entry.collectedAt || null,
       revokedAt: entry.revokedAt || null,
+      cidLookupSource: entry.cidLookupSource || null,
+      cidLookupError: entry.cidLookupError || null,
     };
   };
 
@@ -795,26 +814,125 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     return entry;
   };
 
-  const recordIssue = ({ credentialJwt, transactionId }) => {
-    const cid = extractCidFromCredential(credentialJwt);
+  const recordIssue = async ({ credentialJwt, transactionId }) => {
     const timestamp = new Date().toISOString();
     const scopeLabel = PRIMARY_SCOPE_LABEL[primaryScope] || primaryScope;
+
+    let resolvedCredential = credentialJwt || '';
+    let cid = resolvedCredential ? extractCidFromCredential(resolvedCredential) : '';
+    let lookupSource = resolvedCredential ? 'response' : null;
+    let lookupError = null;
+    let status = 'ISSUED';
+    let holderFromResponse = holderDid || '';
+    let collected = false;
+    let collectedAtValue = null;
+    let revokedAtValue = null;
+    let hasCredential = Boolean(resolvedCredential);
+
+    if (transactionId) {
+      try {
+        const response = await client.getNonce(transactionId, issuerToken);
+        if (response.ok) {
+          const data = response.data || {};
+
+          let credentialFromNonce = null;
+          if (typeof data.credential === 'string') {
+            credentialFromNonce = data.credential;
+          } else if (data.credential && typeof data.credential === 'object') {
+            credentialFromNonce =
+              data.credential.credential ||
+              data.credential.jwt ||
+              data.credential.credentialJwt ||
+              data.credential.credential_jwt ||
+              null;
+          }
+
+          credentialFromNonce =
+            credentialFromNonce ||
+            data.credentialJwt ||
+            data.credential_jwt ||
+            data.jwt ||
+            data.credentialToken ||
+            null;
+
+          if (credentialFromNonce && typeof credentialFromNonce === 'string') {
+            if (!resolvedCredential) {
+              resolvedCredential = credentialFromNonce;
+            }
+            const cidFromNonce = extractCidFromCredential(credentialFromNonce);
+            if (cidFromNonce) {
+              cid = cidFromNonce;
+              lookupSource = lookupSource || 'nonce';
+            }
+            hasCredential = true;
+          }
+
+          const derivedStatus =
+            (typeof data.status === 'string' && data.status) ||
+            (typeof data.cardStatus === 'string' && data.cardStatus) ||
+            (typeof data.credential_status === 'string' && data.credential_status) ||
+            (typeof data.credentialStatus?.status === 'string' && data.credentialStatus.status);
+          if (derivedStatus) {
+            status = derivedStatus.toUpperCase();
+          }
+
+          const acceptedAt =
+            data.acceptedAt || data.accepted_at || data.collectedAt || data.collected_at || null;
+          if (acceptedAt) {
+            collected = true;
+            collectedAtValue = acceptedAt;
+          }
+
+          const revokedAt = data.revokedAt || data.revoked_at || null;
+          if (revokedAt) {
+            revokedAtValue = revokedAt;
+            status = 'REVOKED';
+          }
+
+          const holderFromApi = data.holderDid || data.holder_did || null;
+          if (holderFromApi) {
+            holderFromResponse = holderFromApi;
+          }
+        } else if (!cid) {
+          const detail =
+            typeof response.detail === 'string'
+              ? response.detail
+              : response.detail
+              ? JSON.stringify(response.detail)
+              : null;
+          lookupError = detail
+            ? `${response.status ? `(${response.status}) ` : ''}${detail}`
+            : '查詢官方 nonce API 失敗';
+        }
+      } catch (error) {
+        if (!cid) {
+          lookupError = error.message || '查詢官方 nonce API 失敗';
+        }
+      }
+    }
+
+    if (!lookupSource && transactionId) {
+      lookupSource = lookupError ? 'transaction' : lookupSource;
+    }
+
     const entry = {
       timestamp,
-      holderDid: holderDid || '',
+      holderDid: holderFromResponse || '',
       issuerId: issuerId || '',
       transactionId: transactionId || '',
       cid: cid || '',
-      hasCredential: Boolean(credentialJwt),
+      hasCredential: hasCredential || Boolean(cid),
       scope: primaryScope,
       scopeLabel,
-      status: 'ISSUED',
-      collected: false,
-      collectedAt: null,
-      revokedAt: null,
+      status,
+      collected,
+      collectedAt: collectedAtValue,
+      revokedAt: revokedAtValue,
+      cidLookupSource: lookupSource,
+      cidLookupError: lookupError,
     };
 
-    appendIssueLogEntry(entry);
+    return appendIssueLogEntry(entry);
   };
 
   const clearIssueLog = () => {
@@ -888,6 +1006,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       collectedAt: manualEntry.collected ? now : null,
       revokedAt: manualEntry.status === 'REVOKED' ? now : null,
       hasCredential: Boolean(cid),
+      cidLookupSource: 'manual',
+      cidLookupError: null,
     });
 
     if (!entry) {
@@ -985,6 +1105,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
             now
           : null,
       hasCredential: true,
+      cidLookupSource: 'wallet',
+      cidLookupError: null,
     });
     setManualEntryFeedback('已將錢包清單中的憑證加入發卡紀錄。');
   };
@@ -1116,6 +1238,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         credential?.updated_at || credential?.updatedAt || credential?.accepted_at || credential?.acceptedAt || now,
       revokedAt: now,
       hasCredential: true,
+      cidLookupSource: 'wallet',
+      cidLookupError: null,
     });
 
     await loadHolderInventory(holderInventoryDid);
@@ -1230,13 +1354,28 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         deepLink: data.deepLink || data.authUri || data.auth_uri || '',
         raw: data,
       };
-      setSuccess(normalized);
       if (normalized.transactionId) {
         onLatestTransactionChange?.(normalized.transactionId);
       }
+      let recordedEntry = null;
       if (credentialJwt || normalized.transactionId) {
-        recordIssue({ credentialJwt, transactionId: normalized.transactionId });
+        try {
+          recordedEntry = await recordIssue({
+            credentialJwt,
+            transactionId: normalized.transactionId,
+          });
+        } catch (err) {
+          console.warn('Unable to record issuance entry', err);
+        }
       }
+
+      setSuccess({
+        ...normalized,
+        cid: recordedEntry?.cid || extractCidFromCredential(credentialJwt) || '',
+        cidLookupSource:
+          recordedEntry?.cidLookupSource || (credentialJwt ? 'response' : null),
+        cidLookupError: recordedEntry?.cidLookupError || null,
+      });
     } catch (err) {
       setLoading(false);
       setError(err.message || '發卡失敗，請稍後再試');
@@ -1265,6 +1404,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
 
   const qrSource = success?.qrCode || success?.deepLink || '';
   const shouldRenderImage = success?.qrCode?.startsWith('data:image');
+  const successCidSourceLabel = describeLookupSource(success?.cidLookupSource);
 
   return (
     <section aria-labelledby="issuer-heading">
@@ -1371,7 +1511,18 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
           {error ? <div className="alert error">{error}</div> : null}
           {success ? (
             <div className="alert success" role="status">
-              已取得政府沙盒 QR Code（交易序號：{success.transactionId || '未知'}）。
+              <p>已取得政府沙盒 QR Code（交易序號：{success.transactionId || '未知'}）。</p>
+              <p>
+                憑證 CID：
+                {success.cid
+                  ? success.cid
+                  : '尚未取得，請稍候於下方發卡紀錄確認。'}
+              </p>
+              {success.cidLookupError ? (
+                <p className="hint error">CID 查詢失敗：{success.cidLookupError}</p>
+              ) : successCidSourceLabel ? (
+                <p className="hint">CID 來源：{successCidSourceLabel}</p>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -1657,6 +1808,15 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         <div className="card" aria-live="polite">
           <h3>政府沙盒回應</h3>
           <p>Transaction ID：{success.transactionId || '尚未提供'}</p>
+          <p>
+            憑證 CID：
+            {success.cid ? success.cid : '尚未取得，請稍候於發卡紀錄確認。'}
+          </p>
+          {success.cidLookupError ? (
+            <p className="hint error">CID 查詢失敗：{success.cidLookupError}</p>
+          ) : successCidSourceLabel ? (
+            <p className="hint">CID 來源：{successCidSourceLabel}</p>
+          ) : null}
           {qrSource ? (
             shouldRenderImage ? (
               <div className="qr-container" aria-label="發卡 QR Code">
@@ -1905,6 +2065,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                 : '時間未知';
               const cidLabel = entry.cid
                 ? entry.cid
+                : entry.cidLookupError
+                ? '查詢失敗'
+                : entry.cidLookupSource === 'transaction'
+                ? '待官方查詢'
                 : entry.hasCredential
                 ? '解析失敗'
                 : '官方回應未提供 credential';
@@ -1917,6 +2081,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                 entry.status === 'REVOKED'
                   ? `已撤銷${entry.revokedAt ? `（${new Date(entry.revokedAt).toLocaleString()}）` : ''}`
                   : '已發行';
+              const lookupSourceLabel = describeLookupSource(entry.cidLookupSource);
               const actionKey = entry.cid ? `${entry.cid}-revocation` : null;
               const actionState = actionKey ? issueLogActions[actionKey] : null;
               const revokeDisabled =
@@ -1928,11 +2093,19 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                     <span className="meta">{timestamp}</span>
                   </div>
                   <div className="meta">用途：{entry.scopeLabel}</div>
-                  <div className="meta">CID：{cidLabel}</div>
+                  <div className="meta">
+                    CID：{cidLabel}
+                    {lookupSourceLabel ? `（來源：${lookupSourceLabel}）` : ''}
+                  </div>
                   <div className="meta">交易序號：{entry.transactionId || '未提供'}</div>
                   <div className="meta">發行者：{entry.issuerId || '未設定'}</div>
                   <div className="meta">狀態：{statusLabel}</div>
                   <div className="meta">領取紀錄：{collectedLabel}</div>
+                  {entry.cidLookupError ? (
+                    <div className="issue-log-feedback error">
+                      CID 查詢失敗：{entry.cidLookupError}
+                    </div>
+                  ) : null}
                   <div className="issue-log-actions">
                     <button type="button" className="secondary" onClick={() => toggleCollected(index)}>
                       {entry.collected ? '標示為未領取' : '標示為已領取'}

@@ -116,10 +116,7 @@ export default function App() {
             path="verifier"
             element={<VerifierPage client={client} verifierToken={verifierToken} />}
           />
-          <Route
-            path="stats"
-            element={<StatisticsPage />}
-          />
+          <Route path="stats/*" element={<StatisticsPage />} />
           <Route path="*" element={<Navigate to="issuer" replace />} />
         </Routes>
       </main>

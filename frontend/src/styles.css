@@ -154,6 +154,10 @@ button:not(:disabled):hover {
   margin: 0.25rem 0 1rem;
 }
 
+.hint.error {
+  color: #b42318;
+}
+
 .field-row {
   display: flex;
   align-items: center;
@@ -295,6 +299,97 @@ pre {
   color: #ffffff;
   font-weight: 600;
   box-shadow: 0 12px 24px rgba(31, 122, 219, 0.25);
+}
+
+.stats-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-bottom: 1.5rem;
+}
+
+.stats-subnav a {
+  text-decoration: none;
+  padding: 0.4rem 1.1rem;
+  border-radius: 999px;
+  background: rgba(23, 66, 125, 0.08);
+  color: #17427d;
+  font-weight: 500;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+.stats-subnav a:hover {
+  background: rgba(23, 66, 125, 0.15);
+  transform: translateY(-1px);
+}
+
+.stats-subnav a.active {
+  background: linear-gradient(135deg, #1f7adb, #63a0f3);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 10px 22px rgba(31, 122, 219, 0.2);
+}
+
+.stat-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.stat-card {
+  border-radius: 12px;
+  background: #f7faff;
+  border: 1px solid #d9e6ff;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.stat-card h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #17427d;
+}
+
+.stat-card dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  font-size: 0.95rem;
+}
+
+.stat-card dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.stat-card dt {
+  font-weight: 500;
+  color: #4d6385;
+}
+
+.stat-card dd {
+  margin: 0;
+  font-weight: 600;
+  color: #17427d;
+}
+
+.stat-card-link {
+  margin-top: auto;
+  text-decoration: none;
+  font-weight: 600;
+  color: #1f7adb;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.stat-card-link:hover {
+  text-decoration: underline;
 }
 
 .issue-log-card {
