@@ -2,6 +2,52 @@ import React, { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { QRCodeCanvas } from 'qrcode.react';
 
+const ISSUE_LOG_STORAGE_KEY = 'medssi_issue_log';
+
+function decodeJwtPayload(token) {
+  if (!token || typeof token !== 'string') {
+    return null;
+  }
+
+  const segments = token.split('.');
+  if (segments.length < 2) {
+    return null;
+  }
+
+  const base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+
+  try {
+    const decoded = atob(padded);
+    const json = decodeURIComponent(
+      decoded
+        .split('')
+        .map((char) => `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join(''),
+    );
+    return JSON.parse(json);
+  } catch (error) {
+    return null;
+  }
+}
+
+function extractCidFromCredential(credentialJwt) {
+  const payload = decodeJwtPayload(credentialJwt);
+  if (!payload || !payload.jti) {
+    return '';
+  }
+
+  try {
+    const url = new URL(payload.jti);
+    const parts = url.pathname.split('/');
+    const lastSegment = parts.pop() || parts.pop();
+    return lastSegment || payload.jti;
+  } catch (error) {
+    const segments = payload.jti.split('/');
+    return segments[segments.length - 1] || payload.jti;
+  }
+}
+
 const DEFAULT_DISCLOSURES = {
   MEDICAL_RECORD: [
     'condition.code.coding[0].code',
@@ -504,6 +550,22 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [issueLog, setIssueLog] = useState(() => {
+    if (typeof window === 'undefined') {
+      return [];
+    }
+    try {
+      const stored = window.localStorage.getItem(ISSUE_LOG_STORAGE_KEY);
+      if (!stored) {
+        return [];
+      }
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      console.warn('Unable to restore issuance log', err);
+      return [];
+    }
+  });
   const [govIdentifiers, setGovIdentifiers] = useState(() => {
     if (typeof window === 'undefined') {
       return DEFAULT_CARD_IDENTIFIERS;
@@ -553,6 +615,16 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
       window.localStorage.setItem('medssi.govIdentifiers', JSON.stringify(govIdentifiers));
     }
   }, [govIdentifiers]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(ISSUE_LOG_STORAGE_KEY, JSON.stringify(issueLog));
+      } catch (err) {
+        console.warn('Unable to persist issuance log', err);
+      }
+    }
+  }, [issueLog]);
 
   const currentIdentifiers = govIdentifiers[primaryScope] || DEFAULT_CARD_IDENTIFIERS[primaryScope];
 
@@ -615,6 +687,36 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
     ]
   );
 
+  const recordIssue = ({ credentialJwt, transactionId }) => {
+    const cid = extractCidFromCredential(credentialJwt);
+    const timestamp = new Date().toISOString();
+    const entry = {
+      timestamp,
+      holderDid: holderDid || '',
+      issuerId: issuerId || '',
+      transactionId: transactionId || '',
+      cid: cid || '',
+      hasCredential: Boolean(credentialJwt),
+    };
+
+    setIssueLog((previous) => {
+      const filtered = previous.filter((item) => {
+        if (entry.transactionId && item.transactionId === entry.transactionId) {
+          return false;
+        }
+        if (entry.cid && item.cid === entry.cid) {
+          return false;
+        }
+        return true;
+      });
+      return [entry, ...filtered].slice(0, 50);
+    });
+  };
+
+  const clearIssueLog = () => {
+    setIssueLog([]);
+  };
+
   function updateCondition(field, value) {
     setCondition((prev) => ({ ...prev, [field]: value }));
   }
@@ -666,6 +768,13 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
       }
 
       const data = response.data || {};
+      const credentialJwt =
+        data.credential ||
+        data.credentialJwt ||
+        data.credential_jwt ||
+        data.credentialToken ||
+        data.jwt ||
+        null;
       const normalized = {
         transactionId:
           data.transactionId || data.verifier_transaction_id || data.transaction_id || '',
@@ -677,6 +786,9 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
       setSuccess(normalized);
       if (normalized.transactionId) {
         onLatestTransactionChange?.(normalized.transactionId);
+      }
+      if (credentialJwt || normalized.transactionId) {
+        recordIssue({ credentialJwt, transactionId: normalized.transactionId });
       }
     } catch (err) {
       setLoading(false);
@@ -1097,6 +1209,52 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
           <pre>{JSON.stringify(success.raw, null, 2)}</pre>
         </div>
       ) : null}
+
+      <div className="card issue-log-card" aria-live="polite">
+        <div className="issue-log-header">
+          <h3>發卡紀錄</h3>
+          <span className="badge">已記錄 {issueLog.length} 張</span>
+        </div>
+        {issueLog.length === 0 ? (
+          <p>
+            尚未紀錄任何電子卡。政府沙盒回應 200 時，系統會解析 credential JWT 的 jti 欄位並自動寫入 CID
+            與交易序號，方便稽核。
+          </p>
+        ) : (
+          <ul className="issue-log">
+            {issueLog.map((entry, index) => {
+              const key = `${entry.transactionId || entry.cid || entry.timestamp}-${index}`;
+              const timestamp = entry.timestamp
+                ? new Date(entry.timestamp).toLocaleString()
+                : '時間未知';
+              const cidLabel = entry.cid
+                ? entry.cid
+                : entry.hasCredential
+                ? '解析失敗'
+                : '官方回應未提供 credential';
+              return (
+                <li key={key}>
+                  <div className="issue-log-row">
+                    <strong>{entry.holderDid || '未知持卡者'}</strong>
+                    <span className="meta">{timestamp}</span>
+                  </div>
+                  <div className="meta">CID：{cidLabel}</div>
+                  <div className="meta">交易序號：{entry.transactionId || '未提供'}</div>
+                  <div className="meta">發行者：{entry.issuerId || '未設定'}</div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <button
+          type="button"
+          className="secondary"
+          onClick={clearIssueLog}
+          disabled={!issueLog.length}
+        >
+          清除發卡紀錄
+        </button>
+      </div>
     </section>
   );
 }
