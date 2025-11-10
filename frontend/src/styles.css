@@ -681,6 +681,105 @@ code {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
+.manual-transaction-field {
+  grid-column: 1 / -1;
+}
+
+.manual-transaction-input {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.manual-transaction-input input {
+  flex: 1;
+}
+
+.field-hint {
+  font-size: 0.75rem;
+  color: #4d6385;
+  margin: 0.25rem 0 0;
+}
+
+.manual-lookup-instructions {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid rgba(23, 66, 125, 0.12);
+  font-size: 0.85rem;
+}
+
+.manual-lookup-instructions h5 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  color: #17427d;
+}
+
+.manual-lookup-instructions ol {
+  margin: 0 0 0.5rem 1.1rem;
+  padding: 0;
+}
+
+.manual-lookup-instructions code {
+  font-family: 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  background: rgba(23, 66, 125, 0.08);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  color: #113a6d;
+}
+
+.manual-lookup-result {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: rgba(23, 66, 125, 0.06);
+  border: 1px solid rgba(23, 66, 125, 0.18);
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.manual-lookup-result.error {
+  border-color: rgba(208, 57, 27, 0.4);
+  background: rgba(208, 57, 27, 0.08);
+}
+
+.manual-lookup-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.manual-lookup-row.header {
+  align-items: baseline;
+}
+
+.manual-lookup-row .label {
+  color: #17427d;
+  font-weight: 600;
+}
+
+.manual-lookup-row .value {
+  word-break: break-all;
+  text-align: right;
+}
+
+.manual-lookup-row .value.code {
+  font-family: 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.manual-lookup-error {
+  margin: 0;
+  color: #d0391b;
+}
+
+.manual-lookup-note {
+  margin: 0;
+  color: #23406b;
+}
+
 .checkbox-inline {
   display: flex;
   align-items: center;
