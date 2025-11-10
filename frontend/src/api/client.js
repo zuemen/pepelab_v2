@@ -130,6 +130,14 @@ export function createClient(baseUrl) {
         method: 'POST',
         headers: bearerHeader(token),
       }),
+    updateCredentialStatus: (cid, action, token) =>
+      request({
+        url: `${sandboxPrefix}/api/credential/${encodeURIComponent(cid)}/${encodeURIComponent(
+          action
+        )}`,
+        method: 'PUT',
+        headers: bearerHeader(token),
+      }),
     deleteCredential: (credentialId, token) =>
       request({
         url: `${sandboxPrefix}/api/credentials/${credentialId}`,
