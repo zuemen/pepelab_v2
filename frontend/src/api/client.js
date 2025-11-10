@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-function resolveSandboxPrefix(baseUrl) {
+export function resolveSandboxPrefix(baseUrl) {
   if (!baseUrl) {
     return '/v2';
   }

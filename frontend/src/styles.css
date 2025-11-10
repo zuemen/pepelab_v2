@@ -432,6 +432,110 @@ pre {
   margin-top: 0.25rem;
 }
 
+code {
+  font-family: 'Fira Code', 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+
+.cid-summary {
+  border: 1px solid rgba(23, 66, 125, 0.18);
+  border-radius: 12px;
+  background: #f0f6ff;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cid-summary-inline {
+  background: #f8fbff;
+  border-style: dashed;
+  border-color: rgba(23, 66, 125, 0.24);
+  margin: 0.5rem 0;
+}
+
+.cid-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.cid-summary-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #17427d;
+  letter-spacing: 0.02em;
+}
+
+.cid-summary-value {
+  background: #101828;
+  color: #f3f6fc;
+  padding: 0.25rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.cid-summary-inline .cid-summary-value {
+  background: #13233d;
+}
+
+.cid-summary-inline .cid-summary-row + .cid-summary-row {
+  padding-top: 0.5rem;
+  border-top: 1px dashed rgba(23, 66, 125, 0.16);
+}
+
+.cid-summary-placeholder {
+  font-size: 0.85rem;
+  color: #4d6385;
+}
+
+.cid-summary-placeholder.error {
+  color: #b42318;
+}
+
+.cid-summary-hint {
+  margin: 0.35rem 0 0;
+}
+
+.cid-stat-cell {
+  min-width: 240px;
+}
+
+.cid-stat-value {
+  background: #101828;
+  color: #f3f6fc;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: inline-block;
+  overflow-wrap: anywhere;
+}
+
+.cid-stat-path {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.cid-stat-path code {
+  background: #f0f3fb;
+  color: #1b1b1b;
+  padding: 0.2rem 0.35rem;
+  border-radius: 6px;
+}
+
+.cid-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #17427d;
+}
+
 .issue-log-card button {
   margin-top: 1rem;
 }

@@ -201,6 +201,28 @@ function StatsOverview({ overallSummary, scopeSummaries }) {
   );
 }
 
+function deriveCidMetadata(entry) {
+  const cid = entry.cid ? String(entry.cid) : '';
+  const prefix =
+    typeof entry.cidSandboxPrefix === 'string' ? entry.cidSandboxPrefix : '';
+  const path =
+    entry.cidRevocationPath && typeof entry.cidRevocationPath === 'string'
+      ? entry.cidRevocationPath
+      : cid
+      ? `${prefix || ''}/api/credential/${cid}/revocation`
+      : '';
+  const url =
+    entry.cidRevocationUrl && typeof entry.cidRevocationUrl === 'string'
+      ? entry.cidRevocationUrl
+      : '';
+  const jti = entry.credentialJti
+    ? String(entry.credentialJti)
+    : entry.jti
+    ? String(entry.jti)
+    : '';
+  return { cid, path, url, jti };
+}
+
 function StatsCardDetail({ card }) {
   return (
     <article>
@@ -242,15 +264,36 @@ function StatsCardDetail({ card }) {
               </tr>
             </thead>
             <tbody>
-              {card.entries.map((entry, index) => (
-                <tr key={`${entry.cid || entry.transactionId || index}-${index}`}>
-                  <td>{entry.cid || '—'}</td>
-                  <td>{entry.holderDid || '—'}</td>
-                  <td>{entry.status || '—'}</td>
-                  <td>{entry.collectedAt ? new Date(entry.collectedAt).toLocaleString() : '—'}</td>
-                  <td>{entry.revokedAt ? new Date(entry.revokedAt).toLocaleString() : '—'}</td>
-                </tr>
-              ))}
+              {card.entries.map((entry, index) => {
+                const meta = deriveCidMetadata(entry);
+                return (
+                  <tr key={`${entry.cid || entry.transactionId || index}-${index}`}>
+                    <td className="cid-stat-cell">
+                      {meta.cid ? <code className="cid-stat-value">{meta.cid}</code> : '—'}
+                      {meta.path && meta.cid ? (
+                        <div className="cid-stat-path">
+                          <code>PUT {meta.path}</code>
+                        </div>
+                      ) : null}
+                      {meta.url && meta.cid ? (
+                        <div className="cid-stat-path">
+                          <code>{meta.url}</code>
+                        </div>
+                      ) : null}
+                      {meta.jti ? (
+                        <div className="cid-stat-path">
+                          <span className="cid-stat-label">JTI：</span>
+                          <code>{meta.jti}</code>
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>{entry.holderDid || '—'}</td>
+                    <td>{entry.status || '—'}</td>
+                    <td>{entry.collectedAt ? new Date(entry.collectedAt).toLocaleString() : '—'}</td>
+                    <td>{entry.revokedAt ? new Date(entry.revokedAt).toLocaleString() : '—'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -1,6 +1,87 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { QRCodeCanvas } from 'qrcode.react';
+import { resolveSandboxPrefix } from '../api/client.js';
+
+export const ISSUE_LOG_STORAGE_KEY = 'medssi_issue_log';
+
+function decodeJwtPayload(token) {
+  if (!token || typeof token !== 'string') {
+    return null;
+  }
+
+  const segments = token.split('.');
+  if (segments.length < 2) {
+    return null;
+  }
+
+  const base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+
+  try {
+    const decoded = atob(padded);
+    const json = decodeURIComponent(
+      decoded
+        .split('')
+        .map((char) => `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join(''),
+    );
+    return JSON.parse(json);
+  } catch (error) {
+    return null;
+  }
+}
+
+function parseCidFromJti(jti) {
+  if (!jti || typeof jti !== 'string') {
+    return '';
+  }
+  try {
+    const url = new URL(jti);
+    const parts = url.pathname.split('/');
+    const lastSegment = parts.pop() || parts.pop();
+    return lastSegment || jti;
+  } catch (error) {
+    const segments = jti.split('/');
+    return segments[segments.length - 1] || jti;
+  }
+}
+
+function extractCredentialIdentifiers(credentialJwt) {
+  if (!credentialJwt || typeof credentialJwt !== 'string') {
+    return { cid: '', jti: '' };
+  }
+
+  const payload = decodeJwtPayload(credentialJwt);
+  if (!payload || typeof payload !== 'object') {
+    return { cid: '', jti: '' };
+  }
+
+  const jti = typeof payload.jti === 'string' ? payload.jti : '';
+  const cid = jti ? parseCidFromJti(jti) : '';
+  return { cid, jti };
+}
+
+function extractCidFromCredential(credentialJwt) {
+  return extractCredentialIdentifiers(credentialJwt).cid;
+}
+
+function describeLookupSource(source) {
+  switch (source) {
+    case 'response':
+      return '政府 API 回應';
+    case 'nonce':
+      return 'nonce 查詢';
+    case 'manual':
+      return '手動登錄';
+    case 'wallet':
+      return '錢包同步';
+    case 'transaction':
+      return '待官方查詢';
+    default:
+      return null;
+  }
+}
 
 export const ISSUE_LOG_STORAGE_KEY = 'medssi_issue_log';
 
@@ -592,6 +673,16 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
   const [holderInventoryFetchedAt, setHolderInventoryFetchedAt] = useState(null);
   const [holderInventoryActions, setHolderInventoryActions] = useState({});
   const [forgetState, setForgetState] = useState({ loading: false, error: null, message: null });
+  const sanitizedBaseUrl = useMemo(() => {
+    if (!baseUrl) {
+      return '';
+    }
+    return baseUrl.trim().replace(/\/+$/, '');
+  }, [baseUrl]);
+  const sandboxPrefix = useMemo(
+    () => resolveSandboxPrefix(sanitizedBaseUrl),
+    [sanitizedBaseUrl],
+  );
   const normalizeIssueEntry = (entry) => {
     if (!entry || typeof entry !== 'object') {
       return null;
@@ -599,13 +690,46 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
 
     const scope = entry.scope && PRIMARY_SCOPE_LABEL[entry.scope] ? entry.scope : null;
     const normalizedScope = scope || entry.scope || 'MEDICAL_RECORD';
+    const normalizedJti = entry.credentialJti
+      ? String(entry.credentialJti).trim()
+      : entry.jti
+      ? String(entry.jti).trim()
+      : '';
+    let normalizedCid = entry.cid ? String(entry.cid).trim() : '';
+    if (!normalizedCid && normalizedJti) {
+      normalizedCid = parseCidFromJti(normalizedJti);
+    }
+
+    const entryPrefix =
+      typeof entry.cidSandboxPrefix === 'string' ? entry.cidSandboxPrefix : sandboxPrefix;
+    const derivedPath = normalizedCid
+      ? `${entryPrefix || ''}/api/credential/${normalizedCid}/revocation`
+      : '';
+    const storedPath =
+      entry.cidRevocationPath && typeof entry.cidRevocationPath === 'string'
+        ? entry.cidRevocationPath
+        : '';
+    const cidRevocationPath = derivedPath || storedPath;
+    const derivedUrl =
+      normalizedCid && sanitizedBaseUrl
+        ? `${sanitizedBaseUrl}${cidRevocationPath.startsWith('/') ? '' : '/'}${cidRevocationPath}`
+        : '';
+    const storedUrl =
+      entry.cidRevocationUrl && typeof entry.cidRevocationUrl === 'string'
+        ? entry.cidRevocationUrl
+        : '';
+
     return {
       timestamp: entry.timestamp || new Date().toISOString(),
       holderDid: entry.holderDid || '',
       issuerId: entry.issuerId || '',
       transactionId: entry.transactionId || '',
-      cid: entry.cid || '',
-      hasCredential: Boolean(entry.hasCredential),
+      cid: normalizedCid,
+      credentialJti: normalizedJti,
+      cidSandboxPrefix: entryPrefix,
+      cidRevocationPath,
+      cidRevocationUrl: derivedUrl || storedUrl,
+      hasCredential: Boolean(entry.hasCredential || normalizedCid),
       scope: normalizedScope,
       scopeLabel: PRIMARY_SCOPE_LABEL[normalizedScope] || entry.scopeLabel || normalizedScope,
       status: entry.status || 'ISSUED',
@@ -639,10 +763,19 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       return [];
     }
   });
+  useEffect(() => {
+    setIssueLog((previous) =>
+      previous
+        .map((entry) => normalizeIssueEntry(entry))
+        .filter(Boolean)
+        .slice(0, 50),
+    );
+  }, [sandboxPrefix, sanitizedBaseUrl]);
   const [issueLogActions, setIssueLogActions] = useState({});
   const [manualEntry, setManualEntry] = useState({
     holderDid: '',
     cid: '',
+    credentialJti: '',
     transactionId: '',
     scope: 'MEDICAL_RECORD',
     status: 'ISSUED',
@@ -819,7 +952,9 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     const scopeLabel = PRIMARY_SCOPE_LABEL[primaryScope] || primaryScope;
 
     let resolvedCredential = credentialJwt || '';
-    let cid = resolvedCredential ? extractCidFromCredential(resolvedCredential) : '';
+    const initialIdentifiers = extractCredentialIdentifiers(resolvedCredential);
+    let cid = initialIdentifiers.cid;
+    let credentialJti = initialIdentifiers.jti;
     let lookupSource = resolvedCredential ? 'response' : null;
     let lookupError = null;
     let status = 'ISSUED';
@@ -859,10 +994,13 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
             if (!resolvedCredential) {
               resolvedCredential = credentialFromNonce;
             }
-            const cidFromNonce = extractCidFromCredential(credentialFromNonce);
-            if (cidFromNonce) {
-              cid = cidFromNonce;
+            const nonceIdentifiers = extractCredentialIdentifiers(credentialFromNonce);
+            if (nonceIdentifiers.cid) {
+              cid = nonceIdentifiers.cid;
               lookupSource = lookupSource || 'nonce';
+            }
+            if (nonceIdentifiers.jti) {
+              credentialJti = nonceIdentifiers.jti;
             }
             hasCredential = true;
           }
@@ -921,7 +1059,9 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       issuerId: issuerId || '',
       transactionId: transactionId || '',
       cid: cid || '',
-      hasCredential: hasCredential || Boolean(cid),
+      credentialJti: credentialJti || '',
+      cidSandboxPrefix: sandboxPrefix,
+      hasCredential: Boolean(hasCredential || cid || credentialJti),
       scope: primaryScope,
       scopeLabel,
       status,
@@ -978,9 +1118,14 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     setManualEntryError(null);
     setManualEntryFeedback(null);
 
-    const cid = manualEntry.cid.trim();
+    let cid = manualEntry.cid.trim();
+    const credentialJti = manualEntry.credentialJti.trim();
     const transactionId = manualEntry.transactionId.trim();
     const holder = (manualEntry.holderDid || holderDid || '').trim();
+
+    if (!cid && credentialJti) {
+      cid = parseCidFromJti(credentialJti);
+    }
 
     if (!cid && !transactionId) {
       setManualEntryError('請至少輸入 CID 或交易序號。');
@@ -999,6 +1144,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       issuerId: issuerId || '',
       transactionId,
       cid,
+      credentialJti,
       scope: manualEntry.scope,
       scopeLabel: PRIMARY_SCOPE_LABEL[manualEntry.scope] || manualEntry.scope,
       status: manualEntry.status,
@@ -1008,6 +1154,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       hasCredential: Boolean(cid),
       cidLookupSource: 'manual',
       cidLookupError: null,
+      cidSandboxPrefix: sandboxPrefix,
     });
 
     if (!entry) {
@@ -1019,6 +1166,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     setManualEntry((prev) => ({
       holderDid: '',
       cid: '',
+      credentialJti: '',
       transactionId: '',
       scope: prev.scope,
       status: 'ISSUED',
@@ -1030,6 +1178,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     setManualEntry((prev) => ({
       holderDid: '',
       cid: '',
+      credentialJti: '',
       transactionId: '',
       scope: prev.scope,
       status: 'ISSUED',
@@ -1044,12 +1193,38 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       return;
     }
 
-    const cid =
+    let cid =
       credential.credential_id ||
       credential.credentialId ||
       credential.cid ||
       credential.id ||
       '';
+    let credentialJti =
+      (credential.credential_jti ||
+        credential.credentialJti ||
+        credential.jti ||
+        '') &&
+      String(
+        credential.credential_jti || credential.credentialJti || credential.jti || '',
+      ).trim();
+    if (!credentialJti) {
+      const embeddedJwt =
+        (credential.credential && typeof credential.credential === 'string'
+          ? credential.credential
+          : null) ||
+        (typeof credential.jwt === 'string' ? credential.jwt : null) ||
+        (typeof credential.credential_jwt === 'string' ? credential.credential_jwt : null);
+      if (embeddedJwt) {
+        const identifiers = extractCredentialIdentifiers(embeddedJwt);
+        credentialJti = identifiers.jti;
+        if (!cid && identifiers.cid) {
+          cid = identifiers.cid;
+        }
+      }
+    }
+    if (!cid && credentialJti) {
+      cid = parseCidFromJti(credentialJti);
+    }
     if (!cid) {
       setManualEntryError('此憑證未提供 CID，請手動輸入後再加入紀錄。');
       return;
@@ -1079,6 +1254,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         credential.requestId ||
         '',
       cid,
+      credentialJti,
       scope: credential.primary_scope || credential.scope || 'MEDICAL_RECORD',
       scopeLabel:
         PRIMARY_SCOPE_LABEL[credential.primary_scope] ||
@@ -1103,10 +1279,11 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
             credential.revoked_at ||
             credential.revokedAt ||
             now
-          : null,
+        : null,
       hasCredential: true,
       cidLookupSource: 'wallet',
       cidLookupError: null,
+      cidSandboxPrefix: sandboxPrefix,
     });
     setManualEntryFeedback('已將錢包清單中的憑證加入發卡紀錄。');
   };
@@ -1187,7 +1364,18 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
   };
 
   const revokeInventoryCredential = async (credential) => {
-    const cid = credential?.credential_id || credential?.credentialId || credential?.cid;
+    const credentialJtiRaw =
+      credential?.credential_jti || credential?.credentialJti || credential?.jti || '';
+    let credentialJti = credentialJtiRaw ? String(credentialJtiRaw).trim() : '';
+    let cid = credential?.credential_id || credential?.credentialId || credential?.cid;
+    if (!cid && credentialJti) {
+      cid = parseCidFromJti(credentialJti);
+    }
+    if (!cid && credential?.credential && typeof credential.credential === 'string') {
+      const identifiers = extractCredentialIdentifiers(credential.credential);
+      credentialJti = credentialJti || identifiers.jti;
+      cid = identifiers.cid || cid;
+    }
     if (!cid) {
       return;
     }
@@ -1225,6 +1413,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         credential?.requestId ||
         '',
       cid,
+      credentialJti: credentialJti || '',
       scope: credential?.primary_scope || credential?.scope || primaryScope,
       scopeLabel:
         PRIMARY_SCOPE_LABEL[credential?.primary_scope] ||
@@ -1240,6 +1429,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       hasCredential: true,
       cidLookupSource: 'wallet',
       cidLookupError: null,
+      cidSandboxPrefix: sandboxPrefix,
     });
 
     await loadHolderInventory(holderInventoryDid);
@@ -1346,6 +1536,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         data.credentialToken ||
         data.jwt ||
         null;
+      const directIdentifiers = extractCredentialIdentifiers(credentialJwt);
       const normalized = {
         transactionId:
           data.transactionId || data.verifier_transaction_id || data.transaction_id || '',
@@ -1369,9 +1560,27 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         }
       }
 
+      const cidValue = recordedEntry?.cid || directIdentifiers.cid || '';
+      const jtiValue = recordedEntry?.credentialJti || directIdentifiers.jti || '';
+      const prefixValue =
+        recordedEntry?.cidSandboxPrefix && typeof recordedEntry.cidSandboxPrefix === 'string'
+          ? recordedEntry.cidSandboxPrefix
+          : sandboxPrefix;
+      const computedPath =
+        cidValue && (recordedEntry?.cidRevocationPath || `${prefixValue || ''}/api/credential/${cidValue}/revocation`);
+      const cidRevocationPath = recordedEntry?.cidRevocationPath || computedPath || '';
+      const cidRevocationUrl =
+        recordedEntry?.cidRevocationUrl ||
+        (cidValue && sanitizedBaseUrl
+          ? `${sanitizedBaseUrl}${cidRevocationPath.startsWith('/') ? '' : '/'}${cidRevocationPath}`
+          : '');
+
       setSuccess({
         ...normalized,
-        cid: recordedEntry?.cid || extractCidFromCredential(credentialJwt) || '',
+        cid: cidValue,
+        credentialJti: jtiValue,
+        cidRevocationPath,
+        cidRevocationUrl,
         cidLookupSource:
           recordedEntry?.cidLookupSource || (credentialJwt ? 'response' : null),
         cidLookupError: recordedEntry?.cidLookupError || null,
@@ -1512,12 +1721,36 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
           {success ? (
             <div className="alert success" role="status">
               <p>已取得政府沙盒 QR Code（交易序號：{success.transactionId || '未知'}）。</p>
-              <p>
-                憑證 CID：
-                {success.cid
-                  ? success.cid
-                  : '尚未取得，請稍候於下方發卡紀錄確認。'}
-              </p>
+              <div className="cid-summary" role="group" aria-label="憑證識別資訊">
+                <div className="cid-summary-row">
+                  <span className="cid-summary-label">憑證 CID</span>
+                  {success.cid ? (
+                    <code className="cid-summary-value">{success.cid}</code>
+                  ) : (
+                    <span className="cid-summary-placeholder">
+                      尚未取得，請稍候於下方發卡紀錄確認。
+                    </span>
+                  )}
+                </div>
+                {success.credentialJti ? (
+                  <div className="cid-summary-row">
+                    <span className="cid-summary-label">JTI</span>
+                    <code className="cid-summary-value">{success.credentialJti}</code>
+                  </div>
+                ) : null}
+                {success.cidRevocationPath && success.cid ? (
+                  <div className="cid-summary-row">
+                    <span className="cid-summary-label">撤銷 API</span>
+                    <code className="cid-summary-value">PUT {success.cidRevocationPath}</code>
+                  </div>
+                ) : null}
+                {success.cidRevocationUrl && success.cid ? (
+                  <div className="cid-summary-row">
+                    <span className="cid-summary-label">完整 URL</span>
+                    <code className="cid-summary-value">{success.cidRevocationUrl}</code>
+                  </div>
+                ) : null}
+              </div>
               {success.cidLookupError ? (
                 <p className="hint error">CID 查詢失敗：{success.cidLookupError}</p>
               ) : successCidSourceLabel ? (
@@ -2000,6 +2233,15 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
               />
             </div>
             <div>
+              <label htmlFor="manual-jti">Credential JTI（官方回應 URL）</label>
+              <input
+                id="manual-jti"
+                value={manualEntry.credentialJti}
+                onChange={(event) => handleManualEntryChange('credentialJti', event.target.value)}
+                placeholder="https://.../api/credential/a16187e9-…"
+              />
+            </div>
+            <div>
               <label htmlFor="manual-transaction">交易序號</label>
               <input
                 id="manual-transaction"
@@ -2082,6 +2324,12 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                   ? `已撤銷${entry.revokedAt ? `（${new Date(entry.revokedAt).toLocaleString()}）` : ''}`
                   : '已發行';
               const lookupSourceLabel = describeLookupSource(entry.cidLookupSource);
+              const displayCid = entry.cid || '';
+              const displayRevocationPath =
+                displayCid && entry.cidRevocationPath ? entry.cidRevocationPath : '';
+              const displayRevocationUrl =
+                displayCid && entry.cidRevocationUrl ? entry.cidRevocationUrl : '';
+              const displayJti = entry.credentialJti || '';
               const actionKey = entry.cid ? `${entry.cid}-revocation` : null;
               const actionState = actionKey ? issueLogActions[actionKey] : null;
               const revokeDisabled =
@@ -2093,9 +2341,46 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                     <span className="meta">{timestamp}</span>
                   </div>
                   <div className="meta">用途：{entry.scopeLabel}</div>
-                  <div className="meta">
-                    CID：{cidLabel}
-                    {lookupSourceLabel ? `（來源：${lookupSourceLabel}）` : ''}
+                  <div
+                    className="cid-summary cid-summary-inline"
+                    role="group"
+                    aria-label="CID 與撤銷資訊"
+                  >
+                    <div className="cid-summary-row">
+                      <span className="cid-summary-label">憑證 CID</span>
+                      {displayCid ? (
+                        <code className="cid-summary-value">{displayCid}</code>
+                      ) : (
+                        <span
+                          className={`cid-summary-placeholder${
+                            entry.cidLookupError ? ' error' : ''
+                          }`}
+                        >
+                          {cidLabel}
+                        </span>
+                      )}
+                    </div>
+                    {displayJti ? (
+                      <div className="cid-summary-row">
+                        <span className="cid-summary-label">JTI</span>
+                        <code className="cid-summary-value">{displayJti}</code>
+                      </div>
+                    ) : null}
+                    {displayRevocationPath ? (
+                      <div className="cid-summary-row">
+                        <span className="cid-summary-label">撤銷 API</span>
+                        <code className="cid-summary-value">PUT {displayRevocationPath}</code>
+                      </div>
+                    ) : null}
+                    {displayRevocationUrl ? (
+                      <div className="cid-summary-row">
+                        <span className="cid-summary-label">完整 URL</span>
+                        <code className="cid-summary-value">{displayRevocationUrl}</code>
+                      </div>
+                    ) : null}
+                    {lookupSourceLabel ? (
+                      <p className="hint cid-summary-hint">CID 來源：{lookupSourceLabel}</p>
+                    ) : null}
                   </div>
                   <div className="meta">交易序號：{entry.transactionId || '未提供'}</div>
                   <div className="meta">發行者：{entry.issuerId || '未設定'}</div>
