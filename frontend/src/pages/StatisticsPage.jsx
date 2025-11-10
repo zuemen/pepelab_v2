@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from '../router.jsx';
-import { ISSUE_LOG_STORAGE_KEY } from '../components/IssuerPanel.jsx';
+import { ISSUE_LOG_STORAGE_KEY } from '../constants/storage.js';
 
 const CARD_TYPES = [
   {

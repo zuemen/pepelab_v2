@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { QRCodeCanvas } from 'qrcode.react';
 import { resolveSandboxPrefix } from '../api/client.js';
-
-export const ISSUE_LOG_STORAGE_KEY = 'medssi_issue_log';
+import { ISSUE_LOG_STORAGE_KEY } from '../constants/storage.js';
 
 function decodeJwtPayload(token) {
   if (!token || typeof token !== 'string') {
@@ -64,69 +63,6 @@ function extractCredentialIdentifiers(credentialJwt) {
 
 function extractCidFromCredential(credentialJwt) {
   return extractCredentialIdentifiers(credentialJwt).cid;
-}
-
-function describeLookupSource(source) {
-  switch (source) {
-    case 'response':
-      return '政府 API 回應';
-    case 'nonce':
-      return 'nonce 查詢';
-    case 'manual':
-      return '手動登錄';
-    case 'wallet':
-      return '錢包同步';
-    case 'transaction':
-      return '待官方查詢';
-    default:
-      return null;
-  }
-}
-
-export const ISSUE_LOG_STORAGE_KEY = 'medssi_issue_log';
-
-function decodeJwtPayload(token) {
-  if (!token || typeof token !== 'string') {
-    return null;
-  }
-
-  const segments = token.split('.');
-  if (segments.length < 2) {
-    return null;
-  }
-
-  const base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
-  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-
-  try {
-    const decoded = atob(padded);
-    const json = decodeURIComponent(
-      decoded
-        .split('')
-        .map((char) => `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`)
-        .join(''),
-    );
-    return JSON.parse(json);
-  } catch (error) {
-    return null;
-  }
-}
-
-function extractCidFromCredential(credentialJwt) {
-  const payload = decodeJwtPayload(credentialJwt);
-  if (!payload || !payload.jti) {
-    return '';
-  }
-
-  try {
-    const url = new URL(payload.jti);
-    const parts = url.pathname.split('/');
-    const lastSegment = parts.pop() || parts.pop();
-    return lastSegment || payload.jti;
-  } catch (error) {
-    const segments = payload.jti.split('/');
-    return segments[segments.length - 1] || payload.jti;
-  }
 }
 
 function describeLookupSource(source) {
