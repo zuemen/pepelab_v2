@@ -39,19 +39,263 @@ function decodeJwtPayload(token) {
   }
 }
 
+function flattenCandidates(...values) {
+  const queue = [...values];
+  const result = [];
+
+  while (queue.length) {
+    const value = queue.shift();
+    if (Array.isArray(value)) {
+      queue.unshift(...value);
+      continue;
+    }
+    if (value === undefined || value === null) {
+      continue;
+    }
+    result.push(value);
+  }
+
+  return result;
+}
+
+function pickStringCandidate(...values) {
+  const candidates = flattenCandidates(values);
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+  }
+  return '';
+}
+
+function pickTimestampCandidate(...values) {
+  const candidates = flattenCandidates(values);
+  for (const candidate of candidates) {
+    if (candidate instanceof Date && !Number.isNaN(candidate.getTime())) {
+      return candidate.toISOString();
+    }
+
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      try {
+        return new Date(candidate).toISOString();
+      } catch (error) {
+        continue;
+      }
+    }
+
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (!trimmed) {
+        continue;
+      }
+
+      if (/^\d{10}$/.test(trimmed)) {
+        const epoch = Number(trimmed) * 1000;
+        if (!Number.isNaN(epoch)) {
+          return new Date(epoch).toISOString();
+        }
+      }
+
+      if (/^\d{13}$/.test(trimmed)) {
+        const epoch = Number(trimmed);
+        if (!Number.isNaN(epoch)) {
+          return new Date(epoch).toISOString();
+        }
+      }
+
+      return trimmed;
+    }
+  }
+
+  return null;
+}
+
+function pickBooleanFlag(values, extraKeywords = []) {
+  const candidates = flattenCandidates(values);
+  const baseKeywords = ['true', '1', 'yes', 'y', 'accepted', 'collected', 'active', 'done', 'complete', 'completed'];
+  const positiveKeywords = new Set(
+    baseKeywords.concat(extraKeywords.map((keyword) => keyword.toLowerCase())).map((keyword) => keyword.toLowerCase()),
+  );
+  const negativeKeywords = new Set(['false', '0', 'no', 'n', 'pending', 'waiting', 'issued', 'uncollected', 'not_collected', 'notcollected', 'inactive']);
+
+  for (const candidate of candidates) {
+    if (candidate === true) {
+      return true;
+    }
+
+    if (candidate === false || candidate === null) {
+      continue;
+    }
+
+    if (typeof candidate === 'number') {
+      if (Number.isFinite(candidate) && candidate > 0) {
+        return true;
+      }
+      continue;
+    }
+
+    if (typeof candidate === 'string') {
+      const normalized = candidate.trim().toLowerCase();
+      if (!normalized) {
+        continue;
+      }
+
+      if (negativeKeywords.has(normalized)) {
+        continue;
+      }
+
+      const sanitized = normalized.replace(/[_-]+/g, ' ');
+      const tokens = sanitized.split(/\s+/).filter(Boolean);
+
+      if (positiveKeywords.has(normalized)) {
+        return true;
+      }
+
+      for (const token of tokens) {
+        if (positiveKeywords.has(token)) {
+          if (token === 'active' && normalized === 'inactive') {
+            break;
+          }
+          return true;
+        }
+      }
+
+      for (const keyword of positiveKeywords) {
+        if (normalized.includes(keyword) && !normalized.startsWith(`un${keyword}`) && !normalized.includes(`not ${keyword}`)) {
+          if (keyword === 'active' && normalized.includes('inactive')) {
+            break;
+          }
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 function extractCredentialIdentifiers(credentialJwt) {
   if (!credentialJwt || typeof credentialJwt !== 'string') {
-    return { cid: '', jti: '' };
+    return {
+      cid: '',
+      jti: '',
+      status: '',
+      collectedAt: null,
+      revokedAt: null,
+      holderDid: '',
+      collected: false,
+      revoked: false,
+      payload: null,
+    };
   }
 
   const payload = decodeJwtPayload(credentialJwt);
   if (!payload || typeof payload !== 'object') {
-    return { cid: '', jti: '' };
+    return {
+      cid: '',
+      jti: '',
+      status: '',
+      collectedAt: null,
+      revokedAt: null,
+      holderDid: '',
+      collected: false,
+      revoked: false,
+      payload: null,
+    };
   }
 
-  const jti = typeof payload.jti === 'string' ? payload.jti.trim() : '';
-  const cid = jti ? parseCidFromJti(jti) : '';
-  return { cid, jti };
+  const jti = pickStringCandidate(payload.jti);
+  let cid = jti ? parseCidFromJti(jti) : '';
+  if (!cid) {
+    cid = pickStringCandidate(
+      payload.cid,
+      payload.credentialId,
+      payload.credential_id,
+      payload.credentialID,
+      payload.vc?.credentialId,
+      payload.vc?.credential_id,
+      payload.vc?.credentialID,
+    );
+  }
+
+  const status = pickStringCandidate(
+    payload.status,
+    payload.cardStatus,
+    payload.credential_status,
+    payload.credentialStatus?.status,
+    payload.credentialStatus?.currentStatus,
+    payload.credentialStatus?.statusCode,
+    payload.credentialStatus?.state,
+    payload.vc?.credentialStatus?.status,
+    payload.vc?.credentialStatus?.currentStatus,
+    payload.vc?.credentialStatus?.statusCode,
+    payload.vc?.credentialStatus?.state,
+  );
+
+  const collectedAt = pickTimestampCandidate(
+    payload.acceptedAt,
+    payload.accepted_at,
+    payload.collectedAt,
+    payload.collected_at,
+    payload.credentialStatus?.acceptedAt,
+    payload.credentialStatus?.accepted_at,
+    payload.credentialStatus?.collectedAt,
+    payload.credentialStatus?.collected_at,
+    payload.vc?.credentialStatus?.acceptedAt,
+    payload.vc?.credentialStatus?.accepted_at,
+    payload.vc?.credentialStatus?.collectedAt,
+    payload.vc?.credentialStatus?.collected_at,
+  );
+
+  const revokedAt = pickTimestampCandidate(
+    payload.revokedAt,
+    payload.revoked_at,
+    payload.credentialStatus?.revokedAt,
+    payload.credentialStatus?.revoked_at,
+    payload.vc?.credentialStatus?.revokedAt,
+    payload.vc?.credentialStatus?.revoked_at,
+  );
+
+  const holderDid = pickStringCandidate(
+    payload.holderDid,
+    payload.holder_did,
+    payload.holder,
+    payload.sub,
+    payload.subject,
+    payload.credentialSubject?.id,
+    payload.credentialSubject?.did,
+    payload.credentialSubject?.holderDid,
+    payload.credentialSubject?.holder_did,
+  );
+
+  const collected = pickBooleanFlag(
+    [
+      payload.collected,
+      payload.accepted,
+      payload.credentialStatus?.collected,
+      payload.credentialStatus?.accepted,
+      payload.credentialStatus?.active,
+      payload.vc?.credentialStatus?.collected,
+      payload.vc?.credentialStatus?.accepted,
+      payload.vc?.credentialStatus?.active,
+    ],
+  );
+
+  const revoked = pickBooleanFlag(
+    [
+      payload.revoked,
+      payload.credentialStatus?.revoked,
+      payload.credentialStatus?.inactive,
+      payload.vc?.credentialStatus?.revoked,
+      payload.vc?.credentialStatus?.inactive,
+    ],
+    ['revoked', 'inactive', 'suspended'],
+  );
+
+  return { cid, jti, status, collectedAt, revokedAt, holderDid, collected, revoked, payload };
 }
 
 function describeLookupSource(source) {
@@ -1030,11 +1274,12 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
 
       let credentialJti = '';
       let cid = '';
+      let jwtMetadata = null;
 
       if (credentialJwt && typeof credentialJwt === 'string') {
-        const identifiers = extractCredentialIdentifiers(credentialJwt);
-        credentialJti = identifiers.jti || '';
-        cid = identifiers.cid || '';
+        jwtMetadata = extractCredentialIdentifiers(credentialJwt);
+        credentialJti = jwtMetadata.jti || '';
+        cid = jwtMetadata.cid || '';
       }
 
       if (!credentialJti && typeof data.jti === 'string') {
@@ -1048,19 +1293,106 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       const normalizedCid = normalizeCid(cid);
       const normalizedJti = credentialJti ? credentialJti.trim() : '';
 
-      const rawStatus =
-        (typeof data.status === 'string' && data.status) ||
-        (typeof data.cardStatus === 'string' && data.cardStatus) ||
-        (typeof data.credential_status === 'string' && data.credential_status) ||
-        (typeof data.credentialStatus?.status === 'string' && data.credentialStatus.status) ||
+      const credentialStatusObject =
+        (data.credentialStatus && typeof data.credentialStatus === 'object'
+          ? data.credentialStatus
+          : null) ||
         null;
+      const nestedCredential =
+        data.credential && typeof data.credential === 'object' ? data.credential : null;
+      const nestedCredentialStatus =
+        (nestedCredential && typeof nestedCredential.credentialStatus === 'object'
+          ? nestedCredential.credentialStatus
+          : null) ||
+        (nestedCredential && typeof nestedCredential.status === 'object'
+          ? nestedCredential.status
+          : null);
+
+      const rawStatus = pickStringCandidate(
+        data.status,
+        data.cardStatus,
+        data.credential_status,
+        typeof data.credentialStatus === 'string' ? data.credentialStatus : null,
+        credentialStatusObject?.status,
+        credentialStatusObject?.currentStatus,
+        credentialStatusObject?.statusCode,
+        credentialStatusObject?.state,
+        nestedCredential?.status,
+        nestedCredentialStatus?.status,
+        nestedCredentialStatus?.currentStatus,
+        nestedCredentialStatus?.statusCode,
+        nestedCredentialStatus?.state,
+        jwtMetadata?.status,
+      );
       const normalizedStatus = normalizeCredentialStatus(rawStatus);
       const statusDetails = describeCredentialStatus(normalizedStatus);
 
       const collectedAt =
-        data.acceptedAt || data.accepted_at || data.collectedAt || data.collected_at || null;
-      const revokedAt = data.revokedAt || data.revoked_at || null;
-      const holderDid = data.holderDid || data.holder_did || null;
+        pickTimestampCandidate(
+          data.acceptedAt,
+          data.accepted_at,
+          data.collectedAt,
+          data.collected_at,
+          credentialStatusObject?.acceptedAt,
+          credentialStatusObject?.accepted_at,
+          credentialStatusObject?.collectedAt,
+          credentialStatusObject?.collected_at,
+          nestedCredential?.acceptedAt,
+          nestedCredential?.accepted_at,
+          nestedCredentialStatus?.acceptedAt,
+          nestedCredentialStatus?.accepted_at,
+          nestedCredentialStatus?.collectedAt,
+          nestedCredentialStatus?.collected_at,
+          jwtMetadata?.collectedAt,
+        ) || null;
+      const revokedAt =
+        pickTimestampCandidate(
+          data.revokedAt,
+          data.revoked_at,
+          credentialStatusObject?.revokedAt,
+          credentialStatusObject?.revoked_at,
+          nestedCredential?.revokedAt,
+          nestedCredential?.revoked_at,
+          nestedCredentialStatus?.revokedAt,
+          nestedCredentialStatus?.revoked_at,
+          jwtMetadata?.revokedAt,
+        ) || null;
+      const holderDid =
+        pickStringCandidate(
+          data.holderDid,
+          data.holder_did,
+          data.holder,
+          nestedCredential?.holderDid,
+          nestedCredential?.holder_did,
+          nestedCredentialStatus?.holderDid,
+          jwtMetadata?.holderDid,
+        ) || null;
+
+      const explicitCollected = pickBooleanFlag(
+        [
+          data.collected,
+          data.accepted,
+          data.isCollected,
+          credentialStatusObject?.collected,
+          credentialStatusObject?.accepted,
+          nestedCredential?.collected,
+          nestedCredentialStatus?.collected,
+          nestedCredentialStatus?.accepted,
+          jwtMetadata?.collected,
+        ],
+      );
+      const explicitRevoked = pickBooleanFlag(
+        [
+          data.revoked,
+          credentialStatusObject?.revoked,
+          credentialStatusObject?.inactive,
+          nestedCredential?.revoked,
+          nestedCredentialStatus?.revoked,
+          nestedCredentialStatus?.inactive,
+          jwtMetadata?.revoked,
+        ],
+        ['revoked', 'inactive', 'suspended'],
+      );
 
       return {
         ok: true,
@@ -1072,10 +1404,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         lookupSource: 'nonce',
         lookupError: null,
         status: normalizedStatus,
-        collected: statusDetails.collected || Boolean(collectedAt),
+        collected: Boolean(statusDetails.collected || explicitCollected || collectedAt),
         collectedAt,
         revokedAt,
-        revoked: statusDetails.revoked || Boolean(revokedAt),
+        revoked: Boolean(statusDetails.revoked || explicitRevoked || revokedAt),
         holderDid,
         pending: false,
         lookupHint: null,
@@ -1168,22 +1500,37 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       }
     }
 
-    if (credentialJwt) {
-      if (!resolvedCredential) {
-        resolvedCredential = credentialJwt;
-      }
-      const responseIdentifiers = extractCredentialIdentifiers(credentialJwt);
-      if (!cid && responseIdentifiers.cid) {
-        cid = normalizeCid(responseIdentifiers.cid);
-        if (!lookupSource) {
-          lookupSource = 'response';
+      if (credentialJwt) {
+        if (!resolvedCredential) {
+          resolvedCredential = credentialJwt;
         }
+        const responseIdentifiers = extractCredentialIdentifiers(credentialJwt);
+        if (!cid && responseIdentifiers.cid) {
+          cid = normalizeCid(responseIdentifiers.cid);
+          if (!lookupSource) {
+            lookupSource = 'response';
+          }
+        }
+        if (!credentialJti && responseIdentifiers.jti) {
+          credentialJti = responseIdentifiers.jti;
+        }
+        if (responseIdentifiers.status && !status) {
+          status = responseIdentifiers.status;
+        }
+        if (!collected && responseIdentifiers.collected) {
+          collected = true;
+        }
+        if (!collectedAtValue && responseIdentifiers.collectedAt) {
+          collectedAtValue = responseIdentifiers.collectedAt;
+        }
+        if (!revokedAtValue && responseIdentifiers.revokedAt) {
+          revokedAtValue = responseIdentifiers.revokedAt;
+        }
+        if (!holderFromResponse && responseIdentifiers.holderDid) {
+          holderFromResponse = responseIdentifiers.holderDid;
+        }
+        hasCredential = true;
       }
-      if (!credentialJti && responseIdentifiers.jti) {
-        credentialJti = responseIdentifiers.jti;
-      }
-      hasCredential = true;
-    }
 
     if (!lookupSource && transactionId) {
       lookupSource = 'transaction';
