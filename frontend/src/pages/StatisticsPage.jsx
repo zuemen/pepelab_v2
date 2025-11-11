@@ -41,6 +41,34 @@ const CARD_TYPES = [
   },
 ];
 
+function describeLookupSourceLabel(source) {
+  switch (source) {
+    case 'response':
+      return '政府 API 回應';
+    case 'nonce':
+      return 'nonce 查詢';
+    case 'manual':
+      return '手動登錄';
+    case 'wallet':
+      return '錢包同步';
+    case 'transaction':
+      return '待官方查詢';
+    default:
+      return null;
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return '—';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+  return date.toLocaleString();
+}
+
 function loadIssueLog() {
   if (typeof window === 'undefined') {
     return [];
@@ -61,11 +89,11 @@ function loadIssueLog() {
   }
 }
 
-const DEFAULT_SUMMARY = { total: 0, collected: 0, revoked: 0, active: 0, pending: 0 };
+const DEFAULT_SUMMARY = { total: 0, collected: 0, revoked: 0, active: 0, pending: 0, withCid: 0 };
 
 function computeGroupedTotals(issueLog) {
   const totals = {
-    overall: { total: 0, collected: 0, revoked: 0 },
+    overall: { total: 0, collected: 0, revoked: 0, withCid: 0 },
     scopes: {},
     entries: {},
   };
@@ -73,7 +101,7 @@ function computeGroupedTotals(issueLog) {
   for (const entry of issueLog) {
     const scope = entry.scope || 'UNKNOWN';
     if (!totals.scopes[scope]) {
-      totals.scopes[scope] = { total: 0, collected: 0, revoked: 0 };
+      totals.scopes[scope] = { total: 0, collected: 0, revoked: 0, withCid: 0 };
       totals.entries[scope] = [];
     }
     totals.scopes[scope].total += 1;
@@ -90,6 +118,11 @@ function computeGroupedTotals(issueLog) {
       totals.overall.revoked += 1;
     }
 
+    if (entry.cid) {
+      totals.scopes[scope].withCid += 1;
+      totals.overall.withCid += 1;
+    }
+
     totals.entries[scope].push(entry);
   }
 
@@ -98,12 +131,13 @@ function computeGroupedTotals(issueLog) {
 
 function deriveScopeSummaries(grouped) {
   return CARD_TYPES.map((card) => {
-    const summary = grouped.scopes[card.scope] || { total: 0, collected: 0, revoked: 0 };
+    const summary = grouped.scopes[card.scope] || { total: 0, collected: 0, revoked: 0, withCid: 0 };
     const entries = grouped.entries[card.scope] || [];
     const extendedSummary = {
       ...summary,
       active: summary.total - summary.revoked,
       pending: summary.total - summary.collected,
+      withCid: summary.withCid || 0,
     };
     return {
       ...card,
@@ -121,6 +155,7 @@ function deriveOverallSummary(grouped) {
     revoked: base.revoked,
     active: base.total - base.revoked,
     pending: base.total - base.collected,
+    withCid: base.withCid || 0,
   };
 }
 
@@ -168,6 +203,10 @@ function StatsOverview({ overallSummary, scopeSummaries }) {
           <span className="stat-label">已撤銷</span>
           <strong className="stat-value">{overallSummary.revoked}</strong>
         </div>
+        <div className="stat-tile" role="listitem">
+          <span className="stat-label">已取得 CID</span>
+          <strong className="stat-value">{overallSummary.withCid}</strong>
+        </div>
       </div>
 
       <div className="stat-card-grid">
@@ -191,6 +230,10 @@ function StatsOverview({ overallSummary, scopeSummaries }) {
               <div>
                 <dt>已撤銷</dt>
                 <dd>{card.summary.revoked}</dd>
+              </div>
+              <div>
+                <dt>已取得 CID</dt>
+                <dd>{card.summary.withCid}</dd>
               </div>
             </dl>
             <Link className="stat-card-link" to={card.route}>
@@ -237,10 +280,27 @@ function deriveCidMetadata(entry) {
     : entry.jti
     ? String(entry.jti)
     : '';
-  return { cid, displayPath, sandboxPath, displayUrl, sandboxUrl, jti };
+  return {
+    cid,
+    displayPath,
+    sandboxPath,
+    displayUrl,
+    sandboxUrl,
+    jti,
+    lookupHint: entry.cidLookupHint || null,
+    lookupPending: Boolean(entry.cidLookupPending),
+  };
 }
 
 function StatsCardDetail({ card }) {
+  const entries = useMemo(() => {
+    return [...card.entries].sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
+    });
+  }, [card.entries]);
+
   return (
     <article>
       <h3>{card.label}</h3>
@@ -266,73 +326,97 @@ function StatsCardDetail({ card }) {
           <div className="stat-detail-label">已撤銷</div>
           <div className="stat-detail-value">{card.summary.revoked}</div>
         </div>
+        <div>
+          <div className="stat-detail-label">已取得 CID</div>
+          <div className="stat-detail-value">{card.summary.withCid}</div>
+        </div>
       </div>
 
-      {card.entries.length ? (
-        <div className="stat-table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">CID</th>
-                <th scope="col">持卡者 DID</th>
-                <th scope="col">狀態</th>
-                <th scope="col">領取時間</th>
-                <th scope="col">撤銷時間</th>
-              </tr>
-            </thead>
-            <tbody>
-              {card.entries.map((entry, index) => {
-                const meta = deriveCidMetadata(entry);
-                return (
-                  <tr key={`${entry.cid || entry.transactionId || index}-${index}`}>
-                    <td className="cid-stat-cell">
-                      {meta.cid ? <code className="cid-stat-value">{meta.cid}</code> : '—'}
-                      {meta.displayPath && meta.cid ? (
-                        <div className="cid-stat-path">
-                          <code>PUT {meta.displayPath}</code>
-                        </div>
-                      ) : null}
-                      {meta.sandboxPath && meta.cid ? (
-                        <div className="cid-stat-path">
-                          <span className="cid-stat-label">沙盒路徑：</span>
-                          <code>PUT {meta.sandboxPath}</code>
-                        </div>
-                      ) : null}
-                      {meta.displayUrl && meta.cid ? (
-                        <div className="cid-stat-path">
-                          <code>{meta.displayUrl}</code>
-                        </div>
-                      ) : null}
-                      {meta.sandboxUrl && meta.cid ? (
-                        <div className="cid-stat-path">
-                          <span className="cid-stat-label">沙盒 URL：</span>
-                          <code>{meta.sandboxUrl}</code>
-                        </div>
-                      ) : null}
-                      {meta.jti ? (
-                        <div className="cid-stat-path">
-                          <span className="cid-stat-label">JTI：</span>
-                          <code>{meta.jti}</code>
-                        </div>
-                      ) : null}
-                    </td>
-                    <td>{entry.holderDid || '—'}</td>
-                    <td>
-                      {(() => {
-                        const statusInfo = describeCredentialStatus(entry.status);
-                        const badgeClass = statusInfo.tone
-                          ? `status-badge ${statusInfo.tone}`
-                          : 'status-badge';
-                        return <span className={badgeClass}>{statusInfo.text}</span>;
-                      })()}
-                    </td>
-                    <td>{entry.collectedAt ? new Date(entry.collectedAt).toLocaleString() : '—'}</td>
-                    <td>{entry.revokedAt ? new Date(entry.revokedAt).toLocaleString() : '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {entries.length ? (
+        <div className="stat-record-list">
+          {entries.map((entry, index) => {
+            const meta = deriveCidMetadata(entry);
+            const statusInfo = describeCredentialStatus(entry.status);
+            const badgeClass = statusInfo.tone ? `status-badge ${statusInfo.tone}` : 'status-badge';
+            const lookupSourceLabel = describeLookupSourceLabel(entry.cidLookupSource);
+            const cidDisplay = meta.cid ? (
+              <code className="stat-record-cid">{meta.cid}</code>
+            ) : entry.cidLookupPending ? (
+              <span className="stat-record-placeholder pending">等待領取</span>
+            ) : entry.cidLookupError ? (
+              <span className="stat-record-placeholder error">{entry.cidLookupError}</span>
+            ) : (
+              <span className="stat-record-placeholder">尚未取得</span>
+            );
+
+            return (
+              <article
+                key={`${entry.cid || entry.transactionId || index}-${index}`}
+                className="stat-record-card"
+              >
+                <header className="stat-record-header">
+                  <div>
+                    <h4>{entry.holderDid || '未知持卡者'}</h4>
+                    <p className="stat-record-subtitle">
+                      交易序號：{entry.transactionId || '—'}
+                      <span className="separator" aria-hidden="true">
+                        ·
+                      </span>
+                      發卡時間：{formatDateTime(entry.timestamp)}
+                    </p>
+                  </div>
+                  <span className={badgeClass}>{statusInfo.text}</span>
+                </header>
+                <dl className="stat-record-grid">
+                  <div>
+                    <dt>CID</dt>
+                    <dd>{cidDisplay}</dd>
+                  </div>
+                  <div>
+                    <dt>JTI</dt>
+                    <dd>{meta.jti ? <code>{meta.jti}</code> : '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>持卡者 DID</dt>
+                    <dd>{entry.holderDid || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>領取時間</dt>
+                    <dd>{formatDateTime(entry.collectedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>撤銷時間</dt>
+                    <dd>{formatDateTime(entry.revokedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>官方狀態</dt>
+                    <dd>
+                      <span className={badgeClass}>{statusInfo.text}</span>
+                    </dd>
+                  </div>
+                </dl>
+                <div className="stat-record-meta">
+                  {lookupSourceLabel ? <span>CID 來源：{lookupSourceLabel}</span> : null}
+                  {meta.displayPath ? <span>撤銷 API：PUT {meta.displayPath}</span> : null}
+                  {meta.sandboxPath && meta.sandboxPath !== meta.displayPath ? (
+                    <span>沙盒 API：PUT {meta.sandboxPath}</span>
+                  ) : null}
+                  {meta.displayUrl ? <span>撤銷 URL：{meta.displayUrl}</span> : null}
+                  {meta.sandboxUrl && meta.sandboxUrl !== meta.displayUrl ? (
+                    <span>沙盒 URL：{meta.sandboxUrl}</span>
+                  ) : null}
+                </div>
+                {meta.lookupHint && !entry.cidLookupError ? (
+                  <p className={`stat-record-hint${meta.lookupPending ? ' pending' : ''}`}>
+                    官方回應：{meta.lookupHint}
+                  </p>
+                ) : null}
+                {entry.cidLookupError ? (
+                  <p className="stat-record-hint error">CID 查詢失敗：{entry.cidLookupError}</p>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <p className="empty">尚無此卡別的發卡紀錄。</p>

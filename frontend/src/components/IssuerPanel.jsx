@@ -187,6 +187,8 @@ const INITIAL_MANUAL_LOOKUP_STATE = {
   collectedAt: null,
   revokedAt: null,
   error: null,
+  pending: false,
+  hint: null,
 };
 
 const MANUAL_STATUS_OPTIONS = [
@@ -653,6 +655,15 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     const collectedAt =
       entry.collectedAt || (combinedCollected ? entry.collectedAt || entry.collected_at || null : null);
     const revokedAt = entry.revokedAt || entry.revoked_at || null;
+    const lookupPending = Boolean(entry.cidLookupPending);
+    const lookupHint =
+      typeof entry.cidLookupHint === 'string' && entry.cidLookupHint.trim().length
+        ? entry.cidLookupHint.trim()
+        : null;
+    const lookupError =
+      typeof entry.cidLookupError === 'string' && entry.cidLookupError.trim().length
+        ? entry.cidLookupError.trim()
+        : null;
 
     const entryPrefix =
       typeof entry.cidSandboxPrefix === 'string' ? entry.cidSandboxPrefix : sandboxPrefix;
@@ -703,7 +714,9 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       collectedAt,
       revokedAt,
       cidLookupSource: entry.cidLookupSource || null,
-      cidLookupError: entry.cidLookupError || null,
+      cidLookupError: lookupError,
+      cidLookupPending: lookupPending,
+      cidLookupHint: lookupHint,
     };
   };
 
@@ -931,18 +944,56 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         collectedAt: null,
         revokedAt: null,
         holderDid: null,
+        collected: false,
+        revoked: false,
+        pending: false,
+        lookupHint: null,
+        detailCode: null,
       };
     }
 
     try {
       const response = await client.getNonce(trimmedId, issuerToken);
       if (!response.ok) {
-        const detail =
-          typeof response.detail === 'string'
-            ? response.detail
-            : response.detail
-            ? JSON.stringify(response.detail)
+        let detailCode = null;
+        let detailMessage = null;
+        if (response.detail && typeof response.detail === 'object') {
+          detailCode =
+            response.detail.code || response.detail.errorCode || response.detail.status || null;
+          if (typeof response.detail.message === 'string') {
+            detailMessage = response.detail.message;
+          } else if (typeof response.detail.detail === 'string') {
+            detailMessage = response.detail.detail;
+          } else if (typeof response.detail.reason === 'string') {
+            detailMessage = response.detail.reason;
+          } else {
+            detailMessage = JSON.stringify(response.detail);
+          }
+        } else if (typeof response.detail === 'string') {
+          detailMessage = response.detail;
+          const match = response.detail.match(/6\d{4}/);
+          if (match) {
+            detailCode = match[0];
+          }
+        }
+
+        const isPending =
+          detailCode === '61010' ||
+          (detailMessage && /61010/.test(detailMessage)) ||
+          (detailMessage && detailMessage.includes('指定VC不存在')) ||
+          (detailMessage && detailMessage.includes('尚未被掃描'));
+
+        const lookupHint = isPending
+          ? detailMessage || '指定 VC 尚未建立或 QR Code 尚未被掃描。'
+          : null;
+
+        const errorMessage =
+          !isPending && detailMessage
+            ? `${response.status ? `(${response.status}) ` : ''}${detailMessage}`
+            : !isPending
+            ? '查詢官方 nonce API 失敗'
             : null;
+
         return {
           ok: false,
           transactionId: trimmedId,
@@ -951,16 +1002,16 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
           credentialJwt: null,
           hasCredential: false,
           lookupSource: 'nonce',
-          lookupError:
-            detail && detail.length
-              ? `${response.status ? `(${response.status}) ` : ''}${detail}`
-              : '查詢官方 nonce API 失敗',
-          status: null,
+          lookupError: errorMessage,
+          status: isPending ? 'PENDING' : null,
           collected: false,
           collectedAt: null,
           revokedAt: null,
           revoked: false,
           holderDid: null,
+          pending: isPending,
+          lookupHint,
+          detailCode,
         };
       }
 
@@ -1035,6 +1086,9 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         revokedAt,
         revoked: statusDetails.revoked || Boolean(revokedAt),
         holderDid,
+        pending: false,
+        lookupHint: null,
+        detailCode: null,
       };
     } catch (error) {
       return {
@@ -1052,6 +1106,9 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         revokedAt: null,
         revoked: false,
         holderDid: null,
+        pending: false,
+        lookupHint: null,
+        detailCode: null,
       };
     }
   };
@@ -1065,6 +1122,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     let credentialJti = '';
     let lookupSource = null;
     let lookupError = null;
+    let lookupPending = false;
+    let lookupHint = null;
     let status = 'ISSUED';
     let holderFromResponse = holderDid || '';
     let collected = false;
@@ -1108,6 +1167,11 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         if (lookupResult.holderDid) {
           holderFromResponse = lookupResult.holderDid;
         }
+      } else if (lookupResult.pending) {
+        lookupSource = lookupResult.lookupSource || 'nonce';
+        status = lookupResult.status || status;
+        lookupPending = true;
+        lookupHint = lookupResult.lookupHint || null;
       } else if (!cid) {
         lookupError = lookupResult.lookupError || '查詢官方 nonce API 失敗';
       }
@@ -1159,6 +1223,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       revokedAt: statusDetails.revoked ? combinedRevokedAt || timestamp : combinedRevokedAt,
       cidLookupSource: lookupSource,
       cidLookupError: lookupError,
+      cidLookupPending: lookupPending,
+      cidLookupHint: lookupHint,
     };
 
     return appendIssueLogEntry(entry);
@@ -1228,6 +1294,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     let resolvedCredentialJti = credentialJti;
     let lookupSource = 'manual';
     let lookupError = null;
+    let lookupPending = false;
+    let lookupHint = null;
     let resolvedStatus = manualEntry.status;
     let resolvedCollected = Boolean(manualEntry.collected);
     let resolvedCollectedAt = manualEntry.collected ? now : null;
@@ -1265,8 +1333,19 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
             resolvedRevokedAt = lookupResult.revokedAt;
           }
           lookupSource = 'nonce';
+          lookupPending = false;
+          lookupHint = null;
         } else if (!cid) {
-          lookupError = lookupResult.lookupError || '查詢官方 nonce API 失敗';
+          if (lookupResult.pending) {
+            lookupSource = lookupResult.lookupSource || 'nonce';
+            lookupPending = true;
+            lookupHint = lookupResult.lookupHint || null;
+            if (lookupResult.status) {
+              resolvedStatus = lookupResult.status;
+            }
+          } else {
+            lookupError = lookupResult.lookupError || '查詢官方 nonce API 失敗';
+          }
         }
       }
 
@@ -1275,7 +1354,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         return;
       }
 
-      if (transactionId && !cid) {
+      if (transactionId && !cid && !lookupPending) {
         setManualEntryError(lookupError || '無法從官方 nonce API 解析 CID，請確認交易序號。');
         return;
       }
@@ -1310,6 +1389,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         hasCredential: Boolean(cid),
         cidLookupSource: lookupSource,
         cidLookupError: lookupError,
+        cidLookupPending: lookupPending,
+        cidLookupHint: lookupHint,
         cidSandboxPrefix: sandboxPrefix,
       });
 
@@ -1374,8 +1455,35 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         collectedAt: lookupResult.collectedAt || null,
         revokedAt: lookupResult.revokedAt || null,
         error: null,
+        pending: false,
+        hint: null,
       });
       setManualEntryFeedback('已透過官方 nonce API 取得 CID，請確認資訊後加入發卡紀錄。');
+    } else if (lookupResult.pending) {
+      setManualEntry((prev) => ({
+        ...prev,
+        status: lookupResult.status || prev.status || 'PENDING',
+      }));
+      setManualLookup({
+        loading: false,
+        transactionId,
+        cid: lookupResult.cid || '',
+        credentialJti: lookupResult.credentialJti || '',
+        status: lookupResult.status || 'PENDING',
+        collected: false,
+        holderDid: lookupResult.holderDid || null,
+        collectedAt: null,
+        revokedAt: null,
+        error: null,
+        pending: true,
+        hint: lookupResult.lookupHint || '指定 VC 尚未建立或 QR Code 尚未被掃描。',
+      });
+      setManualEntryError(null);
+      setManualEntryFeedback(
+        lookupResult.lookupHint
+          ? `官方回應：${lookupResult.lookupHint}，請稍後再查詢 CID。`
+          : '官方回應顯示憑證尚未領取，請稍後再查詢 CID。',
+      );
     } else {
       setManualLookup({
         ...INITIAL_MANUAL_LOOKUP_STATE,
@@ -1808,7 +1916,27 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         cidLookupSource:
           recordedEntry?.cidLookupSource || (credentialJwt ? 'response' : null),
         cidLookupError: recordedEntry?.cidLookupError || null,
+        cidLookupPending: recordedEntry?.cidLookupPending || false,
+        cidLookupHint: recordedEntry?.cidLookupHint || null,
       });
+
+      if (normalized.transactionId) {
+        setManualEntry((prev) => {
+          if (prev.transactionId === normalized.transactionId) {
+            return prev;
+          }
+          if (prev.transactionId && prev.transactionId !== normalized.transactionId) {
+            return prev;
+          }
+          return {
+            ...prev,
+            transactionId: normalized.transactionId,
+          };
+        });
+        setManualLookup(INITIAL_MANUAL_LOOKUP_STATE);
+        setManualEntryError(null);
+        setManualEntryFeedback(null);
+      }
     } catch (err) {
       setLoading(false);
       setError(err.message || '發卡失敗，請稍後再試');
@@ -1838,6 +1966,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
   const qrSource = success?.qrCode || success?.deepLink || '';
   const shouldRenderImage = success?.qrCode?.startsWith('data:image');
   const successCidSourceLabel = describeLookupSource(success?.cidLookupSource);
+  const successCidPending = Boolean(success?.cidLookupPending);
+  const successCidHint = success?.cidLookupHint || null;
 
   return (
     <section aria-labelledby="issuer-heading">
@@ -1991,11 +2121,15 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                   </div>
                 ) : null}
               </div>
-              {success.cidLookupError ? (
-                <p className="hint error">CID 查詢失敗：{success.cidLookupError}</p>
-              ) : successCidSourceLabel ? (
-                <p className="hint">CID 來源：{successCidSourceLabel}</p>
-              ) : null}
+          {successCidPending ? (
+            <p className="hint">
+              {successCidHint || '官方回應顯示憑證尚未領取，請稍後再查詢 CID。'}
+            </p>
+          ) : success.cidLookupError ? (
+            <p className="hint error">CID 查詢失敗：{success.cidLookupError}</p>
+          ) : successCidSourceLabel ? (
+            <p className="hint">CID 來源：{successCidSourceLabel}</p>
+          ) : null}
             </div>
           ) : null}
         </div>
@@ -2285,7 +2419,11 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
             憑證 CID：
             {success.cid ? success.cid : '尚未取得，請稍候於發卡紀錄確認。'}
           </p>
-          {success.cidLookupError ? (
+          {successCidPending ? (
+            <p className="hint">
+              {successCidHint || '官方回應顯示憑證尚未領取，請稍後再查詢 CID。'}
+            </p>
+          ) : success.cidLookupError ? (
             <p className="hint error">CID 查詢失敗：{success.cidLookupError}</p>
           ) : successCidSourceLabel ? (
             <p className="hint">CID 來源：{successCidSourceLabel}</p>
@@ -2565,7 +2703,11 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
             </p>
           </div>
           {manualLookup.transactionId ? (
-            <div className={`manual-lookup-result${manualLookup.error ? ' error' : ''}`}>
+            <div
+              className={`manual-lookup-result${
+                manualLookup.error ? ' error' : manualLookup.pending ? ' pending' : ''
+              }`}
+            >
               <div className="manual-lookup-row header">
                 <strong>官方查詢結果</strong>
                 <span>交易序號：{manualLookup.transactionId}</span>
@@ -2607,6 +2749,12 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                       </>
                     );
                   })()}
+                  {manualLookup.pending && manualLookup.hint ? (
+                    <div className="manual-lookup-row">
+                      <span className="label">官方回應</span>
+                      <span className="value">{manualLookup.hint}</span>
+                    </div>
+                  ) : null}
                   {manualLookup.cid ? (
                     <div className="manual-lookup-row">
                       <span className="label">撤銷路徑</span>
@@ -2675,6 +2823,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                 : '時間未知';
               const cidLabel = entry.cid
                 ? entry.cid
+                : entry.cidLookupPending
+                ? '等待領取'
                 : entry.cidLookupError
                 ? '查詢失敗'
                 : entry.cidLookupSource === 'transaction'
@@ -2744,7 +2894,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                         <span
                           className={`cid-summary-placeholder${
                             entry.cidLookupError ? ' error' : ''
-                          }`}
+                          }${entry.cidLookupPending ? ' pending' : ''}`}
                         >
                           {cidLabel}
                         </span>
@@ -2783,6 +2933,9 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                     {lookupSourceLabel ? (
                       <p className="hint cid-summary-hint">CID 來源：{lookupSourceLabel}</p>
                     ) : null}
+                    {entry.cidLookupHint && !entry.cidLookupError ? (
+                      <p className="hint cid-summary-hint">官方回應：{entry.cidLookupHint}</p>
+                    ) : null}
                   </div>
                   <div className="meta">交易序號：{entry.transactionId || '未提供'}</div>
                   <div className="meta">發行者：{entry.issuerId || '未設定'}</div>
@@ -2794,6 +2947,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                   {entry.cidLookupError ? (
                     <div className="issue-log-feedback error">
                       CID 查詢失敗：{entry.cidLookupError}
+                    </div>
+                  ) : entry.cidLookupPending ? (
+                    <div className="issue-log-feedback info">
+                      官方查詢回應：{entry.cidLookupHint || '憑證尚未領取，請稍後再查詢。'}
                     </div>
                   ) : null}
                   <div className="issue-log-actions">

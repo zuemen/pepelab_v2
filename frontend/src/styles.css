@@ -538,6 +538,10 @@ code {
   color: #b42318;
 }
 
+.cid-summary-placeholder.pending {
+  color: #916400;
+}
+
 .cid-summary-hint {
   margin: 0.35rem 0 0;
 }
@@ -604,6 +608,10 @@ code {
 
 .issue-log-feedback.success {
   color: #1f7a1f;
+}
+
+.issue-log-feedback.info {
+  color: #17427d;
 }
 
 .issue-log-summary {
@@ -700,6 +708,133 @@ code {
   background: rgba(23, 66, 125, 0.04);
 }
 
+.stat-record-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.stat-record-card {
+  border: 1px solid #d9e6ff;
+  border-radius: 12px;
+  padding: 1rem;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.stat-record-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.stat-record-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: #102a54;
+}
+
+.stat-record-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: #4d6385;
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.stat-record-subtitle .separator {
+  color: rgba(77, 99, 133, 0.6);
+}
+
+.stat-record-cid {
+  background: #101828;
+  color: #f3f6fc;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: inline-block;
+  overflow-wrap: anywhere;
+}
+
+.stat-record-placeholder {
+  font-size: 0.85rem;
+  color: #4d6385;
+}
+
+.stat-record-placeholder.pending {
+  color: #916400;
+}
+
+.stat-record-placeholder.error {
+  color: #b42318;
+}
+
+.stat-record-grid {
+  display: grid;
+  gap: 0.6rem 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.stat-record-grid div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-record-grid dt {
+  font-size: 0.75rem;
+  color: #4d6385;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.stat-record-grid dd {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #102a54;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.stat-record-meta {
+  font-size: 0.8rem;
+  color: #4d6385;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-record-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.stat-record-card code {
+  background: rgba(16, 24, 40, 0.08);
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+}
+
+.stat-record-hint {
+  font-size: 0.8rem;
+  margin: 0;
+  color: #4d6385;
+}
+
+.stat-record-hint.pending {
+  color: #916400;
+}
+
+.stat-record-hint.error {
+  color: #b42318;
+}
+
 .empty {
   color: #4d6385;
   font-size: 0.9rem;
@@ -785,6 +920,11 @@ code {
 .manual-lookup-result.error {
   border-color: rgba(208, 57, 27, 0.4);
   background: rgba(208, 57, 27, 0.08);
+}
+
+.manual-lookup-result.pending {
+  border-color: rgba(145, 100, 0, 0.35);
+  background: rgba(255, 214, 102, 0.15);
 }
 
 .manual-lookup-row {
