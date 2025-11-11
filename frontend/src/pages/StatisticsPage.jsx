@@ -160,28 +160,27 @@ function deriveOverallSummary(grouped) {
 }
 
 function StatsSummaryBanner({ overallSummary }) {
+  const items = [
+    { key: 'total', label: '總發卡', value: overallSummary.total, accent: 'primary', icon: '🪪' },
+    { key: 'collected', label: '已領取', value: overallSummary.collected, accent: 'success', icon: '✅' },
+    { key: 'pending', label: '待領取', value: overallSummary.pending, accent: 'warning', icon: '⏳' },
+    { key: 'revoked', label: '已撤銷', value: overallSummary.revoked, accent: 'danger', icon: '🚫' },
+    { key: 'cid', label: '已取得 CID', value: overallSummary.withCid, accent: 'info', icon: '🔐' },
+  ];
+
   return (
     <div className="stats-summary-banner" role="status" aria-live="polite">
-      <div>
-        <span className="summary-label">總發卡</span>
-        <strong className="summary-value">{overallSummary.total}</strong>
-      </div>
-      <div>
-        <span className="summary-label">已領取</span>
-        <strong className="summary-value">{overallSummary.collected}</strong>
-      </div>
-      <div>
-        <span className="summary-label">待領取</span>
-        <strong className="summary-value">{overallSummary.pending}</strong>
-      </div>
-      <div>
-        <span className="summary-label">已撤銷</span>
-        <strong className="summary-value">{overallSummary.revoked}</strong>
-      </div>
-      <div>
-        <span className="summary-label">已取得 CID</span>
-        <strong className="summary-value">{overallSummary.withCid}</strong>
-      </div>
+      {items.map((item) => (
+        <div key={item.key} className={`stats-summary-item ${item.accent}`}>
+          <span className="stats-summary-icon" aria-hidden="true">
+            {item.icon}
+          </span>
+          <div className="stats-summary-copy">
+            <span className="summary-label">{item.label}</span>
+            <strong className="summary-value">{item.value}</strong>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -194,7 +193,12 @@ function StatsNavigation({ navItems, defaultKey }) {
   return (
     <nav className="stats-subnav" aria-label="統計子頁">
       {navItems.map((item) => (
-        <Link key={item.key} to={item.to} className={activeKey === item.key ? 'active' : ''}>
+        <Link
+          key={item.key}
+          to={item.to}
+          className={activeKey === item.key ? 'active' : ''}
+          aria-current={activeKey === item.key ? 'page' : undefined}
+        >
           <span className="stats-subnav-label">{item.label}</span>
           {typeof item.count === 'number' ? <span className="stats-subnav-count">{item.count}</span> : null}
         </Link>
@@ -367,7 +371,7 @@ function StatsRecordList({ entries, emptyMessage }) {
 
 function StatsCardDetail({ card }) {
   return (
-    <article>
+    <article className="stats-card-detail">
       <h3>{card.label}</h3>
       <p className="hint">{card.description}</p>
       <div className="stat-detail-grid">
@@ -404,7 +408,7 @@ function StatsCardDetail({ card }) {
 
 function StatsAllRecords({ issueLog, overallSummary }) {
   return (
-    <article>
+    <article className="stats-card-detail">
       <h3>發卡紀錄總覽</h3>
       <p className="hint">
         依時間排序列出所有發卡紀錄，可快速檢視持卡者、官方狀態與撤銷端點。若在發卡頁重新查詢官方
@@ -473,13 +477,13 @@ export function StatisticsPage() {
       ...scopeSummaries.map((card) => ({
         key: card.route,
         label: card.navLabel,
-        to: card.route,
+        to: `/stats/${card.route}`,
         count: card.summary.total,
       })),
       {
         key: 'records',
         label: '全部紀錄',
-        to: 'records',
+        to: '/stats/records',
         count: overallSummary.total,
       },
     ],

@@ -29,9 +29,9 @@ export default function App() {
   const currentPath = location.pathname === '/' ? '/issuer' : location.pathname;
 
   const navItems = [
-    { to: 'issuer', label: '發卡頁' },
-    { to: 'verifier', label: '驗證頁' },
-    { to: 'stats', label: '統計頁' },
+    { to: '/issuer', label: '發卡頁' },
+    { to: '/verifier', label: '驗證頁' },
+    { to: '/stats', label: '統計頁' },
   ];
 
   function isActivePath(target) {
