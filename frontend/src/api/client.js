@@ -125,29 +125,27 @@ export function createClient(baseUrl) {
         method: 'POST',
         headers: bearerHeader(token),
       }),
-    updateCredentialStatus: (cidRaw, actionRaw, token) => {
-      const prefix = (sandboxPrefix || '').replace(/\/+$/, '');
+    updateCredentialStatus: async (cidRaw, actionRaw, token) => {
       const cid = normalizeCid(cidRaw);
       const action = String(actionRaw ?? '').trim().toLowerCase();
 
       if (!cid) {
-        return Promise.resolve({
+        return {
           ok: false,
           status: 400,
           detail: '缺少有效的 CID，請先透過 nonce 查詢取得。',
-        });
+        };
       }
 
       if (action !== 'revocation') {
-        return Promise.resolve({
+        return {
           ok: false,
           status: 400,
           detail: 'action 必須為 "revocation"。',
-        });
+        };
       }
 
-      return request({
-        url: `${prefix}/api/credential/${encodeURIComponent(cid)}/revocation`,
+      const commonConfig = {
         method: 'PUT',
         headers: {
           Accept: '*/*',
@@ -155,6 +153,25 @@ export function createClient(baseUrl) {
           ...(bearerHeader(token) || {}),
         },
         data: {},
+      };
+
+      const primary = await request({
+        ...commonConfig,
+        url: `/api/credential/${encodeURIComponent(cid)}/revocation`,
+      });
+
+      if (primary.ok || primary.status !== 404) {
+        return primary;
+      }
+
+      const prefix = (sandboxPrefix || '').replace(/\/+$/, '');
+      if (!prefix || prefix === '/api') {
+        return primary;
+      }
+
+      return request({
+        ...commonConfig,
+        url: `${prefix}/api/credential/${encodeURIComponent(cid)}/revocation`,
       });
     },
     deleteCredential: (credentialId, token) =>
