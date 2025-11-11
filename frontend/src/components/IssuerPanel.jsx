@@ -1,6 +1,75 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { QRCodeCanvas } from 'qrcode.react';
+import { resolveSandboxPrefix } from '../api/client.js';
+import { ISSUE_LOG_STORAGE_KEY } from '../constants/storage.js';
+import { computeRevocationDetails } from '../utils/revocation.js';
+import { normalizeCid, parseCidFromJti } from '../utils/cid.js';
+import {
+  describeCredentialStatus,
+  isCollectedStatus,
+  isRevokedStatus,
+  normalizeCredentialStatus,
+} from '../utils/status.js';
+
+function decodeJwtPayload(token) {
+  if (!token || typeof token !== 'string') {
+    return null;
+  }
+
+  const segments = token.split('.');
+  if (segments.length < 2) {
+    return null;
+  }
+
+  const base64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+
+  try {
+    const decoded = atob(padded);
+    const json = decodeURIComponent(
+      decoded
+        .split('')
+        .map((char) => `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join(''),
+    );
+    return JSON.parse(json);
+  } catch (error) {
+    return null;
+  }
+}
+
+function extractCredentialIdentifiers(credentialJwt) {
+  if (!credentialJwt || typeof credentialJwt !== 'string') {
+    return { cid: '', jti: '' };
+  }
+
+  const payload = decodeJwtPayload(credentialJwt);
+  if (!payload || typeof payload !== 'object') {
+    return { cid: '', jti: '' };
+  }
+
+  const jti = typeof payload.jti === 'string' ? payload.jti.trim() : '';
+  const cid = jti ? parseCidFromJti(jti) : '';
+  return { cid, jti };
+}
+
+function describeLookupSource(source) {
+  switch (source) {
+    case 'response':
+      return '政府 API 回應';
+    case 'nonce':
+      return 'nonce 查詢';
+    case 'manual':
+      return '手動登錄';
+    case 'wallet':
+      return '錢包同步';
+    case 'transaction':
+      return '待官方查詢';
+    default:
+      return null;
+  }
+}
 
 const DEFAULT_DISCLOSURES = {
   MEDICAL_RECORD: [
@@ -48,6 +117,24 @@ const PRIMARY_SCOPE_OPTIONS = [
   },
 ];
 
+const PRIMARY_SCOPE_LABEL = PRIMARY_SCOPE_OPTIONS.reduce((map, option) => {
+  map[option.value] = option.label;
+  return map;
+}, {});
+
+const HOLDER_PROFILES = [
+  {
+    did: 'did:example:patient-001',
+    hint: '張小華 1962/07/18',
+    label: '張小華（病歷授權）',
+  },
+  {
+    did: 'did:example:patient-002',
+    hint: '王曉梅 1984/03/02',
+    label: '王曉梅（領藥授權）',
+  },
+];
+
 const SCOPE_TO_VC_UID = {
   MEDICAL_RECORD: '00000000_vc_cond',
   MEDICATION_PICKUP: '00000000_vc_rx',
@@ -87,6 +174,21 @@ const DEFAULT_CARD_IDENTIFIERS = {
     vcId: '',
     apiKey: '',
   },
+};
+
+const INITIAL_MANUAL_LOOKUP_STATE = {
+  loading: false,
+  transactionId: null,
+  cid: '',
+  credentialJti: '',
+  status: null,
+  collected: false,
+  holderDid: null,
+  collectedAt: null,
+  revokedAt: null,
+  error: null,
+  pending: false,
+  hint: null,
 };
 
 const INITIAL_CONDITION = {
@@ -473,10 +575,11 @@ function convertToGovFormat({
   };
 }
 
-export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionChange }) {
+export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLatestTransactionChange }) {
   const [issuerId, setIssuerId] = useState('did:example:hospital-001');
   const [holderDid, setHolderDid] = useState('did:example:patient-001');
   const [holderHint, setHolderHint] = useState('張小華 1962/07/18');
+  const [holderInventoryDid, setHolderInventoryDid] = useState('did:example:patient-001');
   const [ial, setIal] = useState('NHI_CARD_PIN');
   const [validMinutes, setValidMinutes] = useState(5);
   const [primaryScope, setPrimaryScope] = useState('MEDICAL_RECORD');
@@ -504,6 +607,154 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [holderInventory, setHolderInventory] = useState([]);
+  const [holderInventoryLoading, setHolderInventoryLoading] = useState(false);
+  const [holderInventoryError, setHolderInventoryError] = useState(null);
+  const [holderInventoryFetchedAt, setHolderInventoryFetchedAt] = useState(null);
+  const [holderInventoryActions, setHolderInventoryActions] = useState({});
+  const [forgetState, setForgetState] = useState({ loading: false, error: null, message: null });
+  const sanitizedBaseUrl = useMemo(() => {
+    if (!baseUrl) {
+      return '';
+    }
+    return baseUrl.trim().replace(/\/+$/, '');
+  }, [baseUrl]);
+  const sandboxPrefix = useMemo(
+    () => resolveSandboxPrefix(sanitizedBaseUrl),
+    [sanitizedBaseUrl],
+  );
+  const normalizeIssueEntry = (entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return null;
+    }
+
+    const scope = entry.scope && PRIMARY_SCOPE_LABEL[entry.scope] ? entry.scope : null;
+    const normalizedScope = scope || entry.scope || 'MEDICAL_RECORD';
+    const normalizedJti = entry.credentialJti
+      ? String(entry.credentialJti).trim()
+      : entry.jti
+      ? String(entry.jti).trim()
+      : '';
+    let normalizedCid = normalizeCid(entry.cid);
+    if (!normalizedCid && normalizedJti) {
+      normalizedCid = parseCidFromJti(normalizedJti);
+    }
+
+    const normalizedStatus = normalizeCredentialStatus(entry.status) || 'ISSUED';
+    const statusDetails = describeCredentialStatus(normalizedStatus);
+    const combinedCollected = Boolean(entry.collected || statusDetails.collected);
+    const collectedAt =
+      entry.collectedAt || (combinedCollected ? entry.collectedAt || entry.collected_at || null : null);
+    const revokedAt = entry.revokedAt || entry.revoked_at || null;
+    const lookupPending = Boolean(entry.cidLookupPending);
+    const lookupHint =
+      typeof entry.cidLookupHint === 'string' && entry.cidLookupHint.trim().length
+        ? entry.cidLookupHint.trim()
+        : null;
+    const lookupError =
+      typeof entry.cidLookupError === 'string' && entry.cidLookupError.trim().length
+        ? entry.cidLookupError.trim()
+        : null;
+
+    const entryPrefix =
+      typeof entry.cidSandboxPrefix === 'string' ? entry.cidSandboxPrefix : sandboxPrefix;
+    const storedPath =
+      entry.cidRevocationPath && typeof entry.cidRevocationPath === 'string'
+        ? entry.cidRevocationPath
+        : '';
+    const storedDisplayPath =
+      entry.cidRevocationDisplayPath && typeof entry.cidRevocationDisplayPath === 'string'
+        ? entry.cidRevocationDisplayPath
+        : '';
+    const storedUrl =
+      entry.cidRevocationUrl && typeof entry.cidRevocationUrl === 'string'
+        ? entry.cidRevocationUrl
+        : '';
+    const storedDisplayUrl =
+      entry.cidRevocationDisplayUrl && typeof entry.cidRevocationDisplayUrl === 'string'
+        ? entry.cidRevocationDisplayUrl
+        : '';
+
+    const revocationDetails = computeRevocationDetails({
+      cid: normalizedCid,
+      sandboxPrefix: entryPrefix,
+      baseUrl: sanitizedBaseUrl,
+      storedPath,
+      storedUrl,
+      storedDisplayPath,
+      storedDisplayUrl,
+    });
+
+    return {
+      timestamp: entry.timestamp || new Date().toISOString(),
+      holderDid: entry.holderDid || '',
+      issuerId: entry.issuerId || '',
+      transactionId: entry.transactionId || '',
+      cid: normalizedCid,
+      credentialJti: normalizedJti,
+      cidSandboxPrefix: entryPrefix,
+      cidRevocationPath: revocationDetails.path,
+      cidRevocationDisplayPath: revocationDetails.displayPath,
+      cidRevocationUrl: revocationDetails.url,
+      cidRevocationDisplayUrl: revocationDetails.displayUrl,
+      hasCredential: Boolean(entry.hasCredential || normalizedCid),
+      scope: normalizedScope,
+      scopeLabel: PRIMARY_SCOPE_LABEL[normalizedScope] || entry.scopeLabel || normalizedScope,
+      status: normalizedStatus,
+      collected: combinedCollected,
+      collectedAt,
+      revokedAt,
+      cidLookupSource: entry.cidLookupSource || null,
+      cidLookupError: lookupError,
+      cidLookupPending: lookupPending,
+      cidLookupHint: lookupHint,
+    };
+  };
+
+  const [issueLog, setIssueLog] = useState(() => {
+    if (typeof window === 'undefined') {
+      return [];
+    }
+    try {
+      const stored = window.localStorage.getItem(ISSUE_LOG_STORAGE_KEY);
+      if (!stored) {
+        return [];
+      }
+      const parsed = JSON.parse(stored);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed
+        .map((entry) => normalizeIssueEntry(entry))
+        .filter(Boolean)
+        .slice(0, 50);
+    } catch (err) {
+      console.warn('Unable to restore issuance log', err);
+      return [];
+    }
+  });
+  useEffect(() => {
+    setIssueLog((previous) =>
+      previous
+        .map((entry) => normalizeIssueEntry(entry))
+        .filter(Boolean)
+        .slice(0, 50),
+    );
+  }, [sandboxPrefix, sanitizedBaseUrl]);
+  const [issueLogActions, setIssueLogActions] = useState({});
+  const [manualEntry, setManualEntry] = useState({
+    holderDid: '',
+    cid: '',
+    credentialJti: '',
+    transactionId: '',
+    scope: 'MEDICAL_RECORD',
+    status: '',
+    collected: false,
+  });
+  const [manualLookup, setManualLookup] = useState(INITIAL_MANUAL_LOOKUP_STATE);
+  const [manualEntryFeedback, setManualEntryFeedback] = useState(null);
+  const [manualEntryError, setManualEntryError] = useState(null);
+  const [manualEntryLoading, setManualEntryLoading] = useState(false);
   const [govIdentifiers, setGovIdentifiers] = useState(() => {
     if (typeof window === 'undefined') {
       return DEFAULT_CARD_IDENTIFIERS;
@@ -543,6 +794,10 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
   });
 
   useEffect(() => {
+    setHolderInventoryDid(holderDid);
+  }, [holderDid]);
+
+  useEffect(() => {
     if (primaryScope === 'MEDICATION_PICKUP' && !includeMedication) {
       setIncludeMedication(true);
     }
@@ -553,6 +808,22 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
       window.localStorage.setItem('medssi.govIdentifiers', JSON.stringify(govIdentifiers));
     }
   }, [govIdentifiers]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(ISSUE_LOG_STORAGE_KEY, JSON.stringify(issueLog));
+        const eventDetail = { issueLog };
+        if (typeof window.CustomEvent === 'function') {
+          window.dispatchEvent(new CustomEvent('medssi:issue-log-updated', { detail: eventDetail }));
+        } else {
+          window.dispatchEvent(new Event('medssi:issue-log-updated'));
+        }
+      } catch (err) {
+        console.warn('Unable to persist issuance log', err);
+      }
+    }
+  }, [issueLog]);
 
   const currentIdentifiers = govIdentifiers[primaryScope] || DEFAULT_CARD_IDENTIFIERS[primaryScope];
 
@@ -615,6 +886,1054 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
     ]
   );
 
+  const issueLogStats = useMemo(() => {
+    const total = issueLog.length;
+    const revoked = issueLog.filter((entry) => isRevokedStatus(entry.status)).length;
+    const collected = issueLog.filter((entry) => entry.collected || isCollectedStatus(entry.status)).length;
+    const pending = total - collected;
+    const active = total - revoked;
+    return { total, revoked, collected, pending, active };
+  }, [issueLog]);
+
+  const holderAccessToken = useMemo(() => walletToken || issuerToken, [walletToken, issuerToken]);
+
+  const appendIssueLogEntry = (rawEntry) => {
+    const entry = normalizeIssueEntry(rawEntry);
+    if (!entry) {
+      return null;
+    }
+
+    setIssueLog((previous) => {
+      const filtered = previous.filter((item) => {
+        if (entry.transactionId && item.transactionId === entry.transactionId) {
+          return false;
+        }
+        if (entry.cid && item.cid === entry.cid) {
+          return false;
+        }
+        return true;
+      });
+      return [entry, ...filtered].slice(0, 50);
+    });
+
+    return entry;
+  };
+
+  const lookupCredentialByTransaction = async (transactionId) => {
+    const trimmedId = (transactionId || '').trim();
+    if (!trimmedId) {
+      return {
+        ok: false,
+        transactionId: '',
+        cid: '',
+        credentialJti: '',
+        credentialJwt: null,
+        hasCredential: false,
+        lookupSource: 'nonce',
+        lookupError: '請提供交易序號。',
+        status: null,
+        collectedAt: null,
+        revokedAt: null,
+        holderDid: null,
+        collected: false,
+        revoked: false,
+        pending: false,
+        lookupHint: null,
+        detailCode: null,
+      };
+    }
+
+    try {
+      const response = await client.getNonce(trimmedId, issuerToken);
+      if (!response.ok) {
+        let detailCode = null;
+        let detailMessage = null;
+        if (response.detail && typeof response.detail === 'object') {
+          detailCode =
+            response.detail.code || response.detail.errorCode || response.detail.status || null;
+          if (typeof response.detail.message === 'string') {
+            detailMessage = response.detail.message;
+          } else if (typeof response.detail.detail === 'string') {
+            detailMessage = response.detail.detail;
+          } else if (typeof response.detail.reason === 'string') {
+            detailMessage = response.detail.reason;
+          } else {
+            detailMessage = JSON.stringify(response.detail);
+          }
+        } else if (typeof response.detail === 'string') {
+          detailMessage = response.detail;
+          const match = response.detail.match(/6\d{4}/);
+          if (match) {
+            detailCode = match[0];
+          }
+        }
+
+        const isPending =
+          detailCode === '61010' ||
+          (detailMessage && /61010/.test(detailMessage)) ||
+          (detailMessage && detailMessage.includes('指定VC不存在')) ||
+          (detailMessage && detailMessage.includes('尚未被掃描'));
+
+        const lookupHint = isPending
+          ? detailMessage || '指定 VC 尚未建立或 QR Code 尚未被掃描。'
+          : null;
+
+        const errorMessage =
+          !isPending && detailMessage
+            ? `${response.status ? `(${response.status}) ` : ''}${detailMessage}`
+            : !isPending
+            ? '查詢官方 nonce API 失敗'
+            : null;
+
+        return {
+          ok: false,
+          transactionId: trimmedId,
+          cid: '',
+          credentialJti: '',
+          credentialJwt: null,
+          hasCredential: false,
+          lookupSource: 'nonce',
+          lookupError: errorMessage,
+          status: isPending ? 'PENDING' : null,
+          collected: false,
+          collectedAt: null,
+          revokedAt: null,
+          revoked: false,
+          holderDid: null,
+          pending: isPending,
+          lookupHint,
+          detailCode,
+        };
+      }
+
+      const data = response.data || {};
+
+      let credentialJwt = null;
+      if (typeof data.credential === 'string') {
+        credentialJwt = data.credential;
+      } else if (data.credential && typeof data.credential === 'object') {
+        credentialJwt =
+          data.credential.credential ||
+          data.credential.jwt ||
+          data.credential.credentialJwt ||
+          data.credential.credential_jwt ||
+          null;
+      }
+
+      credentialJwt =
+        credentialJwt ||
+        data.credentialJwt ||
+        data.credential_jwt ||
+        data.jwt ||
+        data.credentialToken ||
+        null;
+
+      let credentialJti = '';
+      let cid = '';
+
+      if (credentialJwt && typeof credentialJwt === 'string') {
+        const identifiers = extractCredentialIdentifiers(credentialJwt);
+        credentialJti = identifiers.jti || '';
+        cid = identifiers.cid || '';
+      }
+
+      if (!credentialJti && typeof data.jti === 'string') {
+        credentialJti = data.jti.trim();
+      }
+
+      if (!cid && credentialJti) {
+        cid = parseCidFromJti(credentialJti);
+      }
+
+      const normalizedCid = normalizeCid(cid);
+      const normalizedJti = credentialJti ? credentialJti.trim() : '';
+
+      const rawStatus =
+        (typeof data.status === 'string' && data.status) ||
+        (typeof data.cardStatus === 'string' && data.cardStatus) ||
+        (typeof data.credential_status === 'string' && data.credential_status) ||
+        (typeof data.credentialStatus?.status === 'string' && data.credentialStatus.status) ||
+        null;
+      const normalizedStatus = normalizeCredentialStatus(rawStatus);
+      const statusDetails = describeCredentialStatus(normalizedStatus);
+
+      const collectedAt =
+        data.acceptedAt || data.accepted_at || data.collectedAt || data.collected_at || null;
+      const revokedAt = data.revokedAt || data.revoked_at || null;
+      const holderDid = data.holderDid || data.holder_did || null;
+
+      return {
+        ok: true,
+        transactionId: trimmedId,
+        cid: normalizedCid,
+        credentialJti: normalizedJti,
+        credentialJwt: typeof credentialJwt === 'string' ? credentialJwt : null,
+        hasCredential: Boolean(credentialJwt && typeof credentialJwt === 'string'),
+        lookupSource: 'nonce',
+        lookupError: null,
+        status: normalizedStatus,
+        collected: statusDetails.collected || Boolean(collectedAt),
+        collectedAt,
+        revokedAt,
+        revoked: statusDetails.revoked || Boolean(revokedAt),
+        holderDid,
+        pending: false,
+        lookupHint: null,
+        detailCode: null,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        transactionId: trimmedId,
+        cid: '',
+        credentialJti: '',
+        credentialJwt: null,
+        hasCredential: false,
+        lookupSource: 'nonce',
+        lookupError: error?.message || '查詢官方 nonce API 失敗',
+        status: null,
+        collected: false,
+        collectedAt: null,
+        revokedAt: null,
+        revoked: false,
+        holderDid: null,
+        pending: false,
+        lookupHint: null,
+        detailCode: null,
+      };
+    }
+  };
+
+  const recordIssue = async ({ credentialJwt, transactionId }) => {
+    const timestamp = new Date().toISOString();
+    const scopeLabel = PRIMARY_SCOPE_LABEL[primaryScope] || primaryScope;
+
+    let resolvedCredential = '';
+    let cid = '';
+    let credentialJti = '';
+    let lookupSource = null;
+    let lookupError = null;
+    let lookupPending = false;
+    let lookupHint = null;
+    let status = 'ISSUED';
+    let holderFromResponse = holderDid || '';
+    let collected = false;
+    let collectedAtValue = null;
+    let revokedAtValue = null;
+    let hasCredential = false;
+
+    if (transactionId) {
+      const lookupResult = await lookupCredentialByTransaction(transactionId);
+      if (lookupResult.ok) {
+        if (lookupResult.cid) {
+          cid = normalizeCid(lookupResult.cid);
+        }
+        if (lookupResult.credentialJti) {
+          credentialJti = lookupResult.credentialJti;
+        }
+        if (lookupResult.credentialJwt && !resolvedCredential) {
+          resolvedCredential = lookupResult.credentialJwt;
+        }
+        if (lookupResult.hasCredential) {
+          hasCredential = true;
+        }
+        lookupSource = 'nonce';
+
+        if (lookupResult.status) {
+          status = lookupResult.status;
+        }
+        if (lookupResult.collected) {
+          collected = true;
+        }
+        if (lookupResult.collectedAt) {
+          collected = true;
+          collectedAtValue = lookupResult.collectedAt;
+        }
+        if (lookupResult.revokedAt) {
+          revokedAtValue = lookupResult.revokedAt;
+        }
+        if (lookupResult.revoked) {
+          status = 'REVOKED';
+        }
+        if (lookupResult.holderDid) {
+          holderFromResponse = lookupResult.holderDid;
+        }
+      } else if (lookupResult.pending) {
+        lookupSource = lookupResult.lookupSource || 'nonce';
+        status = lookupResult.status || status;
+        lookupPending = true;
+        lookupHint = lookupResult.lookupHint || null;
+      } else if (!cid) {
+        lookupError = lookupResult.lookupError || '查詢官方 nonce API 失敗';
+      }
+    }
+
+    if (credentialJwt) {
+      if (!resolvedCredential) {
+        resolvedCredential = credentialJwt;
+      }
+      const responseIdentifiers = extractCredentialIdentifiers(credentialJwt);
+      if (!cid && responseIdentifiers.cid) {
+        cid = normalizeCid(responseIdentifiers.cid);
+        if (!lookupSource) {
+          lookupSource = 'response';
+        }
+      }
+      if (!credentialJti && responseIdentifiers.jti) {
+        credentialJti = responseIdentifiers.jti;
+      }
+      hasCredential = true;
+    }
+
+    if (!lookupSource && transactionId) {
+      lookupSource = 'transaction';
+    }
+
+    const normalizedCid = normalizeCid(cid);
+    const normalizedJti = credentialJti ? credentialJti.trim() : '';
+    const normalizedStatus = normalizeCredentialStatus(status) || 'ISSUED';
+    const statusDetails = describeCredentialStatus(normalizedStatus);
+    const combinedCollected = collected || statusDetails.collected;
+    const combinedCollectedAt = collectedAtValue || null;
+    const combinedRevokedAt = revokedAtValue || null;
+
+    const entry = {
+      timestamp,
+      holderDid: holderFromResponse || '',
+      issuerId: issuerId || '',
+      transactionId: transactionId || '',
+      cid: normalizedCid,
+      credentialJti: normalizedJti,
+      cidSandboxPrefix: sandboxPrefix,
+      hasCredential: Boolean(hasCredential || normalizedCid || normalizedJti),
+      scope: primaryScope,
+      scopeLabel,
+      status: normalizedStatus,
+      collected: combinedCollected,
+      collectedAt: combinedCollectedAt,
+      revokedAt: statusDetails.revoked ? combinedRevokedAt || timestamp : combinedRevokedAt,
+      cidLookupSource: lookupSource,
+      cidLookupError: lookupError,
+      cidLookupPending: lookupPending,
+      cidLookupHint: lookupHint,
+    };
+
+    return appendIssueLogEntry(entry);
+  };
+
+  const clearIssueLog = () => {
+    setIssueLog([]);
+    setIssueLogActions({});
+    setManualEntryError(null);
+    setManualEntryFeedback(null);
+  };
+
+  const removeIssueLogEntry = (index) => {
+    setIssueLog((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const updateIssueLogEntry = (index, updater) => {
+    setIssueLog((prev) =>
+      prev.map((entry, idx) => {
+        if (idx !== index) {
+          return entry;
+        }
+        const updated = updater(entry);
+        return normalizeIssueEntry(updated) || entry;
+      })
+    );
+  };
+
+  const toggleCollected = (index) => {
+    updateIssueLogEntry(index, (entry) => {
+      const nextCollected = !entry.collected;
+      return {
+        ...entry,
+        collected: nextCollected,
+        collectedAt: nextCollected ? new Date().toISOString() : null,
+      };
+    });
+  };
+
+  const handleManualEntryChange = (field, value) => {
+    setManualEntry((prev) => ({ ...prev, [field]: value }));
+    if (field === 'transactionId') {
+      setManualLookup(INITIAL_MANUAL_LOOKUP_STATE);
+    }
+  };
+
+  const handleManualEntrySubmit = async (event) => {
+    event.preventDefault();
+    if (manualEntryLoading) {
+      return;
+    }
+    setManualEntryError(null);
+    setManualEntryFeedback(null);
+    setManualEntryLoading(true);
+
+    const now = new Date().toISOString();
+    let cid = normalizeCid(manualEntry.cid);
+    const credentialJti = manualEntry.credentialJti.trim();
+    const transactionId = manualEntry.transactionId.trim();
+    let holderValue = (manualEntry.holderDid || holderDid || '').trim();
+
+    let resolvedCredentialJti = credentialJti;
+    let lookupSource = 'manual';
+    let lookupError = null;
+    let lookupPending = false;
+    let lookupHint = null;
+    let resolvedStatus = manualEntry.status || '';
+    let resolvedCollected = Boolean(manualEntry.collected);
+    let resolvedCollectedAt = manualEntry.collected ? now : null;
+    let resolvedRevokedAt =
+      normalizeCredentialStatus(manualEntry.status) === 'REVOKED' ? now : null;
+    let lookupResultData = null;
+
+    if (!cid && credentialJti) {
+      cid = parseCidFromJti(credentialJti);
+    }
+
+    try {
+      if (transactionId) {
+        const lookupResult = await lookupCredentialByTransaction(transactionId);
+        lookupResultData = lookupResult;
+        if (lookupResult.ok) {
+          if (!cid && lookupResult.cid) {
+            cid = normalizeCid(lookupResult.cid);
+          }
+          if (!resolvedCredentialJti && lookupResult.credentialJti) {
+            resolvedCredentialJti = lookupResult.credentialJti;
+          }
+          if (!holderValue && lookupResult.holderDid) {
+            holderValue = lookupResult.holderDid;
+          }
+          if (lookupResult.status) {
+            resolvedStatus = lookupResult.status;
+          }
+          if (!resolvedCollected && lookupResult.collected) {
+            resolvedCollected = true;
+          }
+          if (!resolvedCollectedAt && lookupResult.collectedAt) {
+            resolvedCollectedAt = lookupResult.collectedAt;
+          }
+          if (!resolvedRevokedAt && lookupResult.revokedAt) {
+            resolvedRevokedAt = lookupResult.revokedAt;
+          }
+          lookupSource = 'nonce';
+          lookupPending = false;
+          lookupHint = null;
+        } else if (!cid) {
+          if (lookupResult.pending) {
+            lookupSource = lookupResult.lookupSource || 'nonce';
+            lookupPending = true;
+            lookupHint = lookupResult.lookupHint || null;
+            if (lookupResult.status) {
+              resolvedStatus = lookupResult.status;
+            }
+          } else {
+            lookupError = lookupResult.lookupError || '查詢官方 nonce API 失敗';
+          }
+        }
+      }
+
+      if (!cid && !transactionId) {
+        setManualEntryError('請至少輸入 CID 或交易序號。');
+        return;
+      }
+
+      if (transactionId && !cid && !lookupPending) {
+        setManualEntryError(lookupError || '無法從官方 nonce API 解析 CID，請確認交易序號。');
+        return;
+      }
+
+      if (!holderValue) {
+        setManualEntryError('請提供持卡者 DID。');
+        return;
+      }
+
+      const normalizedStatus = normalizeCredentialStatus(resolvedStatus) || (lookupPending ? 'PENDING' : 'ISSUED');
+      const statusDetails = describeCredentialStatus(normalizedStatus);
+      const finalCollected =
+        resolvedCollected || statusDetails.collected || Boolean(lookupResultData?.collected);
+      const finalCollectedAt =
+        resolvedCollectedAt || lookupResultData?.collectedAt || manualLookup.collectedAt || null;
+      const finalRevokedAt =
+        resolvedRevokedAt || lookupResultData?.revokedAt || manualLookup.revokedAt || null;
+
+      const entry = appendIssueLogEntry({
+        timestamp: now,
+        holderDid: holderValue,
+        issuerId: issuerId || '',
+        transactionId,
+        cid,
+        credentialJti: resolvedCredentialJti,
+        scope: manualEntry.scope,
+        scopeLabel: PRIMARY_SCOPE_LABEL[manualEntry.scope] || manualEntry.scope,
+        status: normalizedStatus,
+        collected: finalCollected,
+        collectedAt: finalCollectedAt,
+        revokedAt: statusDetails.revoked ? finalRevokedAt || now : finalRevokedAt,
+        hasCredential: Boolean(cid),
+        cidLookupSource: lookupSource,
+        cidLookupError: lookupError,
+        cidLookupPending: lookupPending,
+        cidLookupHint: lookupHint,
+        cidSandboxPrefix: sandboxPrefix,
+      });
+
+      if (!entry) {
+        setManualEntryError('無法建立發卡紀錄，請稍後再試。');
+        return;
+      }
+
+      setManualEntryFeedback('已加入發卡紀錄，可在下方列表追蹤狀態或撤銷。');
+      setManualEntry((prev) => ({
+        holderDid: '',
+        cid: '',
+        credentialJti: '',
+        transactionId: '',
+        scope: prev.scope,
+        status: '',
+        collected: false,
+      }));
+      setManualLookup(INITIAL_MANUAL_LOOKUP_STATE);
+    } finally {
+      setManualEntryLoading(false);
+    }
+  };
+
+  const performManualNonceLookup = async () => {
+    const transactionId = manualEntry.transactionId.trim();
+    if (!transactionId) {
+      setManualLookup({
+        ...INITIAL_MANUAL_LOOKUP_STATE,
+        error: '請先輸入交易序號後再查詢官方 nonce API。',
+      });
+      setManualEntryError('請先輸入交易序號後再查詢官方 nonce API。');
+      return;
+    }
+
+    setManualEntryError(null);
+    setManualEntryFeedback(null);
+    setManualLookup({
+      ...INITIAL_MANUAL_LOOKUP_STATE,
+      loading: true,
+      transactionId,
+    });
+
+    const lookupResult = await lookupCredentialByTransaction(transactionId);
+    if (lookupResult.ok) {
+      setManualEntry((prev) => ({
+        ...prev,
+        cid: lookupResult.cid || prev.cid,
+        credentialJti: lookupResult.credentialJti || prev.credentialJti,
+        holderDid: prev.holderDid || lookupResult.holderDid || holderDid || '',
+        status: normalizeCredentialStatus(lookupResult.status) || prev.status || '',
+        collected: prev.collected || lookupResult.collected,
+      }));
+      setManualLookup({
+        loading: false,
+        transactionId,
+        cid: lookupResult.cid || '',
+        credentialJti: lookupResult.credentialJti || '',
+        status: lookupResult.status || null,
+        collected: lookupResult.collected || false,
+        holderDid: lookupResult.holderDid || null,
+        collectedAt: lookupResult.collectedAt || null,
+        revokedAt: lookupResult.revokedAt || null,
+        error: null,
+        pending: false,
+        hint: null,
+      });
+      setManualEntryFeedback('已透過官方 nonce API 取得 CID，請確認資訊後加入發卡紀錄。');
+    } else if (lookupResult.pending) {
+      setManualEntry((prev) => ({
+        ...prev,
+        status: normalizeCredentialStatus(lookupResult.status) || prev.status || 'PENDING',
+      }));
+      setManualLookup({
+        loading: false,
+        transactionId,
+        cid: lookupResult.cid || '',
+        credentialJti: lookupResult.credentialJti || '',
+        status: lookupResult.status || 'PENDING',
+        collected: false,
+        holderDid: lookupResult.holderDid || null,
+        collectedAt: null,
+        revokedAt: null,
+        error: null,
+        pending: true,
+        hint: lookupResult.lookupHint || '指定 VC 尚未建立或 QR Code 尚未被掃描。',
+      });
+      setManualEntryError(null);
+      setManualEntryFeedback(
+        lookupResult.lookupHint
+          ? `官方回應：${lookupResult.lookupHint}，請稍後再查詢 CID。`
+          : '官方回應顯示憑證尚未領取，請稍後再查詢 CID。',
+      );
+    } else {
+      setManualLookup({
+        ...INITIAL_MANUAL_LOOKUP_STATE,
+        transactionId,
+        collected: false,
+        error: lookupResult.lookupError || '查詢官方 nonce API 失敗，請稍後再試。',
+      });
+      setManualEntryError(lookupResult.lookupError || '查詢官方 nonce API 失敗，請稍後再試。');
+    }
+  };
+
+  const resetManualEntry = () => {
+    setManualEntry((prev) => ({
+      holderDid: '',
+      cid: '',
+      credentialJti: '',
+      transactionId: '',
+      scope: prev.scope,
+      status: '',
+      collected: false,
+    }));
+    setManualEntryError(null);
+    setManualEntryFeedback(null);
+    setManualLookup(INITIAL_MANUAL_LOOKUP_STATE);
+  };
+
+  const recordInventoryCredential = (credential) => {
+    if (!credential) {
+      return;
+    }
+
+    let cid =
+      credential.credential_id ||
+      credential.credentialId ||
+      credential.cid ||
+      credential.id ||
+      '';
+    let credentialJti =
+      (credential.credential_jti ||
+        credential.credentialJti ||
+        credential.jti ||
+        '') &&
+      String(credential.credential_jti || credential.credentialJti || credential.jti || '').trim();
+
+    if (!credentialJti) {
+      const embeddedJwt =
+        (credential.credential && typeof credential.credential === 'string'
+          ? credential.credential
+          : null) ||
+        (typeof credential.jwt === 'string' ? credential.jwt : null) ||
+        (typeof credential.credential_jwt === 'string' ? credential.credential_jwt : null);
+      if (embeddedJwt) {
+        const identifiers = extractCredentialIdentifiers(embeddedJwt);
+        credentialJti = identifiers.jti;
+        if (!cid && identifiers.cid) {
+          cid = normalizeCid(identifiers.cid);
+        }
+      }
+    }
+
+    cid = normalizeCid(cid);
+    if (credentialJti) {
+      credentialJti = credentialJti.trim();
+    }
+    if (!cid && credentialJti) {
+      cid = parseCidFromJti(credentialJti);
+    }
+    if (!cid) {
+      setManualEntryError('此憑證未提供 CID，請手動輸入後再加入紀錄。');
+      return;
+    }
+
+    setManualEntryError(null);
+    setManualEntryFeedback(null);
+
+    const normalizedStatus = (credential.status || '').toString().toUpperCase();
+    const isRevoked = normalizedStatus.includes('REVOK');
+    const isCollected = ['ACCEPTED', 'COLLECTED', 'ACTIVE', 'ISSUED'].includes(normalizedStatus);
+    const now = new Date().toISOString();
+
+    appendIssueLogEntry({
+      timestamp:
+        credential.issued_at ||
+        credential.issuedAt ||
+        credential.created_at ||
+        credential.createdAt ||
+        now,
+      holderDid: credential.holder_did || holderInventoryDid || holderDid || '',
+      issuerId: issuerId || '',
+      transactionId:
+        credential.transaction_id ||
+        credential.transactionId ||
+        credential.request_id ||
+        credential.requestId ||
+        '',
+      cid,
+      credentialJti,
+      scope: credential.primary_scope || credential.scope || 'MEDICAL_RECORD',
+      scopeLabel:
+        PRIMARY_SCOPE_LABEL[credential.primary_scope] ||
+        PRIMARY_SCOPE_LABEL[credential.scope] ||
+        credential.primary_scope ||
+        credential.scope ||
+        'MEDICAL_RECORD',
+      status: isRevoked ? 'REVOKED' : 'ISSUED',
+      collected: !isRevoked && isCollected,
+      collectedAt:
+        !isRevoked && isCollected
+          ? credential.updated_at ||
+            credential.updatedAt ||
+            credential.accepted_at ||
+            credential.acceptedAt ||
+            now
+          : null,
+      revokedAt:
+        isRevoked
+          ? credential.updated_at ||
+            credential.updatedAt ||
+            credential.revoked_at ||
+            credential.revokedAt ||
+            now
+        : null,
+      hasCredential: true,
+      cidLookupSource: 'wallet',
+      cidLookupError: null,
+      cidSandboxPrefix: sandboxPrefix,
+    });
+    setManualEntryFeedback('已將錢包清單中的憑證加入發卡紀錄。');
+  };
+
+  const loadHolderInventory = async (targetDid) => {
+    const did = (targetDid || holderInventoryDid || '').trim();
+    setHolderInventoryError(null);
+    if (!did) {
+      setHolderInventoryError('請輸入持卡者 DID。');
+      return;
+    }
+    if (!holderAccessToken) {
+      setHolderInventoryError('請提供錢包或發行端 Access Token。');
+      return;
+    }
+
+    setHolderInventoryLoading(true);
+    try {
+      const response = await client.listHolderCredentials(did, holderAccessToken);
+      setHolderInventoryLoading(false);
+      if (!response.ok) {
+        setHolderInventory([]);
+        setHolderInventoryFetchedAt(null);
+        setHolderInventoryError(`(${response.status}) ${response.detail}`);
+        return;
+      }
+
+      const data = response.data || {};
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data.credentials)
+        ? data.credentials
+        : [];
+      setHolderInventory(
+        list.map((item) => ({
+          ...item,
+          credential_id: item.credential_id || item.credentialId || item.cid || '',
+          status: item.status || item.state || '',
+          primary_scope: item.primary_scope || item.scope || '',
+        }))
+      );
+      setHolderInventoryFetchedAt(new Date().toISOString());
+      setHolderInventoryActions({});
+    } catch (err) {
+      setHolderInventoryLoading(false);
+      setHolderInventoryError(err.message || '載入錢包資料失敗，請稍後再試。');
+    }
+  };
+
+  const forgetHolderInventory = async () => {
+    const did = (holderInventoryDid || '').trim();
+    setForgetState({ loading: true, error: null, message: null });
+
+    if (!did) {
+      setForgetState({ loading: false, error: '請輸入持卡者 DID。', message: null });
+      return;
+    }
+
+    if (!holderAccessToken) {
+      setForgetState({
+        loading: false,
+        error: '請提供錢包或發行端 Access Token。',
+        message: null,
+      });
+      return;
+    }
+
+    const response = await client.forgetHolder(did, holderAccessToken);
+    if (!response.ok) {
+      setForgetState({ loading: false, error: `(${response.status}) ${response.detail}`, message: null });
+      return;
+    }
+
+    setForgetState({ loading: false, error: null, message: '已向錢包請求可遺忘權。' });
+    setHolderInventory([]);
+    setHolderInventoryFetchedAt(new Date().toISOString());
+    setHolderInventoryActions({});
+  };
+
+  const revokeInventoryCredential = async (credential) => {
+    const credentialJtiRaw =
+      credential?.credential_jti || credential?.credentialJti || credential?.jti || '';
+    let credentialJti = credentialJtiRaw ? String(credentialJtiRaw).trim() : '';
+    let cid = credential?.credential_id || credential?.credentialId || credential?.cid;
+    if (!cid && credentialJti) {
+      cid = parseCidFromJti(credentialJti);
+    }
+    if (!cid && credential?.credential && typeof credential.credential === 'string') {
+      const identifiers = extractCredentialIdentifiers(credential.credential);
+      credentialJti = credentialJti || identifiers.jti;
+      cid = identifiers.cid || cid;
+    }
+
+    cid = normalizeCid(cid);
+    if (!cid) {
+      return;
+    }
+
+    const key = `inventory-${cid}`;
+    setHolderInventoryActions((prev) => ({
+      ...prev,
+      [key]: { loading: true, error: null, message: null },
+    }));
+
+    const response = await client.updateCredentialStatus(cid, 'revocation', issuerToken);
+
+    if (!response.ok) {
+      setHolderInventoryActions((prev) => ({
+        ...prev,
+        [key]: { loading: false, error: `(${response.status}) ${response.detail}`, message: null },
+      }));
+      return;
+    }
+
+    const now = new Date().toISOString();
+    setHolderInventoryActions((prev) => ({
+      ...prev,
+      [key]: { loading: false, error: null, message: '已撤銷，列表將重新整理。' },
+    }));
+
+    appendIssueLogEntry({
+      timestamp: now,
+      holderDid: credential?.holder_did || holderInventoryDid || holderDid || '',
+      issuerId: issuerId || '',
+      transactionId:
+        credential?.transaction_id ||
+        credential?.transactionId ||
+        credential?.request_id ||
+        credential?.requestId ||
+        '',
+      cid,
+      credentialJti: credentialJti || '',
+      scope: credential?.primary_scope || credential?.scope || primaryScope,
+      scopeLabel:
+        PRIMARY_SCOPE_LABEL[credential?.primary_scope] ||
+        PRIMARY_SCOPE_LABEL[credential?.scope] ||
+        credential?.primary_scope ||
+        credential?.scope ||
+        primaryScope,
+      status: 'REVOKED',
+      collected: true,
+      collectedAt:
+        credential?.updated_at || credential?.updatedAt || credential?.accepted_at || credential?.acceptedAt || now,
+      revokedAt: now,
+      hasCredential: true,
+      cidLookupSource: 'wallet',
+      cidLookupError: null,
+      cidSandboxPrefix: sandboxPrefix,
+    });
+
+    await loadHolderInventory(holderInventoryDid);
+  };
+
+  const runStatusAction = async (index, cid, action) => {
+    if (!cid) {
+      return;
+    }
+
+    const normalizedCid = normalizeCid(cid);
+    const key = `${normalizedCid}-${action}`;
+    setIssueLogActions((prev) => ({
+      ...prev,
+      [key]: { loading: true, message: null, error: null, tone: null },
+    }));
+
+    const response = await client.updateCredentialStatus(normalizedCid, action, issuerToken);
+
+    if (!response.ok) {
+      const rawDetail = response.detail;
+      let detailMessage = '';
+      if (typeof rawDetail === 'string') {
+        detailMessage = rawDetail;
+      } else if (rawDetail && typeof rawDetail === 'object') {
+        detailMessage =
+          rawDetail.message || rawDetail.detail || rawDetail.reason || JSON.stringify(rawDetail);
+      }
+      const detailCode =
+        (rawDetail && typeof rawDetail === 'object' && (rawDetail.code || rawDetail.errorCode)) ||
+        (detailMessage.match(/6\d{4}/) ? detailMessage.match(/6\d{4}/)[0] : null);
+      const isPending61010 = detailCode === '61010' || /61010/.test(detailMessage);
+
+      if (isPending61010) {
+        updateIssueLogEntry(index, (entry) => ({
+          ...entry,
+          cidLookupPending: true,
+          cidLookupError: null,
+          cidLookupHint:
+            detailMessage || '官方回應 61010：指定 VC 尚未領取或 QR Code 尚未被掃描。',
+        }));
+      }
+
+      setIssueLogActions((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: isPending61010 ? null : `(${response.status}) ${detailMessage || '操作失敗'}`,
+          message: isPending61010
+            ? detailMessage || '官方仍回應 61010，請確認卡片是否完成領取。'
+            : null,
+          tone: isPending61010 ? 'info' : 'error',
+        },
+      }));
+      return;
+    }
+
+    setIssueLogActions((prev) => ({
+      ...prev,
+      [key]: {
+        loading: false,
+        error: null,
+        message: '操作成功，狀態已更新。',
+        tone: 'success',
+      },
+    }));
+
+    if (action === 'revocation') {
+      updateIssueLogEntry(index, (entry) => ({
+        ...entry,
+        status: 'REVOKED',
+        revokedAt: new Date().toISOString(),
+      }));
+      refreshIssueLogEntry(index);
+    }
+  };
+
+  const refreshIssueLogEntry = async (index) => {
+    const entry = issueLog[index];
+    if (!entry) {
+      return;
+    }
+
+    const transactionId = entry.transactionId ? entry.transactionId.trim() : '';
+    const fallbackKey = entry.cid ? `${entry.cid}-refresh` : `entry-${index}-refresh`;
+    const key = transactionId ? `${transactionId}-refresh` : fallbackKey;
+
+    if (!transactionId) {
+      setIssueLogActions((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: '此紀錄未保存交易序號，請改用「查詢 CID」補登後再試。',
+          message: null,
+          tone: 'error',
+        },
+      }));
+      return;
+    }
+
+    setIssueLogActions((prev) => ({
+      ...prev,
+      [key]: { loading: true, message: null, error: null, tone: null },
+    }));
+
+    const lookupResult = await lookupCredentialByTransaction(transactionId);
+
+    if (!lookupResult.ok && !lookupResult.pending) {
+      setIssueLogActions((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: lookupResult.lookupError || '查詢官方 nonce API 失敗，請稍後再試。',
+          message: null,
+          tone: 'error',
+        },
+      }));
+      updateIssueLogEntry(index, (current) => ({
+        ...current,
+        cidLookupSource: lookupResult.lookupSource || 'nonce',
+        cidLookupError: lookupResult.lookupError || current.cidLookupError,
+        cidLookupPending: false,
+        cidLookupHint: lookupResult.lookupHint || current.cidLookupHint,
+      }));
+      return;
+    }
+
+    updateIssueLogEntry(index, (current) => {
+      const nextCid = lookupResult.cid ? normalizeCid(lookupResult.cid) : current.cid;
+      const nextJti = lookupResult.credentialJti || current.credentialJti || '';
+      const nextStatus = lookupResult.status || current.status;
+      const statusInfo = describeCredentialStatus(nextStatus);
+      const nextCollectedAt =
+        lookupResult.collectedAt ||
+        current.collectedAt ||
+        (statusInfo.collected && !current.collectedAt ? new Date().toISOString() : null);
+      const nextRevokedAt =
+        lookupResult.revokedAt ||
+        current.revokedAt ||
+        (statusInfo.revoked && !current.revokedAt ? new Date().toISOString() : null);
+      const nextHolder = lookupResult.holderDid || current.holderDid || '';
+      const hasCredential = current.hasCredential || Boolean(nextCid) || lookupResult.hasCredential;
+
+      if (lookupResult.pending) {
+        return {
+          ...current,
+          cid: nextCid,
+          credentialJti: nextJti,
+          status: nextStatus,
+          holderDid: nextHolder,
+          cidLookupSource: lookupResult.lookupSource || 'nonce',
+          cidLookupError: null,
+          cidLookupPending: true,
+          cidLookupHint: lookupResult.lookupHint || current.cidLookupHint,
+          hasCredential,
+        };
+      }
+
+      return {
+        ...current,
+        cid: nextCid,
+        credentialJti: nextJti,
+        status: nextStatus,
+        collected: lookupResult.collected || current.collected || statusInfo.collected,
+        collectedAt: nextCollectedAt,
+        revokedAt: nextRevokedAt,
+        holderDid: nextHolder,
+        cidLookupSource: lookupResult.lookupSource || 'nonce',
+        cidLookupError: null,
+        cidLookupPending: false,
+        cidLookupHint: null,
+        hasCredential,
+      };
+    });
+
+    setIssueLogActions((prev) => ({
+      ...prev,
+      [key]: {
+        loading: false,
+        error: null,
+        message:
+          lookupResult.pending
+            ? lookupResult.lookupHint || '官方仍回應 61010，請稍後再試。'
+            : '已同步官方狀態並更新統計頁。',
+        tone: lookupResult.pending ? 'info' : 'success',
+      },
+    }));
+  };
+
   function updateCondition(field, value) {
     setCondition((prev) => ({ ...prev, [field]: value }));
   }
@@ -666,6 +1985,14 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
       }
 
       const data = response.data || {};
+      const credentialJwt =
+        data.credential ||
+        data.credentialJwt ||
+        data.credential_jwt ||
+        data.credentialToken ||
+        data.jwt ||
+        null;
+      const directIdentifiers = extractCredentialIdentifiers(credentialJwt);
       const normalized = {
         transactionId:
           data.transactionId || data.verifier_transaction_id || data.transaction_id || '',
@@ -674,9 +2001,68 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
         deepLink: data.deepLink || data.authUri || data.auth_uri || '',
         raw: data,
       };
-      setSuccess(normalized);
       if (normalized.transactionId) {
         onLatestTransactionChange?.(normalized.transactionId);
+      }
+      let recordedEntry = null;
+      if (credentialJwt || normalized.transactionId) {
+        try {
+          recordedEntry = await recordIssue({
+            credentialJwt,
+            transactionId: normalized.transactionId,
+          });
+        } catch (err) {
+          console.warn('Unable to record issuance entry', err);
+        }
+      }
+
+      const cidValue = normalizeCid(recordedEntry?.cid || directIdentifiers.cid || '');
+      const jtiValue = recordedEntry?.credentialJti || directIdentifiers.jti || '';
+      const prefixValue =
+        recordedEntry?.cidSandboxPrefix && typeof recordedEntry.cidSandboxPrefix === 'string'
+          ? recordedEntry.cidSandboxPrefix
+          : sandboxPrefix;
+      const revocationDetails = computeRevocationDetails({
+        cid: cidValue,
+        sandboxPrefix: prefixValue,
+        baseUrl: sanitizedBaseUrl,
+        storedPath: recordedEntry?.cidRevocationPath || '',
+        storedUrl: recordedEntry?.cidRevocationUrl || '',
+        storedDisplayPath: recordedEntry?.cidRevocationDisplayPath || '',
+        storedDisplayUrl: recordedEntry?.cidRevocationDisplayUrl || '',
+      });
+
+      setSuccess({
+        ...normalized,
+        cid: cidValue,
+        credentialJti: jtiValue,
+        cidRevocationPath: revocationDetails.path,
+        cidRevocationDisplayPath: revocationDetails.displayPath,
+        cidRevocationUrl: revocationDetails.url,
+        cidRevocationDisplayUrl: revocationDetails.displayUrl,
+        cidLookupSource:
+          recordedEntry?.cidLookupSource || (credentialJwt ? 'response' : null),
+        cidLookupError: recordedEntry?.cidLookupError || null,
+        cidLookupPending: recordedEntry?.cidLookupPending || false,
+        cidLookupHint: recordedEntry?.cidLookupHint || null,
+      });
+
+      if (normalized.transactionId) {
+        setManualEntry((prev) => {
+          if (prev.transactionId === normalized.transactionId) {
+            return prev;
+          }
+          if (prev.transactionId && prev.transactionId !== normalized.transactionId) {
+            return prev;
+          }
+          return {
+            ...prev,
+            transactionId: normalized.transactionId,
+          };
+        });
+        setManualLookup(INITIAL_MANUAL_LOOKUP_STATE);
+        setManualEntryError(null);
+        setManualEntryFeedback(null);
       }
     } catch (err) {
       setLoading(false);
@@ -706,6 +2092,13 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
 
   const qrSource = success?.qrCode || success?.deepLink || '';
   const shouldRenderImage = success?.qrCode?.startsWith('data:image');
+  const successCidSourceLabel = describeLookupSource(success?.cidLookupSource);
+  const successCidPending = Boolean(success?.cidLookupPending);
+  const successCidHint = success?.cidLookupHint || null;
+  const manualStatusInfo = describeCredentialStatus(manualEntry.status);
+  const manualStatusBadgeClass = manualStatusInfo.tone
+    ? `status-badge ${manualStatusInfo.tone}`
+    : 'status-badge';
 
   return (
     <section aria-labelledby="issuer-heading">
@@ -735,7 +2128,11 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
           <input
             id="holder-did"
             value={holderDid}
-            onChange={(event) => setHolderDid(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setHolderDid(value);
+              setCondition((prev) => ({ ...prev, subject: value }));
+            }}
           />
 
           <label htmlFor="holder-hint">錢包顯示提示</label>
@@ -744,6 +2141,25 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
             value={holderHint}
             onChange={(event) => setHolderHint(event.target.value)}
           />
+          <div className="quick-select">
+            <span className="quick-select-label">常用持卡者：</span>
+            {HOLDER_PROFILES.map((profile) => (
+              <button
+                key={profile.did}
+                type="button"
+                className={`secondary quick-select-button${
+                  holderDid === profile.did ? ' active' : ''
+                }`}
+                onClick={() => {
+                  setHolderDid(profile.did);
+                  setHolderHint(profile.hint);
+                  setCondition((prev) => ({ ...prev, subject: profile.did }));
+                }}
+              >
+                {profile.label}
+              </button>
+            ))}
+          </div>
 
           <label htmlFor="primary-scope">憑證主用途</label>
           <select
@@ -789,7 +2205,62 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
           {error ? <div className="alert error">{error}</div> : null}
           {success ? (
             <div className="alert success" role="status">
-              已取得政府沙盒 QR Code（交易序號：{success.transactionId || '未知'}）。
+              <p>已取得政府沙盒 QR Code（交易序號：{success.transactionId || '未知'}）。</p>
+              <div className="cid-summary" role="group" aria-label="憑證識別資訊">
+                <div className="cid-summary-row">
+                  <span className="cid-summary-label">憑證 CID</span>
+                  {success.cid ? (
+                    <code className="cid-summary-value">{success.cid}</code>
+                  ) : (
+                    <span className="cid-summary-placeholder">
+                      尚未取得，請稍候於下方發卡紀錄確認。
+                    </span>
+                  )}
+                </div>
+                {success.credentialJti ? (
+                  <div className="cid-summary-row">
+                    <span className="cid-summary-label">JTI</span>
+                    <code className="cid-summary-value">{success.credentialJti}</code>
+                  </div>
+                ) : null}
+                {success.cidRevocationDisplayPath && success.cid ? (
+                  <div className="cid-summary-row">
+                    <span className="cid-summary-label">撤銷 API</span>
+                    <code className="cid-summary-value">PUT {success.cidRevocationDisplayPath}</code>
+                  </div>
+                ) : null}
+                {success.cidRevocationPath &&
+                success.cid &&
+                success.cidRevocationPath !== success.cidRevocationDisplayPath ? (
+                  <div className="cid-summary-row">
+                    <span className="cid-summary-label">沙盒路徑</span>
+                    <code className="cid-summary-value">PUT {success.cidRevocationPath}</code>
+                  </div>
+                ) : null}
+                {success.cidRevocationDisplayUrl && success.cid ? (
+                  <div className="cid-summary-row">
+                    <span className="cid-summary-label">完整 URL</span>
+                    <code className="cid-summary-value">{success.cidRevocationDisplayUrl}</code>
+                  </div>
+                ) : null}
+                {success.cidRevocationUrl &&
+                success.cid &&
+                success.cidRevocationUrl !== success.cidRevocationDisplayUrl ? (
+                  <div className="cid-summary-row">
+                    <span className="cid-summary-label">沙盒 URL</span>
+                    <code className="cid-summary-value">{success.cidRevocationUrl}</code>
+                  </div>
+                ) : null}
+              </div>
+          {successCidPending ? (
+            <p className="hint">
+              {successCidHint || '官方回應顯示憑證尚未領取，請稍後再查詢 CID。'}
+            </p>
+          ) : success.cidLookupError ? (
+            <p className="hint error">CID 查詢失敗：{success.cidLookupError}</p>
+          ) : successCidSourceLabel ? (
+            <p className="hint">CID 來源：{successCidSourceLabel}</p>
+          ) : null}
             </div>
           ) : null}
         </div>
@@ -1075,6 +2546,19 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
         <div className="card" aria-live="polite">
           <h3>政府沙盒回應</h3>
           <p>Transaction ID：{success.transactionId || '尚未提供'}</p>
+          <p>
+            憑證 CID：
+            {success.cid ? success.cid : '尚未取得，請稍候於發卡紀錄確認。'}
+          </p>
+          {successCidPending ? (
+            <p className="hint">
+              {successCidHint || '官方回應顯示憑證尚未領取，請稍後再查詢 CID。'}
+            </p>
+          ) : success.cidLookupError ? (
+            <p className="hint error">CID 查詢失敗：{success.cidLookupError}</p>
+          ) : successCidSourceLabel ? (
+            <p className="hint">CID 來源：{successCidSourceLabel}</p>
+          ) : null}
           {qrSource ? (
             shouldRenderImage ? (
               <div className="qr-container" aria-label="發卡 QR Code">
@@ -1097,6 +2581,586 @@ export function IssuerPanel({ client, issuerToken, baseUrl, onLatestTransactionC
           <pre>{JSON.stringify(success.raw, null, 2)}</pre>
         </div>
       ) : null}
+
+      <div className="card inventory-card" aria-live="polite">
+        <div className="issue-log-header">
+          <h3>持卡者憑證狀態</h3>
+          {holderInventoryFetchedAt ? (
+            <span className="badge">
+              更新於 {new Date(holderInventoryFetchedAt).toLocaleString()}
+            </span>
+          ) : null}
+        </div>
+        <p>
+          直接透過錢包 API 查詢指定 DID 目前持有的電子卡，並可一鍵補登到發卡紀錄或由發行端觸發撤銷／可遺忘權。
+          若政府沙盒尚未回應，可先按「刷新持卡紀錄」同步最新清單。
+        </p>
+        <label htmlFor="inventory-holder-did">持卡者 DID</label>
+        <input
+          id="inventory-holder-did"
+          value={holderInventoryDid}
+          onChange={(event) => setHolderInventoryDid(event.target.value)}
+          placeholder={holderDid}
+        />
+        <div className="quick-select">
+          <span className="quick-select-label">快速帶入：</span>
+          {HOLDER_PROFILES.map((profile) => (
+            <button
+              key={`inventory-${profile.did}`}
+              type="button"
+              className={`secondary quick-select-button${
+                holderInventoryDid === profile.did ? ' active' : ''
+              }`}
+              onClick={() => setHolderInventoryDid(profile.did)}
+            >
+              {profile.label}
+            </button>
+          ))}
+        </div>
+        <div className="inventory-actions-row">
+          <button type="button" onClick={() => loadHolderInventory()} disabled={holderInventoryLoading}>
+            {holderInventoryLoading ? '同步中…' : '刷新持卡紀錄'}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={forgetHolderInventory}
+            disabled={forgetState.loading}
+          >
+            {forgetState.loading ? '執行中…' : '行使可遺忘權'}
+          </button>
+        </div>
+        {holderInventoryError ? <div className="alert error">{holderInventoryError}</div> : null}
+        {forgetState.error ? <div className="alert error">{forgetState.error}</div> : null}
+        {forgetState.message ? <div className="alert success">{forgetState.message}</div> : null}
+        {holderInventoryLoading ? (
+          <p>錢包資料載入中…</p>
+        ) : holderInventory.length ? (
+          <ul className="inventory-list">
+            {holderInventory.map((credential, index) => {
+              const hasRealCid = Boolean(
+                credential.credential_id || credential.credentialId || credential.cid
+              );
+              const cid = hasRealCid
+                ? credential.credential_id || credential.credentialId || credential.cid
+                : `unknown-${index}`;
+              const scopeLabel = credential.primary_scope
+                ? PRIMARY_SCOPE_LABEL[credential.primary_scope] || credential.primary_scope
+                : credential.scope
+                ? PRIMARY_SCOPE_LABEL[credential.scope] || credential.scope
+                : '未提供用途';
+              const statusText = credential.status || credential.state || '未知狀態';
+              const issuedAt =
+                credential.issued_at ||
+                credential.issuedAt ||
+                credential.created_at ||
+                credential.createdAt ||
+                null;
+              const updatedAt = credential.updated_at || credential.updatedAt || null;
+              const actionKey = `inventory-${hasRealCid ? cid : index}`;
+              const actionState = holderInventoryActions[actionKey];
+              const revokeDisabled = !hasRealCid || Boolean(actionState?.loading);
+              return (
+                <li key={actionKey}>
+                  <div className="issue-log-row">
+                    <strong>{cid || '未提供 CID'}</strong>
+                    <span className="meta">狀態：{statusText}</span>
+                  </div>
+                  <div className="meta">用途：{scopeLabel}</div>
+                  <div className="meta">
+                    持卡者：{credential.holder_did || holderInventoryDid || '未提供'}
+                  </div>
+                  <div className="meta">交易序號：{credential.transaction_id || credential.transactionId || '未提供'}</div>
+                  <div className="meta">
+                    發卡時間：{issuedAt ? new Date(issuedAt).toLocaleString() : '未提供'}
+                  </div>
+                  {updatedAt ? (
+                    <div className="meta">最後更新：{new Date(updatedAt).toLocaleString()}</div>
+                  ) : null}
+                  <div className="issue-log-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => recordInventoryCredential(credential)}
+                    >
+                      加入發卡紀錄
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => revokeInventoryCredential(credential)}
+                      disabled={revokeDisabled}
+                    >
+                      {actionState?.loading ? '撤銷中…' : '撤銷此卡'}
+                    </button>
+                  </div>
+                  {actionState?.error ? (
+                    <div className="issue-log-feedback error">{actionState.error}</div>
+                  ) : null}
+                  {actionState?.message ? (
+                    <div className="issue-log-feedback success">{actionState.message}</div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p>尚未載入錢包資料，請先刷新持卡紀錄。</p>
+        )}
+      </div>
+
+      <div className="card issue-log-card" aria-live="polite">
+        <div className="issue-log-header">
+          <h3>發卡紀錄</h3>
+          <span className="badge">已記錄 {issueLog.length} 張</span>
+        </div>
+        <div className="issue-log-summary">
+          <span className="stat-pill">全部 {issueLogStats.total}</span>
+          <span className="stat-pill">待領取 {Math.max(issueLogStats.pending, 0)}</span>
+          <span className="stat-pill">已領取 {issueLogStats.collected}</span>
+          <span className="stat-pill">已撤銷 {issueLogStats.revoked}</span>
+        </div>
+        <form className="issue-log-manual" onSubmit={handleManualEntrySubmit}>
+          <h4>手動補登／外部查詢結果</h4>
+          <div className="manual-entry-grid">
+            <div className="manual-transaction-field">
+              <label htmlFor="manual-transaction">交易序號</label>
+              <div className="manual-transaction-input">
+                <input
+                  id="manual-transaction"
+                  value={manualEntry.transactionId}
+                  onChange={(event) => handleManualEntryChange('transactionId', event.target.value)}
+                  placeholder="nonce 查詢時回傳的 transactionId"
+                />
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={performManualNonceLookup}
+                  disabled={manualLookup.loading}
+                >
+                  {manualLookup.loading ? '查詢中…' : '查詢 CID'}
+                </button>
+              </div>
+              <p className="field-hint">依官方流程：先查 nonce，再解析 jti 取得 CID。</p>
+            </div>
+            <div>
+              <label htmlFor="manual-holder-did">持卡者 DID</label>
+              <input
+                id="manual-holder-did"
+                value={manualEntry.holderDid}
+                onChange={(event) => handleManualEntryChange('holderDid', event.target.value)}
+                placeholder={holderDid}
+              />
+            </div>
+            <div>
+              <label htmlFor="manual-cid">憑證 CID</label>
+              <input
+                id="manual-cid"
+                value={manualEntry.cid}
+                onChange={(event) => handleManualEntryChange('cid', event.target.value)}
+                placeholder="a16187e9-…"
+                readOnly={Boolean(manualEntry.transactionId)}
+              />
+              {manualEntry.transactionId ? (
+                <p className="field-hint">填入交易序號後，CID 將依查詢結果自動帶入。</p>
+              ) : null}
+            </div>
+            <div>
+              <label htmlFor="manual-jti">Credential JTI（官方回應 URL）</label>
+              <input
+                id="manual-jti"
+                value={manualEntry.credentialJti}
+                onChange={(event) => handleManualEntryChange('credentialJti', event.target.value)}
+                placeholder="https://.../api/credential/a16187e9-…"
+                readOnly={Boolean(manualEntry.transactionId)}
+              />
+              {manualEntry.transactionId ? (
+                <p className="field-hint">JTI 會跟隨 nonce 回應同步更新。</p>
+              ) : null}
+            </div>
+            <div>
+              <label htmlFor="manual-scope">用途</label>
+              <select
+                id="manual-scope"
+                value={manualEntry.scope}
+                onChange={(event) => handleManualEntryChange('scope', event.target.value)}
+              >
+                {PRIMARY_SCOPE_OPTIONS.map((option) => (
+                  <option key={`manual-scope-${option.value}`} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="manual-status-preview">
+              <label htmlFor="manual-status">官方狀態</label>
+              <div id="manual-status" className="manual-status-value">
+                <span className={manualStatusBadgeClass}>{manualStatusInfo.text}</span>
+              </div>
+              <p className="field-hint">狀態會依 nonce 查詢結果自動更新。</p>
+            </div>
+          </div>
+          <div className="manual-lookup-instructions">
+            <h5>官方取得 CID 流程</h5>
+            <ol>
+              <li>
+                呼叫
+                <code>
+                  GET /api/credential/nonce/{'{'}transactionId{'}'}
+                </code>
+                ，取得政府回傳的 credential JWT。
+              </li>
+              <li>
+                解碼 JWT，讀取 payload 內的 <code>jti</code> 欄位。
+              </li>
+              <li>
+                從 <code>jti</code> 的 URL 中擷取 <code>/api/credential/</code> 後的字串作為
+                <code>CID</code>。
+              </li>
+            </ol>
+            <p>
+              完成後即可呼叫
+              <code>
+                PUT /api/credential/{'{'}cid{'}'}/revocation
+              </code>
+              撤銷卡片。
+            </p>
+          </div>
+          {manualLookup.transactionId ? (
+            <div
+              className={`manual-lookup-result${
+                manualLookup.error ? ' error' : manualLookup.pending ? ' pending' : ''
+              }`}
+            >
+              <div className="manual-lookup-row header">
+                <strong>官方查詢結果</strong>
+                <span>交易序號：{manualLookup.transactionId}</span>
+              </div>
+              {manualLookup.error ? (
+                <p className="manual-lookup-error">{manualLookup.error}</p>
+              ) : (
+                <>
+                  <div className="manual-lookup-row">
+                    <span className="label">CID</span>
+                    <span className="value code">{manualLookup.cid || manualEntry.cid || '尚未取得'}</span>
+                  </div>
+                  <div className="manual-lookup-row">
+                    <span className="label">JTI</span>
+                    <span className="value code">
+                      {manualLookup.credentialJti || manualEntry.credentialJti || '尚未取得'}
+                    </span>
+                  </div>
+                  {(() => {
+                    const statusInfo = describeCredentialStatus(manualLookup.status);
+                    const badgeClass = statusInfo.tone
+                      ? `status-badge ${statusInfo.tone}`
+                      : 'status-badge';
+                    const collectedState = manualLookup.collected || statusInfo.collected;
+                    return (
+                      <>
+                        <div className="manual-lookup-row">
+                          <span className="label">官方狀態</span>
+                          <span className="value">
+                            <span className={badgeClass}>{statusInfo.text}</span>
+                          </span>
+                        </div>
+                        <div className="manual-lookup-row">
+                          <span className="label">是否領取</span>
+                          <span className="value">
+                            {collectedState ? '已領取（官方資料）' : '尚未領取'}
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                  {manualLookup.pending && manualLookup.hint ? (
+                    <div className="manual-lookup-row">
+                      <span className="label">官方回應</span>
+                      <span className="value">{manualLookup.hint}</span>
+                    </div>
+                  ) : null}
+                  {manualLookup.cid ? (
+                    <div className="manual-lookup-row">
+                      <span className="label">撤銷路徑</span>
+                      <span className="value code">
+                        PUT /api/credential/{manualLookup.cid}/revocation
+                      </span>
+                    </div>
+                  ) : null}
+                  {manualLookup.holderDid ? (
+                    <div className="manual-lookup-row">
+                      <span className="label">持卡者 DID</span>
+                      <span className="value code">{manualLookup.holderDid}</span>
+                    </div>
+                  ) : null}
+                  {manualLookup.collectedAt ? (
+                    <div className="manual-lookup-row">
+                      <span className="label">領取時間</span>
+                      <span className="value">
+                        {new Date(manualLookup.collectedAt).toLocaleString()}
+                      </span>
+                    </div>
+                  ) : null}
+                  {manualLookup.revokedAt ? (
+                    <div className="manual-lookup-row">
+                      <span className="label">撤銷時間</span>
+                      <span className="value">
+                        {new Date(manualLookup.revokedAt).toLocaleString()}
+                      </span>
+                    </div>
+                  ) : null}
+                  <p className="manual-lookup-note">請以官方查詢結果為準，確認無誤後再寫入紀錄。</p>
+                </>
+              )}
+            </div>
+          ) : null}
+          <label className="checkbox-inline">
+            <input
+              type="checkbox"
+              checked={manualEntry.collected}
+              onChange={(event) => handleManualEntryChange('collected', event.target.checked)}
+            />
+            標示為已領取（會記錄領取時間）
+          </label>
+          <div className="manual-entry-actions">
+            <button type="submit" disabled={manualEntryLoading}>
+              {manualEntryLoading ? '查詢中…' : '加入發卡紀錄'}
+            </button>
+            <button type="button" className="secondary" onClick={resetManualEntry}>
+              清除輸入
+            </button>
+          </div>
+          {manualEntryError ? <div className="alert error">{manualEntryError}</div> : null}
+          {manualEntryFeedback ? <div className="alert success">{manualEntryFeedback}</div> : null}
+        </form>
+        {issueLog.length === 0 ? (
+          <p>
+            尚未紀錄任何電子卡。政府沙盒回應 200 時，系統會解析 credential JWT 的 jti 欄位並自動寫入 CID
+            與交易序號，方便稽核。可在此標示是否完成取卡並依需求觸發 PUT /api/credential/{{cid}}/revocation。
+          </p>
+        ) : (
+          <ul className="issue-log">
+            {issueLog.map((entry, index) => {
+              const key = `${entry.transactionId || entry.cid || entry.timestamp}-${index}`;
+              const timestamp = entry.timestamp
+                ? new Date(entry.timestamp).toLocaleString()
+                : '時間未知';
+              const cidLabel = entry.cid
+                ? entry.cid
+                : entry.cidLookupPending
+                ? '等待領取'
+                : entry.cidLookupError
+                ? '查詢失敗'
+                : entry.cidLookupSource === 'transaction'
+                ? '待官方查詢'
+                : entry.hasCredential
+                ? '解析失敗'
+                : '官方回應未提供 credential';
+              const statusInfo = describeCredentialStatus(entry.status);
+              const statusBadgeClass = statusInfo.tone
+                ? `status-badge ${statusInfo.tone}`
+                : 'status-badge';
+              const statusLabelExtra =
+                statusInfo.revoked && entry.revokedAt
+                  ? `（${new Date(entry.revokedAt).toLocaleString()}）`
+                  : '';
+              const entryCollected = entry.collected || statusInfo.collected;
+              const collectedLabel = entryCollected
+                ? entry.collectedAt
+                  ? `已領取（${new Date(entry.collectedAt).toLocaleString()}）`
+                  : '已領取（狀態同步）'
+                : '尚未領取';
+              const lookupSourceLabel = describeLookupSource(entry.cidLookupSource);
+              const displayCid = entry.cid || '';
+              const displayRevocationPath =
+                displayCid &&
+                (entry.cidRevocationDisplayPath || entry.cidRevocationPath)
+                  ? entry.cidRevocationDisplayPath || entry.cidRevocationPath
+                  : '';
+              const sandboxRevocationPath =
+                displayCid &&
+                entry.cidRevocationPath &&
+                entry.cidRevocationPath !== displayRevocationPath
+                  ? entry.cidRevocationPath
+                  : '';
+              const displayRevocationUrl =
+                displayCid && (entry.cidRevocationDisplayUrl || entry.cidRevocationUrl)
+                  ? entry.cidRevocationDisplayUrl || entry.cidRevocationUrl
+                  : '';
+              const sandboxRevocationUrl =
+                displayCid &&
+                entry.cidRevocationUrl &&
+                entry.cidRevocationUrl !== displayRevocationUrl
+                  ? entry.cidRevocationUrl
+                  : '';
+              const displayJti = entry.credentialJti || '';
+              const actionKey = entry.cid ? `${entry.cid}-revocation` : null;
+              const actionState = actionKey ? issueLogActions[actionKey] : null;
+              const revokeDisabled =
+                !entry.cid || entry.status === 'REVOKED' || Boolean(actionState?.loading);
+              const refreshKey = entry.transactionId
+                ? `${entry.transactionId}-refresh`
+                : entry.cid
+                ? `${entry.cid}-refresh`
+                : null;
+              const refreshState = refreshKey ? issueLogActions[refreshKey] : null;
+              const refreshDisabled = Boolean(refreshState?.loading);
+              return (
+                <li key={key}>
+                  <div className="issue-log-row">
+                    <strong>{entry.holderDid || '未知持卡者'}</strong>
+                    <span className="meta">{timestamp}</span>
+                  </div>
+                  <div className="meta">用途：{entry.scopeLabel}</div>
+                  <div
+                    className="cid-summary cid-summary-inline"
+                    role="group"
+                    aria-label="CID 與撤銷資訊"
+                  >
+                    <div className="cid-summary-row">
+                      <span className="cid-summary-label">憑證 CID</span>
+                      {displayCid ? (
+                        <code className="cid-summary-value">{displayCid}</code>
+                      ) : (
+                        <span
+                          className={`cid-summary-placeholder${
+                            entry.cidLookupError ? ' error' : ''
+                          }${entry.cidLookupPending ? ' pending' : ''}`}
+                        >
+                          {cidLabel}
+                        </span>
+                      )}
+                    </div>
+                    {displayJti ? (
+                      <div className="cid-summary-row">
+                        <span className="cid-summary-label">JTI</span>
+                        <code className="cid-summary-value">{displayJti}</code>
+                      </div>
+                    ) : null}
+                    {displayRevocationPath ? (
+                      <div className="cid-summary-row">
+                        <span className="cid-summary-label">撤銷 API</span>
+                        <code className="cid-summary-value">PUT {displayRevocationPath}</code>
+                      </div>
+                    ) : null}
+                    {sandboxRevocationPath ? (
+                      <div className="cid-summary-row">
+                        <span className="cid-summary-label">沙盒路徑</span>
+                        <code className="cid-summary-value">PUT {sandboxRevocationPath}</code>
+                      </div>
+                    ) : null}
+                    {displayRevocationUrl ? (
+                      <div className="cid-summary-row">
+                        <span className="cid-summary-label">完整 URL</span>
+                        <code className="cid-summary-value">{displayRevocationUrl}</code>
+                      </div>
+                    ) : null}
+                    {sandboxRevocationUrl ? (
+                      <div className="cid-summary-row">
+                        <span className="cid-summary-label">沙盒 URL</span>
+                        <code className="cid-summary-value">{sandboxRevocationUrl}</code>
+                      </div>
+                    ) : null}
+                    {lookupSourceLabel ? (
+                      <p className="hint cid-summary-hint">CID 來源：{lookupSourceLabel}</p>
+                    ) : null}
+                    {entry.cidLookupHint && !entry.cidLookupError ? (
+                      <p className="hint cid-summary-hint">官方回應：{entry.cidLookupHint}</p>
+                    ) : null}
+                  </div>
+                  <div className="meta">交易序號：{entry.transactionId || '未提供'}</div>
+                  <div className="meta">發行者：{entry.issuerId || '未設定'}</div>
+                  <div className="meta">
+                    狀態：<span className={statusBadgeClass}>{statusInfo.text}</span>
+                    {statusLabelExtra ? <span className="meta-note">{statusLabelExtra}</span> : null}
+                  </div>
+                  <div className="meta">領取紀錄：{collectedLabel}</div>
+                  {entry.cidLookupError ? (
+                    <div className="issue-log-feedback error">
+                      CID 查詢失敗：{entry.cidLookupError}
+                    </div>
+                  ) : entry.cidLookupPending ? (
+                    <div className="issue-log-feedback info">
+                      官方查詢回應：{entry.cidLookupHint || '憑證尚未領取，請稍後再查詢。'}
+                    </div>
+                  ) : null}
+                  <div className="issue-log-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => refreshIssueLogEntry(index)}
+                      disabled={refreshDisabled}
+                    >
+                      {refreshState?.loading ? '查詢中…' : '重新查詢官方狀態'}
+                    </button>
+                    <button type="button" className="secondary" onClick={() => toggleCollected(index)}>
+                      {entry.collected ? '標示為未領取' : '標示為已領取'}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => runStatusAction(index, entry.cid, 'revocation')}
+                      disabled={revokeDisabled}
+                    >
+                      {actionState?.loading ? '撤銷中…' : '撤銷此憑證'}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => removeIssueLogEntry(index)}
+                    >
+                      從紀錄中移除
+                    </button>
+                  </div>
+                  {actionState?.error ? (
+                    <div className="issue-log-feedback error">{actionState.error}</div>
+                  ) : null}
+                  {actionState?.message ? (
+                    <div
+                      className={`issue-log-feedback ${
+                        actionState.tone === 'info'
+                          ? 'info'
+                          : actionState.tone === 'error'
+                          ? 'error'
+                          : 'success'
+                      }`}
+                    >
+                      {actionState.message}
+                    </div>
+                  ) : null}
+                  {refreshState?.error ? (
+                    <div className="issue-log-feedback error">{refreshState.error}</div>
+                  ) : null}
+                  {refreshState?.message ? (
+                    <div
+                      className={`issue-log-feedback ${
+                        refreshState.tone === 'info'
+                          ? 'info'
+                          : refreshState.tone === 'error'
+                          ? 'error'
+                          : 'success'
+                      }`}
+                    >
+                      {refreshState.message}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="hint">
+          ※ 「撤銷此憑證」將使用 PUT /api/credential/&lt;cid&gt;/revocation，請確認操作為不可逆並於執行前再次核對。
+        </p>
+        <button
+          type="button"
+          className="secondary"
+          onClick={clearIssueLog}
+          disabled={!issueLog.length}
+        >
+          清除發卡紀錄
+        </button>
+      </div>
     </section>
   );
 }
