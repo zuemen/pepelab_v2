@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { normalizeCid } from '../utils/cid.js';
 
-function resolveSandboxPrefix(baseUrl) {
+export function resolveSandboxPrefix(baseUrl) {
   if (!baseUrl) {
     return '/v2';
   }
@@ -13,15 +14,9 @@ function resolveSandboxPrefix(baseUrl) {
     if (!normalizedPath || normalizedPath === '/' || normalizedPath === '') {
       return '/v2';
     }
-    if (normalizedPath === '/v2' || normalizedPath.endsWith('/v2')) {
-      return '';
-    }
-    if (normalizedPath.includes('/v2/')) {
-      return '';
-    }
-    return '/v2';
+    return normalizedPath;
   } catch (error) {
-    return /\/v2(?:\/|$)/.test(baseUrl) ? '' : '/v2';
+    return '/v2';
   }
 }
 
@@ -130,6 +125,38 @@ export function createClient(baseUrl) {
         method: 'POST',
         headers: bearerHeader(token),
       }),
+    updateCredentialStatus: (cidRaw, actionRaw, token) => {
+      const prefix = (sandboxPrefix || '').replace(/\/+$/, '');
+      const cid = normalizeCid(cidRaw);
+      const action = String(actionRaw ?? '').trim().toLowerCase();
+
+      if (!cid) {
+        return Promise.resolve({
+          ok: false,
+          status: 400,
+          detail: '缺少有效的 CID，請先透過 nonce 查詢取得。',
+        });
+      }
+
+      if (action !== 'revocation') {
+        return Promise.resolve({
+          ok: false,
+          status: 400,
+          detail: 'action 必須為 "revocation"。',
+        });
+      }
+
+      return request({
+        url: `${prefix}/api/credential/${encodeURIComponent(cid)}/revocation`,
+        method: 'PUT',
+        headers: {
+          Accept: '*/*',
+          'Content-Type': 'application/json',
+          ...(bearerHeader(token) || {}),
+        },
+        data: {},
+      });
+    },
     deleteCredential: (credentialId, token) =>
       request({
         url: `${sandboxPrefix}/api/credentials/${credentialId}`,
