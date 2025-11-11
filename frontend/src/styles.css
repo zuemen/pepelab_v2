@@ -141,6 +141,48 @@ button:not(:disabled):hover {
   background: #e2edff;
 }
 
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: #f2f4f7;
+  color: #1d2939;
+}
+
+.status-badge.info {
+  background: #e7f0ff;
+  color: #1849a9;
+}
+
+.status-badge.pending {
+  background: #fff6e7;
+  color: #b54708;
+}
+
+.status-badge.success {
+  background: #e6f4ea;
+  color: #067647;
+}
+
+.status-badge.error {
+  background: #fdebec;
+  color: #b42318;
+}
+
+.status-badge.muted {
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.meta-note {
+  margin-left: 0.5rem;
+  color: #4d6385;
+  font-size: 0.85rem;
+}
+
 .card {
   border-radius: 12px;
   background: #f7faff;

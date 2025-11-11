@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from '../router.jsx';
 import { ISSUE_LOG_STORAGE_KEY } from '../constants/storage.js';
+import { describeCredentialStatus, isCollectedStatus, isRevokedStatus } from '../utils/status.js';
 
 const CARD_TYPES = [
   {
@@ -78,12 +79,13 @@ function computeGroupedTotals(issueLog) {
     totals.scopes[scope].total += 1;
     totals.overall.total += 1;
 
-    if (entry.collected) {
+    const collected = entry.collected || isCollectedStatus(entry.status);
+    if (collected) {
       totals.scopes[scope].collected += 1;
       totals.overall.collected += 1;
     }
 
-    if (entry.status === 'REVOKED') {
+    if (isRevokedStatus(entry.status)) {
       totals.scopes[scope].revoked += 1;
       totals.overall.revoked += 1;
     }
@@ -315,7 +317,15 @@ function StatsCardDetail({ card }) {
                       ) : null}
                     </td>
                     <td>{entry.holderDid || '—'}</td>
-                    <td>{entry.status || '—'}</td>
+                    <td>
+                      {(() => {
+                        const statusInfo = describeCredentialStatus(entry.status);
+                        const badgeClass = statusInfo.tone
+                          ? `status-badge ${statusInfo.tone}`
+                          : 'status-badge';
+                        return <span className={badgeClass}>{statusInfo.text}</span>;
+                      })()}
+                    </td>
                     <td>{entry.collectedAt ? new Date(entry.collectedAt).toLocaleString() : '—'}</td>
                     <td>{entry.revokedAt ? new Date(entry.revokedAt).toLocaleString() : '—'}</td>
                   </tr>

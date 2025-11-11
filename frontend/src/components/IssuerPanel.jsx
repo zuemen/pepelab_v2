@@ -5,6 +5,12 @@ import { resolveSandboxPrefix } from '../api/client.js';
 import { ISSUE_LOG_STORAGE_KEY } from '../constants/storage.js';
 import { computeRevocationDetails } from '../utils/revocation.js';
 import { normalizeCid, parseCidFromJti } from '../utils/cid.js';
+import {
+  describeCredentialStatus,
+  isCollectedStatus,
+  isRevokedStatus,
+  normalizeCredentialStatus,
+} from '../utils/status.js';
 
 function decodeJwtPayload(token) {
   if (!token || typeof token !== 'string') {
@@ -176,11 +182,21 @@ const INITIAL_MANUAL_LOOKUP_STATE = {
   cid: '',
   credentialJti: '',
   status: null,
+  collected: false,
   holderDid: null,
   collectedAt: null,
   revokedAt: null,
   error: null,
 };
+
+const MANUAL_STATUS_OPTIONS = [
+  { value: 'PENDING', label: '待領取（PENDING）' },
+  { value: 'ISSUED', label: '已發行（ISSUED）' },
+  { value: 'ACCEPTED', label: '已領取（ACCEPTED）' },
+  { value: 'ACTIVE', label: '已領取（ACTIVE）' },
+  { value: 'COLLECTED', label: '已領取（COLLECTED）' },
+  { value: 'REVOKED', label: '已撤銷（REVOKED）' },
+];
 
 const INITIAL_CONDITION = {
   id: `cond-${Math.random().toString(36).slice(2, 8)}`,
@@ -631,6 +647,13 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       normalizedCid = parseCidFromJti(normalizedJti);
     }
 
+    const normalizedStatus = normalizeCredentialStatus(entry.status) || 'ISSUED';
+    const statusDetails = describeCredentialStatus(normalizedStatus);
+    const combinedCollected = Boolean(entry.collected || statusDetails.collected);
+    const collectedAt =
+      entry.collectedAt || (combinedCollected ? entry.collectedAt || entry.collected_at || null : null);
+    const revokedAt = entry.revokedAt || entry.revoked_at || null;
+
     const entryPrefix =
       typeof entry.cidSandboxPrefix === 'string' ? entry.cidSandboxPrefix : sandboxPrefix;
     const storedPath =
@@ -675,10 +698,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       hasCredential: Boolean(entry.hasCredential || normalizedCid),
       scope: normalizedScope,
       scopeLabel: PRIMARY_SCOPE_LABEL[normalizedScope] || entry.scopeLabel || normalizedScope,
-      status: entry.status || 'ISSUED',
-      collected: Boolean(entry.collected),
-      collectedAt: entry.collectedAt || null,
-      revokedAt: entry.revokedAt || null,
+      status: normalizedStatus,
+      collected: combinedCollected,
+      collectedAt,
+      revokedAt,
       cidLookupSource: entry.cidLookupSource || null,
       cidLookupError: entry.cidLookupError || null,
     };
@@ -861,8 +884,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
 
   const issueLogStats = useMemo(() => {
     const total = issueLog.length;
-    const revoked = issueLog.filter((entry) => entry.status === 'REVOKED').length;
-    const collected = issueLog.filter((entry) => entry.collected).length;
+    const revoked = issueLog.filter((entry) => isRevokedStatus(entry.status)).length;
+    const collected = issueLog.filter((entry) => entry.collected || isCollectedStatus(entry.status)).length;
     const pending = total - collected;
     const active = total - revoked;
     return { total, revoked, collected, pending, active };
@@ -933,8 +956,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
               ? `${response.status ? `(${response.status}) ` : ''}${detail}`
               : '查詢官方 nonce API 失敗',
           status: null,
+          collected: false,
           collectedAt: null,
           revokedAt: null,
+          revoked: false,
           holderDid: null,
         };
       }
@@ -987,7 +1012,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         (typeof data.credential_status === 'string' && data.credential_status) ||
         (typeof data.credentialStatus?.status === 'string' && data.credentialStatus.status) ||
         null;
-      const normalizedStatus = rawStatus ? rawStatus.toString().toUpperCase() : null;
+      const normalizedStatus = normalizeCredentialStatus(rawStatus);
+      const statusDetails = describeCredentialStatus(normalizedStatus);
 
       const collectedAt =
         data.acceptedAt || data.accepted_at || data.collectedAt || data.collected_at || null;
@@ -1004,8 +1030,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         lookupSource: 'nonce',
         lookupError: null,
         status: normalizedStatus,
+        collected: statusDetails.collected || Boolean(collectedAt),
         collectedAt,
         revokedAt,
+        revoked: statusDetails.revoked || Boolean(revokedAt),
         holderDid,
       };
     } catch (error) {
@@ -1019,8 +1047,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         lookupSource: 'nonce',
         lookupError: error?.message || '查詢官方 nonce API 失敗',
         status: null,
+        collected: false,
         collectedAt: null,
         revokedAt: null,
+        revoked: false,
         holderDid: null,
       };
     }
@@ -1062,12 +1092,17 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         if (lookupResult.status) {
           status = lookupResult.status;
         }
+        if (lookupResult.collected) {
+          collected = true;
+        }
         if (lookupResult.collectedAt) {
           collected = true;
           collectedAtValue = lookupResult.collectedAt;
         }
         if (lookupResult.revokedAt) {
           revokedAtValue = lookupResult.revokedAt;
+        }
+        if (lookupResult.revoked) {
           status = 'REVOKED';
         }
         if (lookupResult.holderDid) {
@@ -1101,6 +1136,11 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
 
     const normalizedCid = normalizeCid(cid);
     const normalizedJti = credentialJti ? credentialJti.trim() : '';
+    const normalizedStatus = normalizeCredentialStatus(status) || 'ISSUED';
+    const statusDetails = describeCredentialStatus(normalizedStatus);
+    const combinedCollected = collected || statusDetails.collected;
+    const combinedCollectedAt = collectedAtValue || null;
+    const combinedRevokedAt = revokedAtValue || null;
 
     const entry = {
       timestamp,
@@ -1113,10 +1153,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       hasCredential: Boolean(hasCredential || normalizedCid || normalizedJti),
       scope: primaryScope,
       scopeLabel,
-      status,
-      collected,
-      collectedAt: collectedAtValue,
-      revokedAt: revokedAtValue,
+      status: normalizedStatus,
+      collected: combinedCollected,
+      collectedAt: combinedCollectedAt,
+      revokedAt: statusDetails.revoked ? combinedRevokedAt || timestamp : combinedRevokedAt,
       cidLookupSource: lookupSource,
       cidLookupError: lookupError,
     };
@@ -1159,7 +1199,12 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
   };
 
   const handleManualEntryChange = (field, value) => {
-    setManualEntry((prev) => ({ ...prev, [field]: value }));
+    let nextValue = value;
+    if (field === 'status') {
+      nextValue = normalizeCredentialStatus(value) || '';
+    }
+
+    setManualEntry((prev) => ({ ...prev, [field]: nextValue }));
     if (field === 'transactionId') {
       setManualLookup(INITIAL_MANUAL_LOOKUP_STATE);
     }
@@ -1174,6 +1219,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     setManualEntryFeedback(null);
     setManualEntryLoading(true);
 
+    const now = new Date().toISOString();
     let cid = normalizeCid(manualEntry.cid);
     const credentialJti = manualEntry.credentialJti.trim();
     const transactionId = manualEntry.transactionId.trim();
@@ -1182,6 +1228,11 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     let resolvedCredentialJti = credentialJti;
     let lookupSource = 'manual';
     let lookupError = null;
+    let resolvedStatus = manualEntry.status;
+    let resolvedCollected = Boolean(manualEntry.collected);
+    let resolvedCollectedAt = manualEntry.collected ? now : null;
+    let resolvedRevokedAt = manualEntry.status === 'REVOKED' ? now : null;
+    let lookupResultData = null;
 
     if (!cid && credentialJti) {
       cid = parseCidFromJti(credentialJti);
@@ -1190,6 +1241,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     try {
       if (transactionId) {
         const lookupResult = await lookupCredentialByTransaction(transactionId);
+        lookupResultData = lookupResult;
         if (lookupResult.ok) {
           if (!cid && lookupResult.cid) {
             cid = normalizeCid(lookupResult.cid);
@@ -1199,6 +1251,18 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
           }
           if (!holderValue && lookupResult.holderDid) {
             holderValue = lookupResult.holderDid;
+          }
+          if (lookupResult.status) {
+            resolvedStatus = lookupResult.status;
+          }
+          if (!resolvedCollected && lookupResult.collected) {
+            resolvedCollected = true;
+          }
+          if (!resolvedCollectedAt && lookupResult.collectedAt) {
+            resolvedCollectedAt = lookupResult.collectedAt;
+          }
+          if (!resolvedRevokedAt && lookupResult.revokedAt) {
+            resolvedRevokedAt = lookupResult.revokedAt;
           }
           lookupSource = 'nonce';
         } else if (!cid) {
@@ -1221,7 +1285,15 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         return;
       }
 
-      const now = new Date().toISOString();
+      const normalizedStatus = normalizeCredentialStatus(resolvedStatus) || 'ISSUED';
+      const statusDetails = describeCredentialStatus(normalizedStatus);
+      const finalCollected =
+        resolvedCollected || statusDetails.collected || Boolean(lookupResultData?.collected);
+      const finalCollectedAt =
+        resolvedCollectedAt || lookupResultData?.collectedAt || manualLookup.collectedAt || null;
+      const finalRevokedAt =
+        resolvedRevokedAt || lookupResultData?.revokedAt || manualLookup.revokedAt || null;
+
       const entry = appendIssueLogEntry({
         timestamp: now,
         holderDid: holderValue,
@@ -1231,10 +1303,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         credentialJti: resolvedCredentialJti,
         scope: manualEntry.scope,
         scopeLabel: PRIMARY_SCOPE_LABEL[manualEntry.scope] || manualEntry.scope,
-        status: manualEntry.status,
-        collected: Boolean(manualEntry.collected),
-        collectedAt: manualEntry.collected ? now : null,
-        revokedAt: manualEntry.status === 'REVOKED' ? now : null,
+        status: normalizedStatus,
+        collected: finalCollected,
+        collectedAt: finalCollectedAt,
+        revokedAt: statusDetails.revoked ? finalRevokedAt || now : finalRevokedAt,
         hasCredential: Boolean(cid),
         cidLookupSource: lookupSource,
         cidLookupError: lookupError,
@@ -1288,6 +1360,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         cid: lookupResult.cid || prev.cid,
         credentialJti: lookupResult.credentialJti || prev.credentialJti,
         holderDid: prev.holderDid || lookupResult.holderDid || holderDid || '',
+        status: lookupResult.status || prev.status,
+        collected: prev.collected || lookupResult.collected,
       }));
       setManualLookup({
         loading: false,
@@ -1295,6 +1369,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         cid: lookupResult.cid || '',
         credentialJti: lookupResult.credentialJti || '',
         status: lookupResult.status || null,
+        collected: lookupResult.collected || false,
         holderDid: lookupResult.holderDid || null,
         collectedAt: lookupResult.collectedAt || null,
         revokedAt: lookupResult.revokedAt || null,
@@ -1305,6 +1380,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       setManualLookup({
         ...INITIAL_MANUAL_LOOKUP_STATE,
         transactionId,
+        collected: false,
         error: lookupResult.lookupError || '查詢官方 nonce API 失敗，請稍後再試。',
       });
       setManualEntryError(lookupResult.lookupError || '查詢官方 nonce API 失敗，請稍後再試。');
@@ -2454,8 +2530,11 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                 value={manualEntry.status}
                 onChange={(event) => handleManualEntryChange('status', event.target.value)}
               >
-                <option value="ISSUED">已發行／可領取</option>
-                <option value="REVOKED">已撤銷</option>
+                {MANUAL_STATUS_OPTIONS.map((option) => (
+                  <option key={`manual-status-${option.value}`} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -2505,10 +2584,29 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                       {manualLookup.credentialJti || manualEntry.credentialJti || '尚未取得'}
                     </span>
                   </div>
-                  <div className="manual-lookup-row">
-                    <span className="label">狀態</span>
-                    <span className="value">{manualLookup.status || '官方尚未提供'}</span>
-                  </div>
+                  {(() => {
+                    const statusInfo = describeCredentialStatus(manualLookup.status);
+                    const badgeClass = statusInfo.tone
+                      ? `status-badge ${statusInfo.tone}`
+                      : 'status-badge';
+                    const collectedState = manualLookup.collected || statusInfo.collected;
+                    return (
+                      <>
+                        <div className="manual-lookup-row">
+                          <span className="label">官方狀態</span>
+                          <span className="value">
+                            <span className={badgeClass}>{statusInfo.text}</span>
+                          </span>
+                        </div>
+                        <div className="manual-lookup-row">
+                          <span className="label">是否領取</span>
+                          <span className="value">
+                            {collectedState ? '已領取（官方資料）' : '尚未領取'}
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
                   {manualLookup.cid ? (
                     <div className="manual-lookup-row">
                       <span className="label">撤銷路徑</span>
@@ -2584,15 +2682,20 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                 : entry.hasCredential
                 ? '解析失敗'
                 : '官方回應未提供 credential';
-              const collectedLabel = entry.collected
+              const statusInfo = describeCredentialStatus(entry.status);
+              const statusBadgeClass = statusInfo.tone
+                ? `status-badge ${statusInfo.tone}`
+                : 'status-badge';
+              const statusLabelExtra =
+                statusInfo.revoked && entry.revokedAt
+                  ? `（${new Date(entry.revokedAt).toLocaleString()}）`
+                  : '';
+              const entryCollected = entry.collected || statusInfo.collected;
+              const collectedLabel = entryCollected
                 ? entry.collectedAt
                   ? `已領取（${new Date(entry.collectedAt).toLocaleString()}）`
-                  : '已標示領取'
+                  : '已領取（狀態同步）'
                 : '尚未領取';
-              const statusLabel =
-                entry.status === 'REVOKED'
-                  ? `已撤銷${entry.revokedAt ? `（${new Date(entry.revokedAt).toLocaleString()}）` : ''}`
-                  : '已發行';
               const lookupSourceLabel = describeLookupSource(entry.cidLookupSource);
               const displayCid = entry.cid || '';
               const displayRevocationPath =
@@ -2683,7 +2786,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                   </div>
                   <div className="meta">交易序號：{entry.transactionId || '未提供'}</div>
                   <div className="meta">發行者：{entry.issuerId || '未設定'}</div>
-                  <div className="meta">狀態：{statusLabel}</div>
+                  <div className="meta">
+                    狀態：<span className={statusBadgeClass}>{statusInfo.text}</span>
+                    {statusLabelExtra ? <span className="meta-note">{statusLabelExtra}</span> : null}
+                  </div>
                   <div className="meta">領取紀錄：{collectedLabel}</div>
                   {entry.cidLookupError ? (
                     <div className="issue-log-feedback error">
