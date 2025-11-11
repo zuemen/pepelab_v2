@@ -170,49 +170,147 @@ button.gray:hover {
   background: #94a3b8;
 }
 
-/* ===== Page1：Hero Card 動畫 ===== */
+/* ===== Page1：Hero Card 與下載區 ===== */
+.hero-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
+  padding: 2.5rem 1.5rem 3rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+@media (min-width: 960px) {
+  .hero-split {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+    align-items: stretch;
+  }
+}
+
 .hero-card {
   background: #ffffff;
   color: #0f172a;
-  border-radius: 20px;
+  border-radius: 24px;
   padding: 48px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
-  text-align: center;
+  box-shadow: 0 24px 60px rgba(9, 18, 32, 0.35);
+  text-align: left;
   animation: fadeUp 0.8s ease-out forwards;
 }
 
 .hero-card h1 {
-  font-size: 42px;
+  font-size: 48px;
   font-weight: 900;
   color: #0f172a;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   opacity: 0;
   transform: translateY(20px);
   animation: fadeUp 0.8s ease-out 0.1s forwards;
 }
 
-.hero-card p {
+.hero-card__subtitle {
+  color: #1d4ed8;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 0.8s ease-out 0.2s forwards;
+}
+
+.hero-card__body {
   color: #1e293b;
   font-size: 18px;
   font-weight: 600;
   line-height: 1.8;
   opacity: 0;
   transform: translateY(20px);
-}
-
-.hero-card p:nth-of-type(1) {
   animation: fadeUp 0.8s ease-out 0.3s forwards;
-}
-
-.hero-card p:nth-of-type(2) {
-  animation: fadeUp 0.8s ease-out 0.5s forwards;
+  margin-bottom: 32px;
 }
 
 .hero-card button.cta {
-  margin-top: 24px;
+  margin-top: 8px;
   opacity: 0;
   transform: translateY(20px);
-  animation: fadeUp 0.8s ease-out 0.8s forwards;
+  animation: fadeUp 0.8s ease-out 0.45s forwards;
+}
+
+.download-card {
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: 24px;
+  padding: 32px 28px;
+  box-shadow: 0 24px 60px rgba(3, 7, 18, 0.4);
+  backdrop-filter: blur(6px);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.download-card__title {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.download-card__grid {
+  display: grid;
+  gap: 20px;
+}
+
+@media (min-width: 540px) {
+  .download-card__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.download-card__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: 18px;
+  padding: 18px;
+  text-align: center;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid rgba(226, 232, 240, 0.2);
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.download-card__item:hover,
+.download-card__item:focus-visible {
+  background: rgba(30, 58, 138, 0.9);
+  border-color: rgba(125, 211, 252, 0.75);
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px rgba(30, 64, 175, 0.45);
+}
+
+.download-card__item img {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  border-radius: 16px;
+  background: #fff;
+  padding: 8px;
+}
+
+.download-card__store {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.download-card__hint {
+  font-size: 14px;
+  color: #cbd5f5;
+}
+
+@media (max-width: 959px) {
+  .download-card {
+    text-align: center;
+  }
 }
 
 /* 動畫關鍵影格 */
@@ -225,16 +323,6 @@ button.gray:hover {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* 讓卡片整體置中，但內文靠左且有固定寬度 */
-.hero-card {
-  background: #fff;
-  color: #0f172a;
-  border-radius: 20px;
-  padding: 40px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, .08);
-  text-align: center; /* 卡片本身置中（給標題用） */
 }
 
 .hero-title {
@@ -402,60 +490,153 @@ button.ghost:hover {
 }
 
 /* Page4 卡片區 */
+.page4__header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.page4__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(148, 197, 255, 0.35);
+  color: #cbdffb;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.page4__eyebrow-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.2);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.page4__eyebrow-dot.demo {
+  background: #facc15;
+  box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.2);
+}
+
+.page4__eyebrow-dot.live {
+  background: #34d399;
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.2);
+}
+
+.page4__title {
+  margin: 16px 0 12px;
+  font-size: 42px;
+  font-weight: 800;
+  color: #f8fbff;
+  letter-spacing: 0.5px;
+}
+
+.page4__lead {
+  max-width: 720px;
+  margin: 0 auto;
+  font-size: 18px;
+  line-height: 1.8;
+  color: #dbeafe;
+}
+
 .branch-grid {
-  display: flex;
-  justify-content: space-between; /* 卡片間距均等 */
-  gap: 20px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 24px;
 }
 
 .branch-card {
-  background: #0f2338; /* 深藍底 */
-  border: 1px solid rgba(255, 255, 255, .18);
-  border-radius: 16px;
-  padding: 18px;
-  color: #eaf2f9;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, .28);
-  transition: transform .2s, box-shadow .2s, border-color .2s, background .2s;
-  flex: 1 1 30%; /* 每張卡片寬度固定為 30% */
+  position: relative;
+  padding: 24px;
+  border-radius: 20px;
+  background: linear-gradient(160deg, rgba(15, 36, 61, 0.9), rgba(17, 64, 112, 0.85));
+  border: 1px solid rgba(148, 197, 255, 0.26);
+  box-shadow: 0 18px 32px -18px rgba(15, 23, 42, 0.8);
+  color: #e2ecff;
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.branch-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top right, rgba(96, 165, 250, 0.25), transparent 60%);
+  pointer-events: none;
+}
+
+.branch-card__header {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 12px;
 }
 
 .branch-card h3 {
-  margin: 0 0 8px;
-  color: #f8fafc; /* 亮白主標 */
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: .3px;
+  margin: 8px 0 0;
+  color: #f8fafc;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
 }
 
 .branch-card p {
-  margin: 0 0 12px;
-  color: #cbd5e1; /* 內文灰藍 */
-  line-height: 1.7;
+  position: relative;
+  z-index: 1;
+  margin: 0 0 18px;
+  color: #dbeafe;
+  line-height: 1.75;
 }
 
 .branch-card .badge {
-  display: inline-block;
-  margin-bottom: 10px;
-  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
   border-radius: 999px;
   font-size: 12px;
-  background: #17375d;
-  color: #9bd3ff;
-  border: 1px solid #5fd3ff;
+  font-weight: 600;
+  background: rgba(96, 165, 250, 0.16);
+  color: #bfdbfe;
+  border: 1px solid rgba(191, 219, 254, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .branch-card .actions {
+  position: relative;
+  z-index: 1;
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .branch-card:hover {
-  background: #17365a;
-  border-color: #60a5fa;
-  transform: translateY(-3px);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, .36);
+  transform: translateY(-6px);
+  border-color: rgba(125, 211, 252, 0.7);
+  box-shadow: 0 22px 38px -18px rgba(56, 189, 248, 0.45);
+}
+
+.page4__footer {
+  margin-top: 36px;
+  text-align: center;
+}
+
+.page4__footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.page4__hint {
+  margin-top: 16px;
+  color: rgba(226, 232, 240, 0.8);
+  font-size: 14px;
 }
 /* 右側卡片調整，縮短空白間距 */
 .mock {

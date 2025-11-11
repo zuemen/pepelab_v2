@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { normalizeCid } from '../utils/cid.js';
 
-function resolveSandboxPrefix(baseUrl) {
+export function resolveSandboxPrefix(baseUrl) {
   if (!baseUrl) {
     return '/v2';
   }
@@ -13,15 +14,9 @@ function resolveSandboxPrefix(baseUrl) {
     if (!normalizedPath || normalizedPath === '/' || normalizedPath === '') {
       return '/v2';
     }
-    if (normalizedPath === '/v2' || normalizedPath.endsWith('/v2')) {
-      return '';
-    }
-    if (normalizedPath.includes('/v2/')) {
-      return '';
-    }
-    return '/v2';
+    return normalizedPath;
   } catch (error) {
-    return /\/v2(?:\/|$)/.test(baseUrl) ? '' : '/v2';
+    return '/v2';
   }
 }
 
@@ -130,6 +125,55 @@ export function createClient(baseUrl) {
         method: 'POST',
         headers: bearerHeader(token),
       }),
+    updateCredentialStatus: async (cidRaw, actionRaw, token) => {
+      const cid = normalizeCid(cidRaw);
+      const action = String(actionRaw ?? '').trim().toLowerCase();
+
+      if (!cid) {
+        return {
+          ok: false,
+          status: 400,
+          detail: '缺少有效的 CID，請先透過 nonce 查詢取得。',
+        };
+      }
+
+      if (action !== 'revocation') {
+        return {
+          ok: false,
+          status: 400,
+          detail: 'action 必須為 "revocation"。',
+        };
+      }
+
+      const commonConfig = {
+        method: 'PUT',
+        headers: {
+          Accept: '*/*',
+          'Content-Type': 'application/json',
+          ...(bearerHeader(token) || {}),
+        },
+        data: {},
+      };
+
+      const primary = await request({
+        ...commonConfig,
+        url: `/api/credential/${encodeURIComponent(cid)}/revocation`,
+      });
+
+      if (primary.ok || primary.status !== 404) {
+        return primary;
+      }
+
+      const prefix = (sandboxPrefix || '').replace(/\/+$/, '');
+      if (!prefix || prefix === '/api') {
+        return primary;
+      }
+
+      return request({
+        ...commonConfig,
+        url: `${prefix}/api/credential/${encodeURIComponent(cid)}/revocation`,
+      });
+    },
     deleteCredential: (credentialId, token) =>
       request({
         url: `${sandboxPrefix}/api/credentials/${credentialId}`,
