@@ -159,93 +159,47 @@ function deriveOverallSummary(grouped) {
   };
 }
 
-function StatsNavigation({ navItems }) {
+function StatsSummaryBanner({ overallSummary }) {
+  return (
+    <div className="stats-summary-banner" role="status" aria-live="polite">
+      <div>
+        <span className="summary-label">總發卡</span>
+        <strong className="summary-value">{overallSummary.total}</strong>
+      </div>
+      <div>
+        <span className="summary-label">已領取</span>
+        <strong className="summary-value">{overallSummary.collected}</strong>
+      </div>
+      <div>
+        <span className="summary-label">待領取</span>
+        <strong className="summary-value">{overallSummary.pending}</strong>
+      </div>
+      <div>
+        <span className="summary-label">已撤銷</span>
+        <strong className="summary-value">{overallSummary.revoked}</strong>
+      </div>
+      <div>
+        <span className="summary-label">已取得 CID</span>
+        <strong className="summary-value">{overallSummary.withCid}</strong>
+      </div>
+    </div>
+  );
+}
+
+function StatsNavigation({ navItems, defaultKey }) {
   const location = useLocation();
   const segments = location.pathname.split('/').filter(Boolean);
-  const activeKey = segments.length <= 1 ? 'overview' : segments[1];
+  const activeKey = segments[1] || defaultKey;
 
   return (
     <nav className="stats-subnav" aria-label="統計子頁">
       {navItems.map((item) => (
         <Link key={item.key} to={item.to} className={activeKey === item.key ? 'active' : ''}>
-          {item.label}
+          <span className="stats-subnav-label">{item.label}</span>
+          {typeof item.count === 'number' ? <span className="stats-subnav-count">{item.count}</span> : null}
         </Link>
       ))}
     </nav>
-  );
-}
-
-function StatsOverview({ overallSummary, scopeSummaries }) {
-  return (
-    <article>
-      <h3>總覽</h3>
-      <p>
-        將發卡紀錄依卡別彙整，協助快速掌握總發卡數量、領取進度與撤銷狀態。若於發卡頁更新紀錄，本頁將自動同步。
-      </p>
-      <div className="stat-summary-grid" role="list" aria-label="總覽指標">
-        <div className="stat-tile" role="listitem">
-          <span className="stat-label">總發卡數</span>
-          <strong className="stat-value">{overallSummary.total}</strong>
-        </div>
-        <div className="stat-tile" role="listitem">
-          <span className="stat-label">已領取</span>
-          <strong className="stat-value">{overallSummary.collected}</strong>
-        </div>
-        <div className="stat-tile" role="listitem">
-          <span className="stat-label">待領取</span>
-          <strong className="stat-value">{overallSummary.pending}</strong>
-        </div>
-        <div className="stat-tile" role="listitem">
-          <span className="stat-label">有效中</span>
-          <strong className="stat-value">{overallSummary.active}</strong>
-        </div>
-        <div className="stat-tile" role="listitem">
-          <span className="stat-label">已撤銷</span>
-          <strong className="stat-value">{overallSummary.revoked}</strong>
-        </div>
-        <div className="stat-tile" role="listitem">
-          <span className="stat-label">已取得 CID</span>
-          <strong className="stat-value">{overallSummary.withCid}</strong>
-        </div>
-      </div>
-
-      <div className="stat-card-grid">
-        {scopeSummaries.map((card) => (
-          <div key={card.scope} className="stat-card">
-            <h4>{card.label}</h4>
-            <p className="hint">{card.description}</p>
-            <dl>
-              <div>
-                <dt>總發卡</dt>
-                <dd>{card.summary.total}</dd>
-              </div>
-              <div>
-                <dt>已領取</dt>
-                <dd>{card.summary.collected}</dd>
-              </div>
-              <div>
-                <dt>待領取</dt>
-                <dd>{card.summary.pending}</dd>
-              </div>
-              <div>
-                <dt>已撤銷</dt>
-                <dd>{card.summary.revoked}</dd>
-              </div>
-              <div>
-                <dt>已取得 CID</dt>
-                <dd>{card.summary.withCid}</dd>
-              </div>
-            </dl>
-            <Link className="stat-card-link" to={card.route}>
-              查看{card.navLabel}紀錄 →
-            </Link>
-          </div>
-        ))}
-      </div>
-      <p className="hint">
-        需要查看完整清單？請前往<Link to="records">發卡紀錄總覽</Link>掌握所有卡片狀態。
-      </p>
-    </article>
   );
 }
 
@@ -516,23 +470,31 @@ export function StatisticsPage() {
 
   const navItems = useMemo(
     () => [
-      { key: 'overview', label: '總覽', to: 'overview' },
-      { key: 'records', label: '發卡紀錄', to: 'records' },
-      ...scopeSummaries.map((card) => ({ key: card.route, label: card.navLabel, to: card.route })),
+      ...scopeSummaries.map((card) => ({
+        key: card.route,
+        label: card.navLabel,
+        to: card.route,
+        count: card.summary.total,
+      })),
+      {
+        key: 'records',
+        label: '全部紀錄',
+        to: 'records',
+        count: overallSummary.total,
+      },
     ],
-    [scopeSummaries]
+    [scopeSummaries, overallSummary.total]
   );
+
+  const defaultRoute = scopeSummaries.length ? scopeSummaries[0].route : 'records';
 
   return (
     <section>
       <h2>發卡統計</h2>
-      <StatsNavigation navItems={navItems} />
+      <StatsSummaryBanner overallSummary={overallSummary} />
+      <StatsNavigation navItems={navItems} defaultKey={defaultRoute} />
       <Routes>
-        <Route index element={<Navigate to="overview" replace />} />
-        <Route
-          path="overview"
-          element={<StatsOverview overallSummary={overallSummary} scopeSummaries={scopeSummaries} />}
-        />
+        <Route index element={<Navigate to={defaultRoute} replace />} />
         <Route
           path="records"
           element={<StatsAllRecords issueLog={issueLog} overallSummary={overallSummary} />}
@@ -540,7 +502,7 @@ export function StatisticsPage() {
         {scopeSummaries.map((card) => (
           <Route key={card.scope} path={card.route} element={<StatsCardDetail card={card} />} />
         ))}
-        <Route path="*" element={<Navigate to="overview" replace />} />
+        <Route path="*" element={<Navigate to={defaultRoute} replace />} />
       </Routes>
     </section>
   );

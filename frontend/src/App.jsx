@@ -43,54 +43,68 @@ export default function App() {
   }
 
   return (
-    <div>
-      <header style={{ marginBottom: '2rem' }}>
-        <h1>MedSSI Sandbox – FHIR 病歷授權與領藥驗證</h1>
-        <p>
-          整合 MyData IAL2、FHIR Verifiable Credential 與選擇性揭露，示範醫院發卡、病患授權、
-          藥局 / 研究單位驗證的端到端流程，並支援可遺忘權與 AI Insight。
-        </p>
-        <div className="card">
-          <label htmlFor="base-url">API Base URL</label>
-          <input
-            id="base-url"
-            value={baseUrl}
-            onChange={(event) => setBaseUrl(event.target.value)}
-          />
-          <div className="grid three">
-            <div>
-              <label htmlFor="issuer-token-input">發行端 Access Token</label>
+    <div className="sandbox-shell">
+      <header className="sandbox-hero">
+        <div className="sandbox-hero__inner">
+          <div className="sandbox-hero__intro">
+            <h1>MedSSI Sandbox – FHIR 病歷授權與領藥驗證</h1>
+            <p>
+              整合 MyData IAL2、FHIR Verifiable Credential 與選擇性揭露，示範醫院發卡、病患授權、
+              藥局 / 研究單位驗證的端到端流程，並支援可遺忘權與 AI Insight。
+            </p>
+            <ul className="sandbox-hero__list">
+              <li>快速切換發卡 / 驗證情境，掌握卡片領取與撤銷狀態。</li>
+              <li>支援官方 nonce 查詢，完整記錄 CID 與撤銷端點。</li>
+              <li>連動沙盒 API，模擬實際醫療資料授權流程。</li>
+            </ul>
+          </div>
+          <div className="sandbox-hero__config">
+            <div className="sandbox-config-card">
+              <h2>沙盒連線設定</h2>
+              <label htmlFor="base-url">API Base URL</label>
               <input
-                id="issuer-token-input"
-                value={issuerToken}
-                onChange={(event) => setIssuerToken(event.target.value)}
+                id="base-url"
+                value={baseUrl}
+                onChange={(event) => setBaseUrl(event.target.value)}
               />
-            </div>
-            <div>
-              <label htmlFor="wallet-token-input">錢包 Access Token</label>
-              <input
-                id="wallet-token-input"
-                value={walletToken}
-                onChange={(event) => setWalletToken(event.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="verifier-token-input">驗證端 Access Token</label>
-              <input
-                id="verifier-token-input"
-                value={verifierToken}
-                onChange={(event) => setVerifierToken(event.target.value)}
-              />
+              <div className="sandbox-config-grid">
+                <div>
+                  <label htmlFor="issuer-token-input">發行端 Access Token</label>
+                  <input
+                    id="issuer-token-input"
+                    value={issuerToken}
+                    onChange={(event) => setIssuerToken(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="wallet-token-input">錢包 Access Token</label>
+                  <input
+                    id="wallet-token-input"
+                    value={walletToken}
+                    onChange={(event) => setWalletToken(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="verifier-token-input">驗證端 Access Token</label>
+                  <input
+                    id="verifier-token-input"
+                    value={verifierToken}
+                    onChange={(event) => setVerifierToken(event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="sandbox-config-actions">
+                <button type="button" className="secondary" onClick={resetSandbox}>
+                  重設沙盒資料（清除憑證與 Session）
+                </button>
+                {resetMessage ? <p className="sandbox-reset-message">{resetMessage}</p> : null}
+              </div>
             </div>
           </div>
-          <button type="button" className="secondary" onClick={resetSandbox}>
-            重設沙盒資料（清除憑證與 Session）
-          </button>
-          {resetMessage ? <div className="alert info">{resetMessage}</div> : null}
         </div>
       </header>
 
-      <main>
+      <main className="sandbox-main">
         <nav className="sandbox-nav" aria-label="沙盒功能頁籤">
           {navItems.map((item) => (
             <Link key={item.to} to={item.to} className={isActivePath(item.to) ? 'active' : ''}>
@@ -99,26 +113,28 @@ export default function App() {
           ))}
         </nav>
 
-        <Routes>
-          <Route index element={<Navigate to="issuer" replace />} />
-          <Route
-            path="issuer"
-            element={(
-              <IssuerPage
-                client={client}
-                issuerToken={issuerToken}
-                walletToken={walletToken}
-                baseUrl={baseUrl}
-              />
-            )}
-          />
-          <Route
-            path="verifier"
-            element={<VerifierPage client={client} verifierToken={verifierToken} />}
-          />
-          <Route path="stats/*" element={<StatisticsPage />} />
-          <Route path="*" element={<Navigate to="issuer" replace />} />
-        </Routes>
+        <div className="sandbox-pages">
+          <Routes>
+            <Route index element={<Navigate to="issuer" replace />} />
+            <Route
+              path="issuer"
+              element={(
+                <IssuerPage
+                  client={client}
+                  issuerToken={issuerToken}
+                  walletToken={walletToken}
+                  baseUrl={baseUrl}
+                />
+              )}
+            />
+            <Route
+              path="verifier"
+              element={<VerifierPage client={client} verifierToken={verifierToken} />}
+            />
+            <Route path="stats/*" element={<StatisticsPage />} />
+            <Route path="*" element={<Navigate to="issuer" replace />} />
+          </Routes>
+        </div>
       </main>
     </div>
   );
