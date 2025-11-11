@@ -536,6 +536,73 @@ pre {
   margin-bottom: 1.5rem;
 }
 
+.stats-card-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.1rem;
+  margin-bottom: 1.75rem;
+}
+
+.stats-card-overview-item {
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(240, 248, 255, 0.82));
+  border: 1px solid rgba(23, 66, 125, 0.08);
+  border-radius: 20px;
+  padding: 1.25rem 1.35rem;
+  box-shadow: 0 22px 40px rgba(17, 37, 70, 0.1);
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.stats-card-overview-item:hover,
+.stats-card-overview-item:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 28px 48px rgba(17, 37, 70, 0.16);
+  outline: none;
+}
+
+.stats-card-overview-item dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 1.1rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.stats-card-overview-item dt {
+  margin: 0;
+  font-weight: 500;
+  color: #4d6385;
+}
+
+.stats-card-overview-item dd {
+  margin: 0;
+  font-weight: 600;
+  color: #17427d;
+  text-align: right;
+}
+
+.overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.overview-label {
+  font-weight: 600;
+  color: #17427d;
+}
+
+.overview-total {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1f7adb;
+}
+
 .stats-summary-item {
   display: flex;
   align-items: center;
@@ -668,6 +735,39 @@ pre {
 
 .stat-card-link:hover {
   text-decoration: underline;
+}
+
+.stat-status-table {
+  margin: 1.5rem 0 1rem;
+  border: 1px solid rgba(23, 66, 125, 0.12);
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(250, 252, 255, 0.9);
+}
+
+.stat-status-header,
+.stat-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1.1rem;
+}
+
+.stat-status-header {
+  background: linear-gradient(135deg, rgba(31, 122, 219, 0.08), rgba(98, 132, 255, 0.12));
+  font-weight: 600;
+  color: #17427d;
+}
+
+.stat-status-row:nth-of-type(odd) {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.stat-status-count {
+  justify-self: end;
+  font-weight: 600;
+  color: #17427d;
 }
 
 .issue-log-card {
@@ -1106,6 +1206,18 @@ code {
 
 .manual-transaction-input input {
   flex: 1;
+}
+
+.manual-status-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.manual-status-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .field-hint {

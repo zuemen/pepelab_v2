@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from '../router.jsx';
 import { ISSUE_LOG_STORAGE_KEY } from '../constants/storage.js';
-import { describeCredentialStatus, isCollectedStatus, isRevokedStatus } from '../utils/status.js';
+import {
+  describeCredentialStatus,
+  isCollectedStatus,
+  isRevokedStatus,
+  normalizeCredentialStatus,
+} from '../utils/status.js';
 
 const CARD_TYPES = [
   {
@@ -89,11 +94,31 @@ function loadIssueLog() {
   }
 }
 
-const DEFAULT_SUMMARY = { total: 0, collected: 0, revoked: 0, active: 0, pending: 0, withCid: 0 };
+const DEFAULT_SUMMARY = {
+  total: 0,
+  collected: 0,
+  revoked: 0,
+  active: 0,
+  pending: 0,
+  withCid: 0,
+  statusCounts: {},
+};
+
+const STATUS_DISPLAY_ORDER = [
+  'COLLECTED',
+  'ACCEPTED',
+  'ACTIVE',
+  'ISSUED',
+  'PENDING',
+  'REVOKED',
+  'EXPIRED',
+  'SUSPENDED',
+  'UNKNOWN',
+];
 
 function computeGroupedTotals(issueLog) {
   const totals = {
-    overall: { total: 0, collected: 0, revoked: 0, withCid: 0 },
+    overall: { total: 0, collected: 0, revoked: 0, withCid: 0, statusCounts: {} },
     scopes: {},
     entries: {},
   };
@@ -101,11 +126,17 @@ function computeGroupedTotals(issueLog) {
   for (const entry of issueLog) {
     const scope = entry.scope || 'UNKNOWN';
     if (!totals.scopes[scope]) {
-      totals.scopes[scope] = { total: 0, collected: 0, revoked: 0, withCid: 0 };
+      totals.scopes[scope] = { total: 0, collected: 0, revoked: 0, withCid: 0, statusCounts: {} };
       totals.entries[scope] = [];
     }
     totals.scopes[scope].total += 1;
     totals.overall.total += 1;
+
+    const normalizedStatus = normalizeCredentialStatus(entry.status) || 'UNKNOWN';
+    totals.scopes[scope].statusCounts[normalizedStatus] =
+      (totals.scopes[scope].statusCounts[normalizedStatus] || 0) + 1;
+    totals.overall.statusCounts[normalizedStatus] =
+      (totals.overall.statusCounts[normalizedStatus] || 0) + 1;
 
     const collected = entry.collected || isCollectedStatus(entry.status);
     if (collected) {
@@ -131,7 +162,8 @@ function computeGroupedTotals(issueLog) {
 
 function deriveScopeSummaries(grouped) {
   return CARD_TYPES.map((card) => {
-    const summary = grouped.scopes[card.scope] || { total: 0, collected: 0, revoked: 0, withCid: 0 };
+    const summary =
+      grouped.scopes[card.scope] || { total: 0, collected: 0, revoked: 0, withCid: 0, statusCounts: {} };
     const entries = grouped.entries[card.scope] || [];
     const extendedSummary = {
       ...summary,
@@ -156,6 +188,7 @@ function deriveOverallSummary(grouped) {
     active: base.total - base.revoked,
     pending: base.total - base.collected,
     withCid: base.withCid || 0,
+    statusCounts: base.statusCounts || {},
   };
 }
 
@@ -180,6 +213,43 @@ function StatsSummaryBanner({ overallSummary }) {
             <strong className="summary-value">{item.value}</strong>
           </div>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function StatsCardOverview({ scopeSummaries }) {
+  if (!scopeSummaries.length) {
+    return null;
+  }
+
+  return (
+    <div className="stats-card-overview" aria-label="卡片類型統計">
+      {scopeSummaries.map((card) => (
+        <Link key={card.scope} to={`/stats/${card.route}`} className="stats-card-overview-item">
+          <div className="overview-header">
+            <span className="overview-label">{card.navLabel}</span>
+            <span className="overview-total">{card.summary.total}</span>
+          </div>
+          <dl>
+            <div>
+              <dt>已領取</dt>
+              <dd>{card.summary.collected}</dd>
+            </div>
+            <div>
+              <dt>待領取</dt>
+              <dd>{card.summary.pending}</dd>
+            </div>
+            <div>
+              <dt>已撤銷</dt>
+              <dd>{card.summary.revoked}</dd>
+            </div>
+            <div>
+              <dt>已取得 CID</dt>
+              <dd>{card.summary.withCid}</dd>
+            </div>
+          </dl>
+        </Link>
       ))}
     </div>
   );
@@ -251,6 +321,37 @@ function deriveCidMetadata(entry) {
     lookupHint: entry.cidLookupHint || null,
     lookupPending: Boolean(entry.cidLookupPending),
   };
+}
+
+function buildStatusList(statusCounts) {
+  const entries = Object.entries(statusCounts || {});
+  if (!entries.length) {
+    return [];
+  }
+
+  const order = (status) => {
+    const normalized = normalizeCredentialStatus(status) || 'UNKNOWN';
+    const index = STATUS_DISPLAY_ORDER.indexOf(normalized);
+    return index === -1 ? STATUS_DISPLAY_ORDER.length : index;
+  };
+
+  return entries
+    .map(([status, count]) => {
+      const normalized = normalizeCredentialStatus(status) || 'UNKNOWN';
+      const info = describeCredentialStatus(normalized);
+      return {
+        key: normalized,
+        count,
+        info,
+      };
+    })
+    .sort((a, b) => {
+      const diff = order(a.key) - order(b.key);
+      if (diff !== 0) {
+        return diff;
+      }
+      return a.key.localeCompare(b.key);
+    });
 }
 
 function StatsRecordCard({ entry, index }) {
@@ -370,6 +471,7 @@ function StatsRecordList({ entries, emptyMessage }) {
 }
 
 function StatsCardDetail({ card }) {
+  const statusList = useMemo(() => buildStatusList(card.summary.statusCounts), [card.summary.statusCounts]);
   return (
     <article className="stats-card-detail">
       <h3>{card.label}</h3>
@@ -401,12 +503,34 @@ function StatsCardDetail({ card }) {
         </div>
       </div>
 
+      {statusList.length ? (
+        <div className="stat-status-table" role="table" aria-label="官方狀態分佈">
+          <div className="stat-status-header" role="row">
+            <span role="columnheader">官方狀態</span>
+            <span role="columnheader">筆數</span>
+          </div>
+          {statusList.map((status) => (
+            <div key={status.key} className="stat-status-row" role="row">
+              <span role="cell">
+                <span className={status.info.tone ? `status-badge ${status.info.tone}` : 'status-badge'}>
+                  {status.info.text}
+                </span>
+              </span>
+              <span role="cell" className="stat-status-count">
+                {status.count}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <StatsRecordList entries={card.entries} emptyMessage="尚無此卡別的發卡紀錄。" />
     </article>
   );
 }
 
 function StatsAllRecords({ issueLog, overallSummary }) {
+  const statusList = useMemo(() => buildStatusList(overallSummary.statusCounts), [overallSummary.statusCounts]);
   return (
     <article className="stats-card-detail">
       <h3>發卡紀錄總覽</h3>
@@ -440,6 +564,27 @@ function StatsAllRecords({ issueLog, overallSummary }) {
           <div className="stat-detail-value">{overallSummary.withCid}</div>
         </div>
       </div>
+
+      {statusList.length ? (
+        <div className="stat-status-table" role="table" aria-label="官方狀態分佈">
+          <div className="stat-status-header" role="row">
+            <span role="columnheader">官方狀態</span>
+            <span role="columnheader">筆數</span>
+          </div>
+          {statusList.map((status) => (
+            <div key={status.key} className="stat-status-row" role="row">
+              <span role="cell">
+                <span className={status.info.tone ? `status-badge ${status.info.tone}` : 'status-badge'}>
+                  {status.info.text}
+                </span>
+              </span>
+              <span role="cell" className="stat-status-count">
+                {status.count}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <StatsRecordList entries={issueLog} emptyMessage="尚未紀錄任何電子卡。" />
     </article>
@@ -496,6 +641,7 @@ export function StatisticsPage() {
     <section>
       <h2>發卡統計</h2>
       <StatsSummaryBanner overallSummary={overallSummary} />
+      <StatsCardOverview scopeSummaries={scopeSummaries} />
       <StatsNavigation navItems={navItems} defaultKey={defaultRoute} />
       <Routes>
         <Route index element={<Navigate to={defaultRoute} replace />} />

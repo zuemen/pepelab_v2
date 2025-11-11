@@ -191,15 +191,6 @@ const INITIAL_MANUAL_LOOKUP_STATE = {
   hint: null,
 };
 
-const MANUAL_STATUS_OPTIONS = [
-  { value: 'PENDING', label: '待領取（PENDING）' },
-  { value: 'ISSUED', label: '已發行（ISSUED）' },
-  { value: 'ACCEPTED', label: '已領取（ACCEPTED）' },
-  { value: 'ACTIVE', label: '已領取（ACTIVE）' },
-  { value: 'COLLECTED', label: '已領取（COLLECTED）' },
-  { value: 'REVOKED', label: '已撤銷（REVOKED）' },
-];
-
 const INITIAL_CONDITION = {
   id: `cond-${Math.random().toString(36).slice(2, 8)}`,
   system: 'http://hl7.org/fhir/sid/icd-10',
@@ -757,7 +748,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     credentialJti: '',
     transactionId: '',
     scope: 'MEDICAL_RECORD',
-    status: 'ISSUED',
+    status: '',
     collected: false,
   });
   const [manualLookup, setManualLookup] = useState(INITIAL_MANUAL_LOOKUP_STATE);
@@ -1265,12 +1256,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
   };
 
   const handleManualEntryChange = (field, value) => {
-    let nextValue = value;
-    if (field === 'status') {
-      nextValue = normalizeCredentialStatus(value) || '';
-    }
-
-    setManualEntry((prev) => ({ ...prev, [field]: nextValue }));
+    setManualEntry((prev) => ({ ...prev, [field]: value }));
     if (field === 'transactionId') {
       setManualLookup(INITIAL_MANUAL_LOOKUP_STATE);
     }
@@ -1296,10 +1282,11 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     let lookupError = null;
     let lookupPending = false;
     let lookupHint = null;
-    let resolvedStatus = manualEntry.status;
+    let resolvedStatus = manualEntry.status || '';
     let resolvedCollected = Boolean(manualEntry.collected);
     let resolvedCollectedAt = manualEntry.collected ? now : null;
-    let resolvedRevokedAt = manualEntry.status === 'REVOKED' ? now : null;
+    let resolvedRevokedAt =
+      normalizeCredentialStatus(manualEntry.status) === 'REVOKED' ? now : null;
     let lookupResultData = null;
 
     if (!cid && credentialJti) {
@@ -1364,7 +1351,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         return;
       }
 
-      const normalizedStatus = normalizeCredentialStatus(resolvedStatus) || 'ISSUED';
+      const normalizedStatus = normalizeCredentialStatus(resolvedStatus) || (lookupPending ? 'PENDING' : 'ISSUED');
       const statusDetails = describeCredentialStatus(normalizedStatus);
       const finalCollected =
         resolvedCollected || statusDetails.collected || Boolean(lookupResultData?.collected);
@@ -1406,7 +1393,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         credentialJti: '',
         transactionId: '',
         scope: prev.scope,
-        status: 'ISSUED',
+        status: '',
         collected: false,
       }));
       setManualLookup(INITIAL_MANUAL_LOOKUP_STATE);
@@ -1441,7 +1428,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         cid: lookupResult.cid || prev.cid,
         credentialJti: lookupResult.credentialJti || prev.credentialJti,
         holderDid: prev.holderDid || lookupResult.holderDid || holderDid || '',
-        status: lookupResult.status || prev.status,
+        status: normalizeCredentialStatus(lookupResult.status) || prev.status || '',
         collected: prev.collected || lookupResult.collected,
       }));
       setManualLookup({
@@ -1462,7 +1449,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     } else if (lookupResult.pending) {
       setManualEntry((prev) => ({
         ...prev,
-        status: lookupResult.status || prev.status || 'PENDING',
+        status: normalizeCredentialStatus(lookupResult.status) || prev.status || 'PENDING',
       }));
       setManualLookup({
         loading: false,
@@ -1502,7 +1489,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       credentialJti: '',
       transactionId: '',
       scope: prev.scope,
-      status: 'ISSUED',
+      status: '',
       collected: false,
     }));
     setManualEntryError(null);
@@ -1778,13 +1765,38 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     const response = await client.updateCredentialStatus(normalizedCid, action, issuerToken);
 
     if (!response.ok) {
+      const rawDetail = response.detail;
+      let detailMessage = '';
+      if (typeof rawDetail === 'string') {
+        detailMessage = rawDetail;
+      } else if (rawDetail && typeof rawDetail === 'object') {
+        detailMessage =
+          rawDetail.message || rawDetail.detail || rawDetail.reason || JSON.stringify(rawDetail);
+      }
+      const detailCode =
+        (rawDetail && typeof rawDetail === 'object' && (rawDetail.code || rawDetail.errorCode)) ||
+        (detailMessage.match(/6\d{4}/) ? detailMessage.match(/6\d{4}/)[0] : null);
+      const isPending61010 = detailCode === '61010' || /61010/.test(detailMessage);
+
+      if (isPending61010) {
+        updateIssueLogEntry(index, (entry) => ({
+          ...entry,
+          cidLookupPending: true,
+          cidLookupError: null,
+          cidLookupHint:
+            detailMessage || '官方回應 61010：指定 VC 尚未領取或 QR Code 尚未被掃描。',
+        }));
+      }
+
       setIssueLogActions((prev) => ({
         ...prev,
         [key]: {
           loading: false,
-          error: `(${response.status}) ${response.detail}`,
-          message: null,
-          tone: 'error',
+          error: isPending61010 ? null : `(${response.status}) ${detailMessage || '操作失敗'}`,
+          message: isPending61010
+            ? detailMessage || '官方仍回應 61010，請確認卡片是否完成領取。'
+            : null,
+          tone: isPending61010 ? 'info' : 'error',
         },
       }));
       return;
@@ -1806,6 +1818,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         status: 'REVOKED',
         revokedAt: new Date().toISOString(),
       }));
+      refreshIssueLogEntry(index);
     }
   };
 
@@ -2082,6 +2095,10 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
   const successCidSourceLabel = describeLookupSource(success?.cidLookupSource);
   const successCidPending = Boolean(success?.cidLookupPending);
   const successCidHint = success?.cidLookupHint || null;
+  const manualStatusInfo = describeCredentialStatus(manualEntry.status);
+  const manualStatusBadgeClass = manualStatusInfo.tone
+    ? `status-badge ${manualStatusInfo.tone}`
+    : 'status-badge';
 
   return (
     <section aria-labelledby="issuer-heading">
@@ -2775,19 +2792,12 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                 ))}
               </select>
             </div>
-            <div>
-              <label htmlFor="manual-status">狀態</label>
-              <select
-                id="manual-status"
-                value={manualEntry.status}
-                onChange={(event) => handleManualEntryChange('status', event.target.value)}
-              >
-                {MANUAL_STATUS_OPTIONS.map((option) => (
-                  <option key={`manual-status-${option.value}`} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+            <div className="manual-status-preview">
+              <label htmlFor="manual-status">官方狀態</label>
+              <div id="manual-status" className="manual-status-value">
+                <span className={manualStatusBadgeClass}>{manualStatusInfo.text}</span>
+              </div>
+              <p className="field-hint">狀態會依 nonce 查詢結果自動更新。</p>
             </div>
           </div>
           <div className="manual-lookup-instructions">
