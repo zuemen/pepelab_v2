@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from './router.jsx';
+import { BrowserRouter, Routes, Route, Link, useLocation } from './router.jsx';
 import App from './App.jsx';
 import DemoApp from './demo/DemoApp.jsx';
 import './styles.css';
@@ -28,8 +28,7 @@ function RootRouter() {
       <ModeSwitcher />
       <Routes>
         <Route path="demo/*" element={<DemoApp />} />
-        <Route index element={<App />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/*" element={<App />} />
       </Routes>
     </>
   );
