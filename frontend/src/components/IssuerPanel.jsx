@@ -1772,7 +1772,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     const key = `${normalizedCid}-${action}`;
     setIssueLogActions((prev) => ({
       ...prev,
-      [key]: { loading: true, message: null, error: null },
+      [key]: { loading: true, message: null, error: null, tone: null },
     }));
 
     const response = await client.updateCredentialStatus(normalizedCid, action, issuerToken);
@@ -1784,6 +1784,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
           loading: false,
           error: `(${response.status}) ${response.detail}`,
           message: null,
+          tone: 'error',
         },
       }));
       return;
@@ -1795,6 +1796,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         loading: false,
         error: null,
         message: '操作成功，狀態已更新。',
+        tone: 'success',
       },
     }));
 
@@ -1805,6 +1807,118 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         revokedAt: new Date().toISOString(),
       }));
     }
+  };
+
+  const refreshIssueLogEntry = async (index) => {
+    const entry = issueLog[index];
+    if (!entry) {
+      return;
+    }
+
+    const transactionId = entry.transactionId ? entry.transactionId.trim() : '';
+    const fallbackKey = entry.cid ? `${entry.cid}-refresh` : `entry-${index}-refresh`;
+    const key = transactionId ? `${transactionId}-refresh` : fallbackKey;
+
+    if (!transactionId) {
+      setIssueLogActions((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: '此紀錄未保存交易序號，請改用「查詢 CID」補登後再試。',
+          message: null,
+          tone: 'error',
+        },
+      }));
+      return;
+    }
+
+    setIssueLogActions((prev) => ({
+      ...prev,
+      [key]: { loading: true, message: null, error: null, tone: null },
+    }));
+
+    const lookupResult = await lookupCredentialByTransaction(transactionId);
+
+    if (!lookupResult.ok && !lookupResult.pending) {
+      setIssueLogActions((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: lookupResult.lookupError || '查詢官方 nonce API 失敗，請稍後再試。',
+          message: null,
+          tone: 'error',
+        },
+      }));
+      updateIssueLogEntry(index, (current) => ({
+        ...current,
+        cidLookupSource: lookupResult.lookupSource || 'nonce',
+        cidLookupError: lookupResult.lookupError || current.cidLookupError,
+        cidLookupPending: false,
+        cidLookupHint: lookupResult.lookupHint || current.cidLookupHint,
+      }));
+      return;
+    }
+
+    updateIssueLogEntry(index, (current) => {
+      const nextCid = lookupResult.cid ? normalizeCid(lookupResult.cid) : current.cid;
+      const nextJti = lookupResult.credentialJti || current.credentialJti || '';
+      const nextStatus = lookupResult.status || current.status;
+      const statusInfo = describeCredentialStatus(nextStatus);
+      const nextCollectedAt =
+        lookupResult.collectedAt ||
+        current.collectedAt ||
+        (statusInfo.collected && !current.collectedAt ? new Date().toISOString() : null);
+      const nextRevokedAt =
+        lookupResult.revokedAt ||
+        current.revokedAt ||
+        (statusInfo.revoked && !current.revokedAt ? new Date().toISOString() : null);
+      const nextHolder = lookupResult.holderDid || current.holderDid || '';
+      const hasCredential = current.hasCredential || Boolean(nextCid) || lookupResult.hasCredential;
+
+      if (lookupResult.pending) {
+        return {
+          ...current,
+          cid: nextCid,
+          credentialJti: nextJti,
+          status: nextStatus,
+          holderDid: nextHolder,
+          cidLookupSource: lookupResult.lookupSource || 'nonce',
+          cidLookupError: null,
+          cidLookupPending: true,
+          cidLookupHint: lookupResult.lookupHint || current.cidLookupHint,
+          hasCredential,
+        };
+      }
+
+      return {
+        ...current,
+        cid: nextCid,
+        credentialJti: nextJti,
+        status: nextStatus,
+        collected: lookupResult.collected || current.collected || statusInfo.collected,
+        collectedAt: nextCollectedAt,
+        revokedAt: nextRevokedAt,
+        holderDid: nextHolder,
+        cidLookupSource: lookupResult.lookupSource || 'nonce',
+        cidLookupError: null,
+        cidLookupPending: false,
+        cidLookupHint: null,
+        hasCredential,
+      };
+    });
+
+    setIssueLogActions((prev) => ({
+      ...prev,
+      [key]: {
+        loading: false,
+        error: null,
+        message:
+          lookupResult.pending
+            ? lookupResult.lookupHint || '官方仍回應 61010，請稍後再試。'
+            : '已同步官方狀態並更新統計頁。',
+        tone: lookupResult.pending ? 'info' : 'success',
+      },
+    }));
   };
 
   function updateCondition(field, value) {
@@ -2874,6 +2988,13 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
               const actionState = actionKey ? issueLogActions[actionKey] : null;
               const revokeDisabled =
                 !entry.cid || entry.status === 'REVOKED' || Boolean(actionState?.loading);
+              const refreshKey = entry.transactionId
+                ? `${entry.transactionId}-refresh`
+                : entry.cid
+                ? `${entry.cid}-refresh`
+                : null;
+              const refreshState = refreshKey ? issueLogActions[refreshKey] : null;
+              const refreshDisabled = Boolean(refreshState?.loading);
               return (
                 <li key={key}>
                   <div className="issue-log-row">
@@ -2954,6 +3075,14 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                     </div>
                   ) : null}
                   <div className="issue-log-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => refreshIssueLogEntry(index)}
+                      disabled={refreshDisabled}
+                    >
+                      {refreshState?.loading ? '查詢中…' : '重新查詢官方狀態'}
+                    </button>
                     <button type="button" className="secondary" onClick={() => toggleCollected(index)}>
                       {entry.collected ? '標示為未領取' : '標示為已領取'}
                     </button>
@@ -2977,7 +3106,33 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
                     <div className="issue-log-feedback error">{actionState.error}</div>
                   ) : null}
                   {actionState?.message ? (
-                    <div className="issue-log-feedback success">{actionState.message}</div>
+                    <div
+                      className={`issue-log-feedback ${
+                        actionState.tone === 'info'
+                          ? 'info'
+                          : actionState.tone === 'error'
+                          ? 'error'
+                          : 'success'
+                      }`}
+                    >
+                      {actionState.message}
+                    </div>
+                  ) : null}
+                  {refreshState?.error ? (
+                    <div className="issue-log-feedback error">{refreshState.error}</div>
+                  ) : null}
+                  {refreshState?.message ? (
+                    <div
+                      className={`issue-log-feedback ${
+                        refreshState.tone === 'info'
+                          ? 'info'
+                          : refreshState.tone === 'error'
+                          ? 'error'
+                          : 'success'
+                      }`}
+                    >
+                      {refreshState.message}
+                    </div>
                   ) : null}
                 </li>
               );

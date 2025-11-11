@@ -242,6 +242,9 @@ function StatsOverview({ overallSummary, scopeSummaries }) {
           </div>
         ))}
       </div>
+      <p className="hint">
+        需要查看完整清單？請前往<Link to="records">發卡紀錄總覽</Link>掌握所有卡片狀態。
+      </p>
     </article>
   );
 }
@@ -292,15 +295,123 @@ function deriveCidMetadata(entry) {
   };
 }
 
-function StatsCardDetail({ card }) {
-  const entries = useMemo(() => {
-    return [...card.entries].sort((a, b) => {
+function StatsRecordCard({ entry, index }) {
+  const meta = deriveCidMetadata(entry);
+  const statusInfo = describeCredentialStatus(entry.status);
+  const badgeClass = statusInfo.tone ? `status-badge ${statusInfo.tone}` : 'status-badge';
+  const lookupSourceLabel = describeLookupSourceLabel(entry.cidLookupSource);
+  const cidDisplay = meta.cid ? (
+    <code className="stat-record-cid">{meta.cid}</code>
+  ) : entry.cidLookupPending ? (
+    <span className="stat-record-placeholder pending">等待領取</span>
+  ) : entry.cidLookupError ? (
+    <span className="stat-record-placeholder error">{entry.cidLookupError}</span>
+  ) : (
+    <span className="stat-record-placeholder">尚未取得</span>
+  );
+  const collected = entry.collected || statusInfo.collected;
+  const collectedBadgeClass = collected
+    ? 'status-badge success'
+    : entry.cidLookupPending
+    ? 'status-badge pending'
+    : 'status-badge muted';
+  const collectedText = collected ? '已領取' : entry.cidLookupPending ? '等待領取' : '尚未領取';
+
+  return (
+    <article key={`${entry.cid || entry.transactionId || index}-${index}`} className="stat-record-card">
+      <header className="stat-record-header">
+        <div>
+          <h4>{entry.holderDid || '未知持卡者'}</h4>
+          <p className="stat-record-subtitle">
+            交易序號：{entry.transactionId || '—'}
+            <span className="separator" aria-hidden="true">
+              ·
+            </span>
+            發卡時間：{formatDateTime(entry.timestamp)}
+          </p>
+        </div>
+        <span className={badgeClass}>{statusInfo.text}</span>
+      </header>
+      <dl className="stat-record-grid">
+        <div>
+          <dt>CID</dt>
+          <dd>{cidDisplay}</dd>
+        </div>
+        <div>
+          <dt>JTI</dt>
+          <dd>{meta.jti ? <code>{meta.jti}</code> : '—'}</dd>
+        </div>
+        <div>
+          <dt>持卡者 DID</dt>
+          <dd>{entry.holderDid || '—'}</dd>
+        </div>
+        <div>
+          <dt>領取狀態</dt>
+          <dd>
+            <span className={collectedBadgeClass}>{collectedText}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>領取時間</dt>
+          <dd>{formatDateTime(entry.collectedAt)}</dd>
+        </div>
+        <div>
+          <dt>撤銷時間</dt>
+          <dd>{formatDateTime(entry.revokedAt)}</dd>
+        </div>
+        <div>
+          <dt>官方狀態</dt>
+          <dd>
+            <span className={badgeClass}>{statusInfo.text}</span>
+          </dd>
+        </div>
+      </dl>
+      <div className="stat-record-meta">
+        {lookupSourceLabel ? <span>CID 來源：{lookupSourceLabel}</span> : null}
+        {meta.displayPath ? <span>撤銷 API：PUT {meta.displayPath}</span> : null}
+        {meta.sandboxPath && meta.sandboxPath !== meta.displayPath ? (
+          <span>沙盒 API：PUT {meta.sandboxPath}</span>
+        ) : null}
+        {meta.displayUrl ? <span>撤銷 URL：{meta.displayUrl}</span> : null}
+        {meta.sandboxUrl && meta.sandboxUrl !== meta.displayUrl ? (
+          <span>沙盒 URL：{meta.sandboxUrl}</span>
+        ) : null}
+      </div>
+      {meta.lookupHint && !entry.cidLookupError ? (
+        <p className={`stat-record-hint${meta.lookupPending ? ' pending' : ''}`}>
+          官方回應：{meta.lookupHint}
+        </p>
+      ) : null}
+      {entry.cidLookupError ? (
+        <p className="stat-record-hint error">CID 查詢失敗：{entry.cidLookupError}</p>
+      ) : null}
+    </article>
+  );
+}
+
+function StatsRecordList({ entries, emptyMessage }) {
+  const sortedEntries = useMemo(() => {
+    return [...entries].sort((a, b) => {
       const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
       const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
       return timeB - timeA;
     });
-  }, [card.entries]);
+  }, [entries]);
 
+  if (!sortedEntries.length) {
+    return <p className="empty">{emptyMessage}</p>;
+  }
+
+  return (
+    <div className="stat-record-list">
+      {sortedEntries.map((entry, index) => (
+        <StatsRecordCard key={`${entry.cid || entry.transactionId || index}-${index}`} entry={entry} index={index} />
+      ))}
+    </div>
+  );
+}
+
+function StatsCardDetail({ card }) {
   return (
     <article>
       <h3>{card.label}</h3>
@@ -332,95 +443,47 @@ function StatsCardDetail({ card }) {
         </div>
       </div>
 
-      {entries.length ? (
-        <div className="stat-record-list">
-          {entries.map((entry, index) => {
-            const meta = deriveCidMetadata(entry);
-            const statusInfo = describeCredentialStatus(entry.status);
-            const badgeClass = statusInfo.tone ? `status-badge ${statusInfo.tone}` : 'status-badge';
-            const lookupSourceLabel = describeLookupSourceLabel(entry.cidLookupSource);
-            const cidDisplay = meta.cid ? (
-              <code className="stat-record-cid">{meta.cid}</code>
-            ) : entry.cidLookupPending ? (
-              <span className="stat-record-placeholder pending">等待領取</span>
-            ) : entry.cidLookupError ? (
-              <span className="stat-record-placeholder error">{entry.cidLookupError}</span>
-            ) : (
-              <span className="stat-record-placeholder">尚未取得</span>
-            );
+      <StatsRecordList entries={card.entries} emptyMessage="尚無此卡別的發卡紀錄。" />
+    </article>
+  );
+}
 
-            return (
-              <article
-                key={`${entry.cid || entry.transactionId || index}-${index}`}
-                className="stat-record-card"
-              >
-                <header className="stat-record-header">
-                  <div>
-                    <h4>{entry.holderDid || '未知持卡者'}</h4>
-                    <p className="stat-record-subtitle">
-                      交易序號：{entry.transactionId || '—'}
-                      <span className="separator" aria-hidden="true">
-                        ·
-                      </span>
-                      發卡時間：{formatDateTime(entry.timestamp)}
-                    </p>
-                  </div>
-                  <span className={badgeClass}>{statusInfo.text}</span>
-                </header>
-                <dl className="stat-record-grid">
-                  <div>
-                    <dt>CID</dt>
-                    <dd>{cidDisplay}</dd>
-                  </div>
-                  <div>
-                    <dt>JTI</dt>
-                    <dd>{meta.jti ? <code>{meta.jti}</code> : '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>持卡者 DID</dt>
-                    <dd>{entry.holderDid || '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>領取時間</dt>
-                    <dd>{formatDateTime(entry.collectedAt)}</dd>
-                  </div>
-                  <div>
-                    <dt>撤銷時間</dt>
-                    <dd>{formatDateTime(entry.revokedAt)}</dd>
-                  </div>
-                  <div>
-                    <dt>官方狀態</dt>
-                    <dd>
-                      <span className={badgeClass}>{statusInfo.text}</span>
-                    </dd>
-                  </div>
-                </dl>
-                <div className="stat-record-meta">
-                  {lookupSourceLabel ? <span>CID 來源：{lookupSourceLabel}</span> : null}
-                  {meta.displayPath ? <span>撤銷 API：PUT {meta.displayPath}</span> : null}
-                  {meta.sandboxPath && meta.sandboxPath !== meta.displayPath ? (
-                    <span>沙盒 API：PUT {meta.sandboxPath}</span>
-                  ) : null}
-                  {meta.displayUrl ? <span>撤銷 URL：{meta.displayUrl}</span> : null}
-                  {meta.sandboxUrl && meta.sandboxUrl !== meta.displayUrl ? (
-                    <span>沙盒 URL：{meta.sandboxUrl}</span>
-                  ) : null}
-                </div>
-                {meta.lookupHint && !entry.cidLookupError ? (
-                  <p className={`stat-record-hint${meta.lookupPending ? ' pending' : ''}`}>
-                    官方回應：{meta.lookupHint}
-                  </p>
-                ) : null}
-                {entry.cidLookupError ? (
-                  <p className="stat-record-hint error">CID 查詢失敗：{entry.cidLookupError}</p>
-                ) : null}
-              </article>
-            );
-          })}
+function StatsAllRecords({ issueLog, overallSummary }) {
+  return (
+    <article>
+      <h3>發卡紀錄總覽</h3>
+      <p className="hint">
+        依時間排序列出所有發卡紀錄，可快速檢視持卡者、官方狀態與撤銷端點。若在發卡頁重新查詢官方
+        nonce，統計頁會即時同步更新。
+      </p>
+      <div className="stat-detail-grid">
+        <div>
+          <div className="stat-detail-label">總發卡</div>
+          <div className="stat-detail-value">{overallSummary.total}</div>
         </div>
-      ) : (
-        <p className="empty">尚無此卡別的發卡紀錄。</p>
-      )}
+        <div>
+          <div className="stat-detail-label">已領取</div>
+          <div className="stat-detail-value">{overallSummary.collected}</div>
+        </div>
+        <div>
+          <div className="stat-detail-label">待領取</div>
+          <div className="stat-detail-value">{overallSummary.pending}</div>
+        </div>
+        <div>
+          <div className="stat-detail-label">有效中</div>
+          <div className="stat-detail-value">{overallSummary.active}</div>
+        </div>
+        <div>
+          <div className="stat-detail-label">已撤銷</div>
+          <div className="stat-detail-value">{overallSummary.revoked}</div>
+        </div>
+        <div>
+          <div className="stat-detail-label">已取得 CID</div>
+          <div className="stat-detail-value">{overallSummary.withCid}</div>
+        </div>
+      </div>
+
+      <StatsRecordList entries={issueLog} emptyMessage="尚未紀錄任何電子卡。" />
     </article>
   );
 }
@@ -454,6 +517,7 @@ export function StatisticsPage() {
   const navItems = useMemo(
     () => [
       { key: 'overview', label: '總覽', to: 'overview' },
+      { key: 'records', label: '發卡紀錄', to: 'records' },
       ...scopeSummaries.map((card) => ({ key: card.route, label: card.navLabel, to: card.route })),
     ],
     [scopeSummaries]
@@ -468,6 +532,10 @@ export function StatisticsPage() {
         <Route
           path="overview"
           element={<StatsOverview overallSummary={overallSummary} scopeSummaries={scopeSummaries} />}
+        />
+        <Route
+          path="records"
+          element={<StatsAllRecords issueLog={issueLog} overallSummary={overallSummary} />}
         />
         {scopeSummaries.map((card) => (
           <Route key={card.scope} path={card.route} element={<StatsCardDetail card={card} />} />
