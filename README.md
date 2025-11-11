@@ -20,10 +20,9 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 後端採 FastAPI + in-memory store（`backend/main.py`、`backend/store.py`）。選擇性揭露政策以 `DisclosurePolicy` 列表儲存，欄位使用 FHIR 路徑；驗證流程檢查 IAL、scope、欄位範圍與資料一致性，再交由 `InsightEngine` 輸出胃炎趨勢或領藥提醒。
 
-前端改以 React + Vite 重構（`frontend/`），提供高對比、大字體的三步驟導覽：
-1. **發行端**：填寫 FHIR Condition / MedicationDispense 欄位、設定 scope 與欄位，並將 `modadigitalwallet://credential_offer?...` Deep Link 轉為可掃描的 QR Code。
-2. **病患錢包**：查詢 nonce、補齊 FHIR Payload、接受或拒絕憑證、檢視錢包列表、執行可遺忘權。
-3. **驗證端**：依照病歷或領藥情境選擇 scope，要求指定 IAL，產生 QR Code、送出 VP 並查看 AI Insight。
+前端改以 React + Vite 重構（`frontend/`），提供高對比、大字體的操作面板：
+1. **發行端**：填寫 FHIR Condition / MedicationDispense 欄位、設定 scope 與欄位，並將 `modadigitalwallet://credential_offer?...` Deep Link 轉為可掃描的 QR Code，同步在頁面上登錄成功發卡的持卡者 DID、CID 與交易序號，方便後續追蹤。頁面新增「持卡者憑證狀態」面板，可即時呼叫 `/api/wallet/{holder_did}/credentials`、補登或手動新增 CID，再透過 `PUT /api/credential/{cid}/revocation` 或可遺忘權 API 清除卡片。
+2. **驗證端**：依照病歷或領藥情境選擇 scope，要求指定 IAL，產生 QR Code、送出 VP 並查看 AI Insight。
 
 ## 後端 API
 | Method | Path | 說明 |
@@ -125,10 +124,10 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
    - 可傳入自訂後端位址與發行端 token：`python scripts/reset_sandbox.py http://localhost:8000 my-token`。
    - 腳本會呼叫 `/v2/api/system/reset`，確保每次示範前從乾淨狀態開始。
 4. **建議 demo 流程**
-   1. 在 Step 1 按「載入示例」，挑選主用途（病歷／領藥／同意），送出「含資料」發卡並掃描 QR。
-   2. Step 2 以發行端回傳的 `transaction_id` 取得 nonce，按「載入示例 Payload」後執行 `ACCEPT`，錢包即會儲存憑證並顯示揭露欄位。
-   3. Step 3 產生驗證 QR Code（可切換三種 scope），照欄位提示填入 VP 後送出，並觀察 AI Insight 與稽核資訊。
-   4. 於 Step 2 使用「行使可遺忘權」清除資料，或在頁首按「重設沙盒資料」快速還原初始狀態。
+    1. 在 Step 1 按「載入示例」，挑選主用途（病歷／領藥／同意），送出「含資料」發卡並掃描 QR。
+    2. 觀察下方發卡紀錄卡片，自動解析 credential JWT 的 CID、交易序號與持卡者 DID，可手動補登或從錢包清單加入，必要時立即觸發 `PUT /api/credential/{cid}/revocation` 或行使可遺忘權。
+    3. Step 2（驗證端）產生驗證 QR Code（可切換三種 scope），照欄位提示填入 VP 後送出，並觀察 AI Insight 與稽核資訊。
+    4. 如需重新示範，可在發卡紀錄區按「清除發卡紀錄」，或於頁首使用「重設沙盒資料」快速還原初始狀態。
 
 ## 程式檔案總覽
 
@@ -137,8 +136,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 - `backend/models.py`：Pydantic 模型與列舉，覆蓋 FHIR Payload、DisclosurePolicy、VerificationSession、OIDVP 等結構。
 - `backend/store.py`：記錄憑證／Session／Presentation／驗證結果的 in-memory 儲存層，同時執行過期清除與可遺忘權統計。
 - `backend/analytics.py`：模擬 AI Insight 引擎，依據揭露欄位產生病歷、領藥、研究三種統計訊息。
-- `frontend/src/api/client.js`：封裝 axios 呼叫與錯誤格式化；其餘 React components (`IssuerPanel`, `WalletPanel`, `VerifierPanel`) 建立三
-  個角色的操作面板並渲染 QR Code。
+- `frontend/src/api/client.js`：封裝 axios 呼叫與錯誤格式化；React components (`IssuerPanel`, `VerifierPanel`) 提供發卡與驗證兩大面板並渲染 QR Code。
 - `scripts/reset_sandbox.py`：簡單 CLI，可快速呼叫 `/v2/api/system/reset` 重新整理沙盒狀態。
 
 ## 身分驗證與授權對應（健保快易通 vs. MyData）
