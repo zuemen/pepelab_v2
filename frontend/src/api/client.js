@@ -1,12 +1,5 @@
 import axios from 'axios';
-
-function normalizeCid(input) {
-  return String(input ?? '')
-    .trim()
-    .replace(/^"+|"+$/g, '')
-    .replace(/^.*\/api\/credential\//, '')
-    .replace(/\/+$/, '');
-}
+import { normalizeCid } from '../utils/cid.js';
 
 export function resolveSandboxPrefix(baseUrl) {
   if (!baseUrl) {
@@ -21,15 +14,9 @@ export function resolveSandboxPrefix(baseUrl) {
     if (!normalizedPath || normalizedPath === '/' || normalizedPath === '') {
       return '/v2';
     }
-    if (normalizedPath === '/v2' || normalizedPath.endsWith('/v2')) {
-      return '';
-    }
-    if (normalizedPath.includes('/v2/')) {
-      return '';
-    }
-    return '/v2';
+    return normalizedPath;
   } catch (error) {
-    return /\/v2(?:\/|$)/.test(baseUrl) ? '' : '/v2';
+    return '/v2';
   }
 }
 

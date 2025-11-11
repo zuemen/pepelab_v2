@@ -4,6 +4,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { resolveSandboxPrefix } from '../api/client.js';
 import { ISSUE_LOG_STORAGE_KEY } from '../constants/storage.js';
 import { computeRevocationDetails } from '../utils/revocation.js';
+import { normalizeCid, parseCidFromJti } from '../utils/cid.js';
 
 function decodeJwtPayload(token) {
   if (!token || typeof token !== 'string') {
@@ -32,21 +33,6 @@ function decodeJwtPayload(token) {
   }
 }
 
-function parseCidFromJti(jti) {
-  if (!jti || typeof jti !== 'string') {
-    return '';
-  }
-  try {
-    const url = new URL(jti);
-    const parts = url.pathname.split('/');
-    const lastSegment = parts.pop() || parts.pop();
-    return lastSegment || jti;
-  } catch (error) {
-    const segments = jti.split('/');
-    return segments[segments.length - 1] || jti;
-  }
-}
-
 function extractCredentialIdentifiers(credentialJwt) {
   if (!credentialJwt || typeof credentialJwt !== 'string') {
     return { cid: '', jti: '' };
@@ -57,13 +43,9 @@ function extractCredentialIdentifiers(credentialJwt) {
     return { cid: '', jti: '' };
   }
 
-  const jti = typeof payload.jti === 'string' ? payload.jti : '';
+  const jti = typeof payload.jti === 'string' ? payload.jti.trim() : '';
   const cid = jti ? parseCidFromJti(jti) : '';
   return { cid, jti };
-}
-
-function extractCidFromCredential(credentialJwt) {
-  return extractCredentialIdentifiers(credentialJwt).cid;
 }
 
 function describeLookupSource(source) {
@@ -644,7 +626,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       : entry.jti
       ? String(entry.jti).trim()
       : '';
-    let normalizedCid = entry.cid ? String(entry.cid).trim() : '';
+    let normalizedCid = normalizeCid(entry.cid);
     if (!normalizedCid && normalizedJti) {
       normalizedCid = parseCidFromJti(normalizedJti);
     }
@@ -996,6 +978,9 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         cid = parseCidFromJti(credentialJti);
       }
 
+      const normalizedCid = normalizeCid(cid);
+      const normalizedJti = credentialJti ? credentialJti.trim() : '';
+
       const rawStatus =
         (typeof data.status === 'string' && data.status) ||
         (typeof data.cardStatus === 'string' && data.cardStatus) ||
@@ -1012,8 +997,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       return {
         ok: true,
         transactionId: trimmedId,
-        cid: cid || '',
-        credentialJti: credentialJti || '',
+        cid: normalizedCid,
+        credentialJti: normalizedJti,
         credentialJwt: typeof credentialJwt === 'string' ? credentialJwt : null,
         hasCredential: Boolean(credentialJwt && typeof credentialJwt === 'string'),
         lookupSource: 'nonce',
@@ -1061,7 +1046,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       const lookupResult = await lookupCredentialByTransaction(transactionId);
       if (lookupResult.ok) {
         if (lookupResult.cid) {
-          cid = lookupResult.cid;
+          cid = normalizeCid(lookupResult.cid);
         }
         if (lookupResult.credentialJti) {
           credentialJti = lookupResult.credentialJti;
@@ -1099,7 +1084,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       }
       const responseIdentifiers = extractCredentialIdentifiers(credentialJwt);
       if (!cid && responseIdentifiers.cid) {
-        cid = responseIdentifiers.cid;
+        cid = normalizeCid(responseIdentifiers.cid);
         if (!lookupSource) {
           lookupSource = 'response';
         }
@@ -1114,15 +1099,18 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       lookupSource = 'transaction';
     }
 
+    const normalizedCid = normalizeCid(cid);
+    const normalizedJti = credentialJti ? credentialJti.trim() : '';
+
     const entry = {
       timestamp,
       holderDid: holderFromResponse || '',
       issuerId: issuerId || '',
       transactionId: transactionId || '',
-      cid: cid || '',
-      credentialJti: credentialJti || '',
+      cid: normalizedCid,
+      credentialJti: normalizedJti,
       cidSandboxPrefix: sandboxPrefix,
-      hasCredential: Boolean(hasCredential || cid || credentialJti),
+      hasCredential: Boolean(hasCredential || normalizedCid || normalizedJti),
       scope: primaryScope,
       scopeLabel,
       status,
@@ -1186,7 +1174,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
     setManualEntryFeedback(null);
     setManualEntryLoading(true);
 
-    let cid = manualEntry.cid.trim();
+    let cid = normalizeCid(manualEntry.cid);
     const credentialJti = manualEntry.credentialJti.trim();
     const transactionId = manualEntry.transactionId.trim();
     let holderValue = (manualEntry.holderDid || holderDid || '').trim();
@@ -1204,7 +1192,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         const lookupResult = await lookupCredentialByTransaction(transactionId);
         if (lookupResult.ok) {
           if (!cid && lookupResult.cid) {
-            cid = lookupResult.cid;
+            cid = normalizeCid(lookupResult.cid);
           }
           if (!resolvedCredentialJti && lookupResult.credentialJti) {
             resolvedCredentialJti = lookupResult.credentialJti;
@@ -1354,9 +1342,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         credential.credentialJti ||
         credential.jti ||
         '') &&
-      String(
-        credential.credential_jti || credential.credentialJti || credential.jti || '',
-      ).trim();
+      String(credential.credential_jti || credential.credentialJti || credential.jti || '').trim();
+
     if (!credentialJti) {
       const embeddedJwt =
         (credential.credential && typeof credential.credential === 'string'
@@ -1368,9 +1355,14 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         const identifiers = extractCredentialIdentifiers(embeddedJwt);
         credentialJti = identifiers.jti;
         if (!cid && identifiers.cid) {
-          cid = identifiers.cid;
+          cid = normalizeCid(identifiers.cid);
         }
       }
+    }
+
+    cid = normalizeCid(cid);
+    if (credentialJti) {
+      credentialJti = credentialJti.trim();
     }
     if (!cid && credentialJti) {
       cid = parseCidFromJti(credentialJti);
@@ -1526,6 +1518,8 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       credentialJti = credentialJti || identifiers.jti;
       cid = identifiers.cid || cid;
     }
+
+    cid = normalizeCid(cid);
     if (!cid) {
       return;
     }
@@ -1590,13 +1584,14 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
       return;
     }
 
-    const key = `${cid}-${action}`;
+    const normalizedCid = normalizeCid(cid);
+    const key = `${normalizedCid}-${action}`;
     setIssueLogActions((prev) => ({
       ...prev,
       [key]: { loading: true, message: null, error: null },
     }));
 
-    const response = await client.updateCredentialStatus(cid, action, issuerToken);
+    const response = await client.updateCredentialStatus(normalizedCid, action, issuerToken);
 
     if (!response.ok) {
       setIssueLogActions((prev) => ({
@@ -1710,7 +1705,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         }
       }
 
-      const cidValue = recordedEntry?.cid || directIdentifiers.cid || '';
+      const cidValue = normalizeCid(recordedEntry?.cid || directIdentifiers.cid || '');
       const jtiValue = recordedEntry?.credentialJti || directIdentifiers.jti || '';
       const prefixValue =
         recordedEntry?.cidSandboxPrefix && typeof recordedEntry.cidSandboxPrefix === 'string'

@@ -1,3 +1,5 @@
+import { normalizeCid } from './cid.js';
+
 export function normalizeSandboxPrefix(prefix) {
   if (!prefix || typeof prefix !== 'string') {
     return '';
@@ -44,7 +46,7 @@ export function computeRevocationDetails({
   storedDisplayPath,
   storedDisplayUrl,
 }) {
-  const normalizedCid = cid ? String(cid).trim() : '';
+  const normalizedCid = normalizeCid(cid);
   const normalizedPrefix = normalizeSandboxPrefix(sandboxPrefix);
 
   const defaultPath = normalizedCid
