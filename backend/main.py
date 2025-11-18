@@ -62,13 +62,22 @@ allowed_origins_env = os.getenv(
     "MEDSSI_ALLOWED_ORIGINS",
     (
         "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,"
-        "http://127.0.0.1:5174,http://localhost:4173"
+        "http://127.0.0.1:5174,http://localhost:4173,http://10.0.2.2:5173,"
+        "http://172.20.10.2:5173"
     ),
 )
 ALLOWED_ORIGINS = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
 allowed_origin_regex = os.getenv(
     "MEDSSI_ALLOWED_ORIGIN_REGEX",
-    r"https?://(localhost|127\.0\.0\.1|192\.168\.[0-9]{1,3}\.[0-9]{1,3})(:[0-9]{2,5})?",
+    (
+        r"https?://("
+        r"localhost|"
+        r"127\.0\.0\.1|"
+        r"192\.168\.[0-9]{1,3}\.[0-9]{1,3}|"
+        r"10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|"
+        r"172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3}"
+        r")(:[0-9]{2,5})?"
+    ),
 ).strip()
 
 app.add_middleware(
@@ -2794,6 +2803,16 @@ def submit_presentation(payload: VerificationSubmission) -> RiskInsightResponse:
 def purge_session(session_id: str):
     store.purge_session(session_id)
     return {"session_id": session_id, "status": "PURGED"}
+
+
+@api_v2.options("/api/system/reset", include_in_schema=False)
+def options_reset_sandbox_state():
+    """Handle preflight requests for the sandbox reset endpoint."""
+
+    # FastAPI's CORS middleware already injects the required headers; returning an
+    # empty response prevents dependencies from running and avoids spurious 400s
+    # that surface in browsers as failed preflight calls.
+    return JSONResponse(status_code=204, content={})
 
 
 @api_v2.post(
