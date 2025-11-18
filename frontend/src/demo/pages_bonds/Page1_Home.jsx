@@ -4,9 +4,6 @@ import { useNavigate } from "../../router.jsx";
 import BondsShell from "../components/BondsShell.jsx";
 import { ANDROID_DOWNLOAD_URL, IOS_DOWNLOAD_URL } from "../../constants/downloads.js";
 
-const ANDROID_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=tw.gov.digitalwallet";
-const IOS_DOWNLOAD_URL = "https://apps.apple.com/tw/app/id6446202653";
-
 export default function Page1_Home() {
   const nav = useNavigate();
 
@@ -59,7 +56,12 @@ export default function Page1_Home() {
               <div className="download-panel__meta">
                 <p className="download-panel__platform">iPhone / iPad</p>
                 <p className="download-panel__hint">支援 iOS / iPadOS 15 以上版本</p>
-                <a className="download-panel__link" href={IOS_DOWNLOAD_URL} target="_blank" rel="noreferrer">
+                <a
+                  className="download-panel__link"
+                  href={IOS_DOWNLOAD_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   前往 App Store 下載
                 </a>
               </div>
