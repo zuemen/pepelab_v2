@@ -56,12 +56,7 @@ export default function Page1_Home() {
               <div className="download-panel__meta">
                 <p className="download-panel__platform">iPhone / iPad</p>
                 <p className="download-panel__hint">支援 iOS / iPadOS 15 以上版本</p>
-                <a
-                  className="download-panel__link"
-                  href={IOS_DOWNLOAD_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <a className="download-panel__link" href={IOS_DOWNLOAD_URL} target="_blank" rel="noreferrer">
                   前往 App Store 下載
                 </a>
               </div>
