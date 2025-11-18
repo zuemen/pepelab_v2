@@ -4,6 +4,9 @@ import { useNavigate } from "../../router.jsx";
 import BondsShell from "../components/BondsShell.jsx";
 import { ANDROID_DOWNLOAD_URL, IOS_DOWNLOAD_URL } from "../../constants/downloads.js";
 
+const ANDROID_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=tw.gov.digitalwallet";
+const IOS_DOWNLOAD_URL = "https://apps.apple.com/tw/app/id6446202653";
+
 export default function Page1_Home() {
   const nav = useNavigate();
 
