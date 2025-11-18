@@ -2796,6 +2796,16 @@ def purge_session(session_id: str):
     return {"session_id": session_id, "status": "PURGED"}
 
 
+@api_v2.options("/api/system/reset", include_in_schema=False)
+def options_reset_sandbox_state():
+    """Handle preflight requests for the sandbox reset endpoint."""
+
+    # FastAPI's CORS middleware already injects the required headers; returning an
+    # empty response prevents dependencies from running and avoids spurious 400s
+    # that surface in browsers as failed preflight calls.
+    return JSONResponse(status_code=204, content={})
+
+
 @api_v2.post(
     "/api/system/reset",
     response_model=ResetResponse,
