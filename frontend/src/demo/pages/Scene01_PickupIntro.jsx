@@ -2,7 +2,7 @@
 import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
 import { useDemo } from "../context";
-
+import S1Image from "../assets/scene1.png"; // 引入圖片
 export default function Scene01_PickupIntro() {
   const navigate = useNavigate();
   const { scope, mode } = useDemo();
@@ -32,25 +32,46 @@ export default function Scene01_PickupIntro() {
     </div>
   }
   right={
-     <div className="mock">
-    <div className="card warn">
-      <div className="title">紙本病歷疊</div>
-      <div className="description">
-        每次領藥時都要將整本病歷翻出來，讓藥師瞭解過去的診斷和用藥情況，過度揭露病歷信息。
+  <div className="scene01-right">
+    {/* 上半：手機畫面（方案 B） */}
+    <div className="phone-mock">
+      <div className="phone-header">處方資訊（藥局端畫面）</div>
+      <div className="phone-line">姓名：小朱</div>
+      <div className="phone-line">完整病歷：＜全部可見＞</div>
+      <div className="phone-line">診斷摘要：高血壓、焦慮症</div>
+      <div className="phone-line">本次只需：抗憂鬱劑</div>
+
+      <div className="warn-box">
+        ⚠️ 顯示內容超出領藥所需  
+        <br />
+        → 暴露完整病歷與精神科紀錄
       </div>
     </div>
 
-    <div className="card warn">
-      <div className="title">藥局來回電話</div>
-      <div className="description">
-        每次領藥時，藥局都要與醫生核對藥品、過敏史和同意書，來回電話增加了不必要的重複。
+    {/* 下半：流程圖（方案 A） */}
+    <div className="mock-flow">
+      <div className="flow-step">
+        <div className="icon">📄</div>
+        <span>紙本病歷翻閱</span>
+      </div>
+
+      <div className="flow-arrow">➜</div>
+
+      <div className="flow-step">
+        <div className="icon">📞</div>
+        <span>藥局來回電話</span>
+      </div>
+
+      <div className="flow-arrow">➜</div>
+
+      <div className="flow-step highlight">
+        <div className="icon">⚠️</div>
+        <span>過度揭露風險</span>
       </div>
     </div>
-
-    <div className="tag bad">MedSSI透過數位皮夾應用改善過度揭露</div>
   </div>
-  }
-  
+}
+
   />
   );
 

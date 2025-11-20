@@ -1,7 +1,7 @@
 // src/demo/scenes/Scene06_VerifyResearch.jsx
 import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
-
+import S6Image from "../assets/scene6.png"; // 引入圖片
 export default function Scene06_VerifyResearch() {
   const navigate = useNavigate();
 
@@ -34,9 +34,11 @@ right={
           <div className="result-card">
             <div className="line"><strong>樣本數：312 → 313</strong></div>
             <div className="line"><strong>PHQ-9 平均分：15.2 → 15.1</strong> </div>
-         <div className="tag good">匿名化・ZKP 驗證</div>
-
+       
+<div className="card">
+  <img src={S6Image} alt="Scene 6" style={{ width: "100%", maxWidth: "300px", borderRadius: "8px" }} />
           </div>
+        </div>
         </div>
       }
  />

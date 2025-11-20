@@ -1,8 +1,9 @@
 // src/demo/scenes/Scene04_ResearchRequest.jsx
 import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
-import vpImage from "../assets/vp.png"; // 引入圖片
-
+import S4Image from "../assets/doctor.png"; // 引入圖片
+import S4Image1 from "../assets/article.png"; // 引入圖片
+import S4Image2 from "../assets/qr-code.png"; // 引入圖片
 export default function Scene04_ResearchRequest() {
   const navigate = useNavigate();
 
@@ -26,14 +27,30 @@ export default function Scene04_ResearchRequest() {
         </>
       }
       right={
-       <div className="mock">
-               <div className="card">
-                 <h3>ResearchVP</h3>
-                 <img src={vpImage} alt="QR Code" style={{ width: "100%", maxWidth: "600px", borderRadius: "12px" }} />
-                 
-               </div>
-             </div>
-      }
+ 
+          <div className="research-flow">
+            {/* Step 1 */}
+            <div className="flow-step">
+              <img src={S4Image} alt="Scene 4" style={{ width: "40%", maxWidth: "700px", borderRadius: "8px" }} />
+            </div>
+
+            <div className="flow-arrow">➜</div>
+
+            {/* Step 2 */}
+            <div className="flow-step">
+              <img src={S4Image1} alt="Scene 4" style={{ width: "40%", maxWidth: "700px", borderRadius: "8px" }} />
+            </div>
+       
+
+          <div className="flow-arrow">➜</div>
+
+          {/* Step 3 */}
+          <div className="flow-step">
+            <img src={S4Image2} alt="Scene 4" style={{ width: "40%", maxWidth: "700px", borderRadius: "8px" }} />
+</div>
+        </div>
+      }        
     />
+  
   );
 }

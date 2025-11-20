@@ -30,16 +30,58 @@ export default function Scene02_IssuerVC() {
           </div>
         </>
       }
-      right={
-        
-      <div className="mock">
-        <div className="card">
-          <h3>Issuer QR</h3>
-          <img src={qrImage} alt="QR Code" style={{ width: "100%", maxWidth: "600px", borderRadius: "12px" }} />
-          <p>QR Code 是由醫院產生，並且有 5 分鐘有效期，當病人領藥時，會自動過期。</p>
+     right={
+  <div className="issuer-phone">
+    <div className="phone-bezel">
+      <div className="phone-screen">
+        {/* 上方標題列 */}
+        <div className="phone-status">
+          <span className="app-name">Issuer · MedSSI</span>
+          <span className="ttl">TTL：5:00</span>
+        </div>
+
+        {/* 本次處方 VC 卡片 */}
+        <div className="vc-card">
+          <div className="vc-pill">本次處方 VC</div>
+          <h3 className="vc-title">領藥憑證（Medication Pickup）</h3>
+
+          <div className="vc-field">
+            <span className="label">Scope</span>
+            <span className="value">MEDICATION_PICKUP</span>
+          </div>
+          <div className="vc-field">
+            <span className="label">處方代碼</span>
+            <span className="value">RX-2025-1101-001</span>
+          </div>
+          <div className="vc-field">
+            <span className="label">劑量 / 天數</span>
+            <span className="value">Omeprazole 20mg · 28 天</span>
+          </div>
+          <div className="vc-field">
+            <span className="label">過敏史摘要</span>
+            <span className="value">無 Penicillin 過敏</span>
+          </div>
+ 
+
+        {/* 下方 QR 區塊 */}
+        <div className="qr-section">
+          <div className="qr-label">掃描此 QR 以驗證本次處方 VC</div>
+          <div className="qr-box">
+            <img
+              src={qrImage}
+              alt="領藥憑證 QR"
+              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "12px" }}
+            />
+          </div>
+          <div className="qr-meta">有效時間：5 分鐘 · 逾時自動失效</div>
         </div>
       </div>
-      }
+    </div>
+ 
+  </div>
+   </div>
+}
+
     />
   );
 }
