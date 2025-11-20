@@ -7,7 +7,7 @@ export default function Scene05_WalletConsent() {
 
   return (
     <PageShell
-      title="選擇性揭露：小朱在錢包確認"
+      title="選擇性揭露：小朱在數位憑證皮夾確認"
       subtitle="匿名摘要、可撤銷、可到期"
       left={
         <>
