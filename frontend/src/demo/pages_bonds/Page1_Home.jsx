@@ -11,7 +11,7 @@ export default function Page1_Home() {
     <BondsShell next="page2" bg="linear-gradient(180deg,#0f172a 0%,#0b2138 100%)">
       <section className="hero-stack">
         <div className="hero-card">
-          <h1>明星三缺醫 MedSSI：醫療資料有我守護</h1>
+          <h1>明星三缺醫 MedSSI：醫療資料我守護</h1>
           <p className="hero-card__subtitle">讓資料回到病人手中，讓信任重回醫療體系。</p>
           <p className="hero-card__body">
             從診間到藥局、從病歷到研究，MedSSI 以 FHIR + VC/VP + 選擇性揭露，建立一條安全透明的醫療資料鏈。
