@@ -3283,7 +3283,7 @@ export function IssuerPanel({ client, issuerToken, walletToken, baseUrl, onLates
         {issueLog.length === 0 ? (
           <p>
             尚未紀錄任何電子卡。政府沙盒回應 200 時，系統會解析 credential JWT 的 jti 欄位並自動寫入 CID
-            與交易序號，方便稽核。可在此標示是否完成取卡並依需求觸發 PUT /api/credential/{{cid}}/revocation。
+            與交易序號，方便稽核。可在此標示是否完成取卡並依需求觸發 PUT /api/credential/{'{cid}'}/revocation。
           </p>
         ) : (
           <ul className="issue-log">

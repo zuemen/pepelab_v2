@@ -47,7 +47,7 @@ export default function App() {
       <header className="sandbox-hero">
         <div className="sandbox-hero__inner">
           <div className="sandbox-hero__intro">
-            <h1>MedSSI Sandbox – FHIR 病歷授權與領藥驗證</h1>
+            <h1>明星三缺醫:MedSSI – FHIR 病歷授權與領藥驗證</h1>
             <p>
               整合 MyData IAL2、FHIR Verifiable Credential 與選擇性揭露，示範醫院發卡、病患授權、
               藥局 / 研究單位驗證的端到端流程，並支援可遺忘權與 AI Insight。

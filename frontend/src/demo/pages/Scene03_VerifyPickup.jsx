@@ -2,7 +2,8 @@
 import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
 import { useDemo } from "../context";
-
+import S3Image from "../assets/scan.png"; // 引入圖片
+import S3Image1 from "../assets/pharmacy.png"; // 引入圖片
 export default function Scene03_VerifyPickup() {
   const navigate = useNavigate();
   const { mode } = useDemo();
@@ -31,20 +32,18 @@ export default function Scene03_VerifyPickup() {
         </>
       }
    right={
-  <div className="verify-preview">
-    <div className="result-card">
-      <div className="line"><strong>藥品：</strong> Omeprazole 20mg</div>
-      <div className="line"><strong>天數：</strong> 28</div>
-      <div className="line ok"><strong>過敏對照：</strong> 無衝突</div>
-      <div className="line"><strong>同意到期：</strong> 2025-12-31</div>
+  <div className="mock">
+      <div className="flow-step">
+         <h3>Verify Pickup</h3>
+         <img src={S3Image1} alt="Scene 3" style={{ width: "40%", maxWidth: "700px", borderRadius: "8px" }} />
+ </div>
+           
+           <div className="flow-step">
+          <img src={S3Image} alt="Scene 3-1" style={{ width: "40%", maxWidth: "700px", borderRadius: "8px" }} />
+       </div>
+         
+
     </div>
-    <div className="insight">
-      <strong>AI Insight：</strong>D-3 續領提醒
-    </div>
-    <div className={`hint ${mode === "live" ? "" : "muted"}`}>
-      Live 模式才會真的驗章
-    </div>
-  </div>
 }
 />
   );

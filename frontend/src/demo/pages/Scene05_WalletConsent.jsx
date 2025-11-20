@@ -1,7 +1,7 @@
 // src/demo/scenes/Scene05_WalletConsent.jsx
 import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
-
+import S5Image from "../assets/scene5.png"; // 引入圖片
 export default function Scene05_WalletConsent() {
   const navigate = useNavigate();
 
@@ -30,10 +30,16 @@ export default function Scene05_WalletConsent() {
         right={
         <div className="verify-preview">
           <div className="result-card">
+            <h3>Patient Wallet</h3>
             <div className="line"><strong>F32</strong>（憂鬱症發作）</div>
             <div className="line"><strong>PHQ-9：</strong> 17 分（中度）</div>
-         <div className="tag good">匿名化・ZKP 驗證</div>
-
+         
+          
+        <div className="card">
+                
+                 <img src={S5Image} alt="Scene 5" style={{ width: "100%", maxWidth: "300px", borderRadius: "8px" }} />
+                 
+               </div>
           </div>
         </div>
       }

@@ -101,8 +101,10 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
    ```
    - 若前端與後端不在同一網域，可透過環境變數 `MEDSSI_ALLOWED_ORIGINS`
      （以逗號分隔）設定允許的 CORS 來源，預設已涵蓋 `http://localhost:5173`
-     與 `http://localhost:5174` 等常用開發埠；也可用 `MEDSSI_ALLOWED_ORIGIN_REGEX`
-     （預設允許 `localhost`、`127.0.0.1` 與 `192.168.*.*`）快速放行區網裝置。
+     與 `http://localhost:5174` 等常用開發埠，並額外加入 `http://10.0.2.2:5173`
+     與 `http://172.20.10.2:5173` 以支援常見的模擬器／行動熱點情境；也可用
+     `MEDSSI_ALLOWED_ORIGIN_REGEX`（預設允許 `localhost`、`127.0.0.1`、
+     `10.*.*.*`、`172.16-31.*.*` 與 `192.168.*.*`）快速放行區網裝置。
 2. **開啟前端**
    ```bash
    cd frontend
