@@ -63,12 +63,12 @@ export default function Scene04_ResearchRequest() {
           </div>
 
           <div className="disclosure-card">
-            <div className="disclosure-label">選擇性揭露（RESEARCH_ANALYTICS）</div>
+            <div className="disclosure-label">選擇性揭露（研究匿名分析）</div>
             <div className="pill pill-green">揭露欄位</div>
             <ul className="disclosure-list">
-              <li>Condition.code（F32 青少年憂鬱）</li>
-              <li>Observation.PHQ9.value（只取分數）</li>
-              <li>Consent.period.end（研究到期日）</li>
+              <li>診斷代碼 F32（Condition.code）</li>
+              <li>PHQ-9 總分（Observation.PHQ9.value）</li>
+              <li>授權到期日（Consent.period.end）</li>
             </ul>
             <div className="pill pill-gray">不揭露</div>
             <ul className="disclosure-list muted">

@@ -55,12 +55,12 @@ export default function Scene03_VerifyPickup() {
           </div>
 
           <div className="disclosure-card">
-            <div className="disclosure-label">選擇性揭露（MEDICATION_PICKUP）</div>
+            <div className="disclosure-label">選擇性揭露（藥局取藥）</div>
             <div className="pill pill-green">揭露欄位</div>
             <ul className="disclosure-list">
-              <li>MedicationDispense.medicationCodeableConcept</li>
-              <li>MedicationDispense.dosageInstruction.text</li>
-              <li>AllergyIntolerance.code（僅顯示名稱 + 衝突結果）</li>
+              <li>藥品名稱／規格（MedicationDispense.medicationCodeableConcept）</li>
+              <li>用法與天數（MedicationDispense.dosageInstruction.text）</li>
+              <li>過敏史名稱與系統比對結果（AllergyIntolerance.code）</li>
             </ul>
             <div className="pill pill-gray">不揭露</div>
             <ul className="disclosure-list muted">

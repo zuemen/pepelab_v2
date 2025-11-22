@@ -45,12 +45,12 @@ export default function Scene08_Insurance() {
             用畢即刪・可稽核
           </div>
           <div className="disclosure-card" style={{ marginTop: 16 }}>
-            <div className="disclosure-label">選擇性揭露（INSURANCE_CLAIM）</div>
+            <div className="disclosure-label">選擇性揭露（理賠必要欄位）</div>
             <div className="pill pill-green">揭露欄位</div>
             <ul className="disclosure-list">
-              <li>Condition.code（理賠診斷碼）</li>
-              <li>Encounter.period、就診醫院</li>
-              <li>Claim.total + receipt number</li>
+              <li>理賠診斷碼（Condition.code）</li>
+              <li>就診日期與院所（Encounter.period）</li>
+              <li>費用總額與收據號（Claim.total + receipt number）</li>
             </ul>
             <div className="pill pill-gray">不揭露</div>
             <ul className="disclosure-list muted">
