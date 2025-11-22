@@ -2389,6 +2389,8 @@ export function IssuerPanel({
     setError(null);
     setSuccess(null);
 
+    const resolvedScope = resolveDisclosureScope(primaryScope);
+
     const govPayload = convertToGovFormat({
       payload: payloadTemplate,
       scope: primaryScope,
