@@ -81,9 +81,107 @@ body {
   position: relative;
 }
 
+.basic-quickstart {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.basic-quickstart p {
+  margin: 0.35rem 0 0;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.pill-icon {
+  font-size: 1.4rem;
+}
+
+.mode-toggle {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.mode-toggle button {
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-toggle button.active {
+  background: #fff;
+  color: #17427d;
+  box-shadow: 0 10px 24px rgba(13, 50, 105, 0.25);
+}
+
+.mode-note {
+  margin-top: 0.5rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+}
+
 .sandbox-hero__config {
   display: flex;
   align-items: stretch;
+}
+
+.medical-emblem {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  margin-right: 1rem;
+  flex-shrink: 0;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.6));
+  box-shadow: 0 16px 36px rgba(17, 66, 125, 0.32);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.medical-emblem__cross {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  background: #f44336;
+  clip-path: polygon(
+    35% 0%,
+    65% 0%,
+    65% 35%,
+    100% 35%,
+    100% 65%,
+    65% 65%,
+    65% 100%,
+    35% 100%,
+    35% 65%,
+    0% 65%,
+    0% 35%,
+    35% 35%
+  );
+}
+
+.medical-emblem__pulse {
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(244, 67, 54, 0.2), rgba(244, 67, 54, 0));
+  transform: scale(0.8);
+  animation: pulse 2.6s ease-in-out infinite;
+}
+
+.medical-emblem.expert {
+  background: linear-gradient(135deg, #f8fbff, #dce9ff);
 }
 
 .sandbox-config-card {
@@ -110,6 +208,44 @@ body {
 
 .sandbox-config-card input {
   margin-bottom: 0.5rem;
+}
+
+.basic-disclosure-guide {
+  margin: 0.75rem 0 1.25rem;
+  padding: 1rem 1.25rem;
+  border-radius: 16px;
+  background: #f4f8ff;
+  border: 1px solid #d8e7ff;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.basic-disclosure-guide__icon {
+  font-size: 2rem;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.35rem 0 0.5rem;
+}
+
+.pill {
+  border-radius: 999px;
+  border: 1px solid #17427d;
+  padding: 0.55rem 0.95rem;
+  background: #fff;
+  color: #17427d;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pill:hover {
+  background: #17427d;
+  color: #fff;
+  box-shadow: 0 10px 18px rgba(23, 66, 125, 0.2);
 }
 
 .sandbox-config-actions {
@@ -378,6 +514,12 @@ pre {
 .alert.success {
   background: #e3f9eb;
   color: #1f7a43;
+}
+
+.alert.muted {
+  background: #f4f6fb;
+  color: #3b4a63;
+  border: 1px dashed rgba(23, 66, 125, 0.35);
 }
 
 .qr-container {
@@ -1382,4 +1524,19 @@ code {
 .quick-select-button.active {
   background: #17427d;
   color: #fff;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 0.25;
+  }
+  100% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
 }
