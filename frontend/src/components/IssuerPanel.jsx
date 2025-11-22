@@ -749,6 +749,8 @@ function convertToGovFormat({
     ? expiry.format('YYYYMMDD')
     : dayjs().add(90, 'day').format('YYYYMMDD');
 
+  const disclosureScope = resolveDisclosureScope(scope);
+
   const normalizedIdentifiers = {
     vcUid: identifiers.vcUid || SCOPE_TO_VC_UID[scope] || '00000000_vc_cond',
     vcCid: identifiers.vcCid || '',
@@ -858,8 +860,9 @@ function convertToGovFormat({
   assignIfPresent('apiKey', normalizedIdentifiers.apiKey);
 
   return {
-    scope: resolvedScope,
-    primaryScope: resolvedScope,
+    scope,
+    primaryScope: scope,
+    disclosureScope,
     ...payloadBase,
     fields: filtered,
   };
@@ -2384,11 +2387,7 @@ export function IssuerPanel({
       identifiers: currentIdentifiers,
     });
 
-    const submissionPayload = {
-      ...govPayload,
-      scope: resolvedScope,
-      primaryScope: resolvedScope,
-    };
+    const submissionPayload = govPayload;
 
     if (!govPayload.fields.length) {
       setLoading(false);
