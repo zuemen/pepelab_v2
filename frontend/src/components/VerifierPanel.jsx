@@ -53,7 +53,7 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
 
     try {
       const response = await client.createVerificationCode(
-        { ref, transactionId: tid },
+        { ref, transactionId: tid, scope },
         verifierToken
       );
 
