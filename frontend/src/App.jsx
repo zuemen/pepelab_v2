@@ -60,6 +60,13 @@ export default function App() {
               <li>支援官方 nonce 查詢，完整記錄 CID 與撤銷端點。</li>
               <li>連動沙盒 API，模擬實際醫療資料授權流程。</li>
             </ul>
+            <div className="basic-quickstart" aria-label="Basic 模式快速引導">
+              <div>
+                <strong>快速上手（Basic）</strong>
+                <p>直接使用預設 Token，載入示範資料後按下發卡，再掃描驗證 QR Code 完成流程。</p>
+              </div>
+              <span className="pill-icon" aria-hidden="true">💊</span>
+            </div>
             <div className="mode-toggle" role="group" aria-label="Sandbox Mode">
               <button
                 type="button"
@@ -81,6 +88,10 @@ export default function App() {
             </p>
           </div>
           <div className="sandbox-hero__config">
+            <div className={`medical-emblem ${isExpertMode ? 'expert' : ''}`} aria-hidden="true">
+              <span className="medical-emblem__cross" />
+              <span className="medical-emblem__pulse" />
+            </div>
             <div className="sandbox-config-card">
               <h2>沙盒連線設定</h2>
               <label htmlFor="base-url">API Base URL</label>

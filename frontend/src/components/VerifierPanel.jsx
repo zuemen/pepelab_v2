@@ -138,7 +138,8 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
       </div>
       {!isExpertMode ? (
         <div className="alert muted">
-          基本模式僅呈現建立與查詢 Session 的必要欄位，若需檢視政府回應原始 JSON 或調校細節，請切換到專家模式。
+          基本模式僅呈現建立與查詢 Session 的必要欄位。已預設選擇性揭露欄位，只需建立 Session、掃碼授權、查詢結果，
+          若需檢視政府回應原始 JSON 或調校細節，請切換到專家模式。
         </div>
       ) : null}
 

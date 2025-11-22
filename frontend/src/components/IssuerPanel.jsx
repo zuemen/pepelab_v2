@@ -2444,6 +2444,37 @@ export function IssuerPanel({
     });
   }
 
+  function applyBasicTemplate(templateKey) {
+    const baseExpiry = dayjs().add(90, 'day').format('YYYY-MM-DD');
+    setConsentExpiry(baseExpiry);
+    setConsentScopeCode('MEDSSI01');
+    setConsentPath('IRB2025001');
+
+    if (templateKey === 'pickup') {
+      setIncludeMedication(true);
+      setConsentPurpose('MEDICATION_PICKUP');
+      setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
+      setMedicationFields(DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', '));
+      setConsentFields(DEFAULT_DISCLOSURES.CONSENT_CARD.join(', '));
+      return;
+    }
+
+    if (templateKey === 'research') {
+      setIncludeMedication(true);
+      setConsentPurpose('MEDDATARESEARCH');
+      setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
+      setMedicationFields(DEFAULT_DISCLOSURES.MEDICATION_PICKUP.join(', '));
+      setConsentFields(DEFAULT_DISCLOSURES.CONSENT_CARD.join(', '));
+      return;
+    }
+
+    setIncludeMedication(false);
+    setConsentPurpose('MEDRECACCESS');
+    setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
+    setMedicationFields('');
+    setConsentFields(DEFAULT_DISCLOSURES.CONSENT_CARD.join(', '));
+  }
+
   const qrSource = success?.qrCode || success?.deepLink || '';
   const shouldRenderImage = success?.qrCode?.startsWith('data:image');
   const successCidSourceLabel = describeLookupSource(success?.cidLookupSource);
@@ -2463,10 +2494,32 @@ export function IssuerPanel({
         逾期會自動失效並需重新發行。
       </div>
       {!isExpertMode ? (
-        <div className="alert muted">
-          目前為基本模式，僅顯示必要欄位。若需查看沙盒調校細節（持卡清單、發卡紀錄、API 原始回應），
-          請切換到專家模式。
-        </div>
+        <>
+          <div className="alert muted">
+            目前為基本模式，僅顯示必要欄位。若需查看沙盒調校細節（持卡清單、發卡紀錄、API 原始回應），
+            請切換到專家模式。
+          </div>
+          <div className="basic-disclosure-guide">
+            <div>
+              <p className="hint">選擇性揭露快速示範：按一下情境即自動帶入欄位。</p>
+              <div className="pill-row">
+                <button type="button" className="pill" onClick={() => applyBasicTemplate('record')}>
+                  🩺 門診授權
+                </button>
+                <button type="button" className="pill" onClick={() => applyBasicTemplate('pickup')}>
+                  💊 領藥取藥
+                </button>
+                <button type="button" className="pill" onClick={() => applyBasicTemplate('research')}>
+                  📊 研究揭露
+                </button>
+              </div>
+              <p className="hint">
+                每個情境僅送出必要欄位，其他醫療欄位會以選擇性揭露方式保留，方便基本模式快速體驗。
+              </p>
+            </div>
+            <div aria-hidden="true" className="basic-disclosure-guide__icon">🧬</div>
+          </div>
+        </>
       ) : null}
 
       <div className="grid two">
