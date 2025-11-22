@@ -743,6 +743,7 @@ function convertToGovFormat({
   identifiers = {},
 }) {
   const issuanceDate = dayjs().format('YYYYMMDD');
+  const resolvedScope = resolveDisclosureScope(scope);
   const expiry = resolveExpiry(scope, consentExpiry, medication);
   const expiredDate = expiry.isValid()
     ? expiry.format('YYYYMMDD')
@@ -2369,6 +2370,8 @@ export function IssuerPanel({
     setLoading(true);
     setError(null);
     setSuccess(null);
+
+    const resolvedScope = resolveDisclosureScope(primaryScope);
 
     const govPayload = convertToGovFormat({
       payload: payloadTemplate,
