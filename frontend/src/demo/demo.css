@@ -998,3 +998,68 @@ button.ghost:hover {
   text-align: center;
   margin-top: 2px;
 }
+
+/* 選擇性揭露卡片：跨三個 demo 案例共用 */
+.disclosure-card {
+  margin-top: 20px;
+  background: #0b1a2c;
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+.disclosure-label {
+  font-weight: 800;
+  margin-bottom: 10px;
+  letter-spacing: 0.5px;
+}
+
+.disclosure-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 12px;
+}
+
+.disclosure-list li {
+  margin-bottom: 6px;
+  padding-left: 12px;
+  position: relative;
+  line-height: 1.5;
+}
+
+.disclosure-list li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #38bdf8;
+}
+
+.disclosure-list.muted li::before {
+  color: #94a3b8;
+}
+
+.disclosure-list.muted {
+  color: #cbd5e1;
+  opacity: 0.9;
+}
+
+.pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.pill-green {
+  background: #16a34a;
+  color: #f8fafc;
+}
+
+.pill-gray {
+  background: #334155;
+  color: #e2e8f0;
+}
