@@ -146,7 +146,7 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
       if (!response.ok) {
         if (response.status === 400) {
           if (showWaitingMessage) {
-            setResultError('錢包尚未回傳資料，請稍後重試。');
+            setResultError('皮夾尚未回傳資料，請稍後重試。');
           } else {
             setResultError(null);
           }
@@ -365,7 +365,7 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
 
       <div className="card">
         <h3>查詢驗證結果</h3>
-        <p>請在錢包 App 完成授權後點擊「查詢結果」。若啟用自動輪詢會每 5 秒更新一次。</p>
+        <p>請在皮夾 App 完成授權後點擊「查詢結果」。若啟用自動輪詢會每 5 秒更新一次。</p>
         <div className="stack">
           <button type="button" onClick={() => pollResult(true)} disabled={!transactionId || isPolling}>
             {isPolling ? '查詢中…' : '查詢結果'}

@@ -42,7 +42,7 @@ const CARD_TYPES = [
     route: 'identity-card',
     navLabel: '匿名身分卡',
     label: '匿名身分卡（vc_pid）',
-    description: '用於鏈結病患匿名 ID 與錢包識別。',
+    description: '用於鏈結病患匿名 ID 與皮夾識別。',
   },
 ];
 
@@ -55,7 +55,7 @@ function describeLookupSourceLabel(source) {
     case 'manual':
       return '手動登錄';
     case 'wallet':
-      return '錢包同步';
+      return '皮夾同步';
     case 'transaction':
       return '待官方查詢';
     default:

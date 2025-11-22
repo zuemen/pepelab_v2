@@ -307,7 +307,7 @@ function describeLookupSource(source) {
     case 'manual':
       return '手動登錄';
     case 'wallet':
-      return '錢包同步';
+      return '皮夾同步';
     case 'transaction':
       return '待官方查詢';
     default:
@@ -458,7 +458,7 @@ const BASIC_SCENARIOS = [
   {
     key: 'identity',
     label: '匿名身分',
-    description: '產生 PID 雜湊與錢包識別碼，預設 10 年效期的匿名身分卡。',
+    description: '產生 PID 雜湊與皮夾識別碼，預設 10 年效期的匿名身分卡。',
     scope: 'IDENTITY_CARD',
   },
 ];
@@ -2032,7 +2032,7 @@ export function IssuerPanel({
       cidLookupError: null,
       cidSandboxPrefix: sandboxPrefix,
     });
-    setManualEntryFeedback('已將錢包清單中的憑證加入發卡紀錄。');
+    setManualEntryFeedback('已將皮夾清單中的憑證加入發卡紀錄。');
   };
 
   const loadHolderInventory = async (targetDid) => {
@@ -2043,7 +2043,7 @@ export function IssuerPanel({
       return;
     }
     if (!holderAccessToken) {
-      setHolderInventoryError('請提供錢包或發行端 Access Token。');
+      setHolderInventoryError('請提供皮夾或發行端 Access Token。');
       return;
     }
 
@@ -2076,7 +2076,7 @@ export function IssuerPanel({
       setHolderInventoryActions({});
     } catch (err) {
       setHolderInventoryLoading(false);
-      setHolderInventoryError(err.message || '載入錢包資料失敗，請稍後再試。');
+      setHolderInventoryError(err.message || '載入皮夾資料失敗，請稍後再試。');
     }
   };
 
@@ -2092,7 +2092,7 @@ export function IssuerPanel({
     if (!holderAccessToken) {
       setForgetState({
         loading: false,
-        error: '請提供錢包或發行端 Access Token。',
+        error: '請提供皮夾或發行端 Access Token。',
         message: null,
       });
       return;
@@ -2104,7 +2104,7 @@ export function IssuerPanel({
       return;
     }
 
-    setForgetState({ loading: false, error: null, message: '已向錢包請求可遺忘權。' });
+    setForgetState({ loading: false, error: null, message: '已向皮夾請求可遺忘權。' });
     setHolderInventory([]);
     setHolderInventoryFetchedAt(new Date().toISOString());
     setHolderInventoryActions({});
@@ -2698,7 +2698,7 @@ export function IssuerPanel({
                     Deep Link：<a href={success.deepLink}>{success.deepLink}</a>
                   </p>
                 ) : null}
-                <p className="helper">請以錢包 App 掃描，完成授權後再到驗證頁查詢結果。</p>
+                <p className="helper">請以皮夾 App 掃描，完成授權後再到驗證頁查詢結果。</p>
               </>
             ) : (
               <div className="placeholder">尚未建立 QR Code，請點擊「產生發卡 QR Code」。</div>
@@ -2778,7 +2778,7 @@ export function IssuerPanel({
             }}
           />
 
-          <label htmlFor="holder-hint">錢包顯示提示</label>
+          <label htmlFor="holder-hint">皮夾顯示提示</label>
           <input
             id="holder-hint"
             value={holderHint}
@@ -3145,7 +3145,7 @@ export function IssuerPanel({
                 value={identityInfo.pidValidTo}
                 onChange={(event) => updateIdentity('pidValidTo', event.target.value)}
               />
-              <label htmlFor="wallet-id">錢包識別碼（wallet_id）</label>
+              <label htmlFor="wallet-id">皮夾識別碼（wallet_id）</label>
               <input
                 id="wallet-id"
                 value={identityInfo.walletId}
@@ -3237,7 +3237,7 @@ export function IssuerPanel({
           ) : null}
         </div>
         <p>
-          直接透過錢包 API 查詢指定 DID 目前持有的電子卡，並可一鍵補登到發卡紀錄或由發行端觸發撤銷／可遺忘權。
+          直接透過皮夾 API 查詢指定 DID 目前持有的電子卡，並可一鍵補登到發卡紀錄或由發行端觸發撤銷／可遺忘權。
           若政府沙盒尚未回應，可先按「刷新持卡紀錄」同步最新清單。
         </p>
         <label htmlFor="inventory-holder-did">持卡者 DID</label>
@@ -3279,7 +3279,7 @@ export function IssuerPanel({
         {forgetState.error ? <div className="alert error">{forgetState.error}</div> : null}
         {forgetState.message ? <div className="alert success">{forgetState.message}</div> : null}
         {holderInventoryLoading ? (
-          <p>錢包資料載入中…</p>
+          <p>皮夾資料載入中…</p>
         ) : holderInventory.length ? (
           <ul className="inventory-list">
             {holderInventory.map((credential, index) => {
@@ -3350,7 +3350,7 @@ export function IssuerPanel({
             })}
           </ul>
         ) : (
-          <p>尚未載入錢包資料，請先刷新持卡紀錄。</p>
+          <p>尚未載入皮夾資料，請先刷新持卡紀錄。</p>
         )}
         </div>
 

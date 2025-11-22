@@ -25,7 +25,7 @@ export default function Scene02_IssuerVC() {
               ← 上一幕
             </button>
             <button className="cta" onClick={() => navigate("scene03")}>
-              小朱用錢包掃描
+              小朱用皮夾掃描
             </button>
           </div>
         </>
