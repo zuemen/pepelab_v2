@@ -97,11 +97,12 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
     setResult(null);
     setResultError(null);
     const tid = generateTransactionId();
-    const ref = verifierRef || VP_SCOPE_TO_REF[scope];
+    const effectiveScope = scope || 'MEDICAL_RECORD';
+    const ref = verifierRef || VP_SCOPE_TO_REF[effectiveScope];
 
     try {
       const response = await client.createVerificationCode(
-        { ref, transactionId: tid, scope },
+        { ref, transactionId: tid, scope: effectiveScope },
         verifierToken
       );
 
