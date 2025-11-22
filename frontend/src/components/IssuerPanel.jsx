@@ -420,6 +420,16 @@ const DEFAULT_CARD_IDENTIFIERS = {
   },
 };
 
+const CARD_SCOPE_MAP = {
+  MEDICAL_RECORD: 'MEDICAL_RECORD',
+  MEDICATION_PICKUP: 'MEDICATION_PICKUP',
+  CONSENT_CARD: 'RESEARCH_ANALYTICS',
+  ALLERGY_CARD: 'MEDICAL_RECORD',
+  IDENTITY_CARD: 'RESEARCH_ANALYTICS',
+};
+
+const resolveDisclosureScope = (cardType) => CARD_SCOPE_MAP[cardType] || 'MEDICAL_RECORD';
+
 const BASIC_SCENARIOS = [
   {
     key: 'record',
@@ -733,6 +743,7 @@ function convertToGovFormat({
   identifiers = {},
 }) {
   const issuanceDate = dayjs().format('YYYYMMDD');
+  const resolvedScope = resolveDisclosureScope(scope);
   const expiry = resolveExpiry(scope, consentExpiry, medication);
   const expiredDate = expiry.isValid()
     ? expiry.format('YYYYMMDD')
@@ -847,6 +858,8 @@ function convertToGovFormat({
   assignIfPresent('apiKey', normalizedIdentifiers.apiKey);
 
   return {
+    scope: resolvedScope,
+    primaryScope: resolvedScope,
     ...payloadBase,
     fields: filtered,
   };
@@ -1491,6 +1504,7 @@ export function IssuerPanel({
   const recordIssue = async ({ credentialJwt, transactionId }) => {
     const timestamp = new Date().toISOString();
     const scopeLabel = PRIMARY_SCOPE_LABEL[primaryScope] || primaryScope;
+    const resolvedScope = resolveDisclosureScope(primaryScope);
 
     let resolvedCredential = '';
     let cid = '';
@@ -1605,7 +1619,7 @@ export function IssuerPanel({
       credentialJti: normalizedJti,
       cidSandboxPrefix: sandboxPrefix,
       hasCredential: Boolean(hasCredential || normalizedCid || normalizedJti),
-      scope: primaryScope,
+      scope: resolvedScope,
       scopeLabel,
       status: normalizedStatus,
       collected: combinedCollected,
@@ -2354,6 +2368,8 @@ export function IssuerPanel({
     setError(null);
     setSuccess(null);
 
+    const resolvedScope = resolveDisclosureScope(primaryScope);
+
     const govPayload = convertToGovFormat({
       payload: payloadTemplate,
       scope: primaryScope,
@@ -2368,6 +2384,12 @@ export function IssuerPanel({
       identifiers: currentIdentifiers,
     });
 
+    const submissionPayload = {
+      ...govPayload,
+      scope: resolvedScope,
+      primaryScope: resolvedScope,
+    };
+
     if (!govPayload.fields.length) {
       setLoading(false);
       setError('缺少必要欄位，請確認診斷／領藥或同意書欄位是否完整。');
@@ -2375,7 +2397,7 @@ export function IssuerPanel({
     }
 
     try {
-      const response = await client.issueWithData(govPayload, issuerToken);
+      const response = await client.issueWithData(submissionPayload, issuerToken);
       setLoading(false);
 
       if (!response.ok) {
