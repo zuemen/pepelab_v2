@@ -591,7 +591,7 @@ function StatsAllRecords({ issueLog, overallSummary }) {
   );
 }
 
-export function StatisticsPage() {
+export function StatisticsPage({ isExpertMode = true }) {
   const [issueLog, setIssueLog] = useState(() => loadIssueLog());
 
   useEffect(() => {
@@ -616,6 +616,16 @@ export function StatisticsPage() {
   const grouped = useMemo(() => computeGroupedTotals(issueLog), [issueLog]);
   const scopeSummaries = useMemo(() => deriveScopeSummaries(grouped), [grouped]);
   const overallSummary = useMemo(() => deriveOverallSummary(grouped), [grouped]);
+
+  if (!isExpertMode) {
+    return (
+      <section>
+        <h2>發卡統計（基本模式）</h2>
+        <StatsSummaryBanner overallSummary={overallSummary} />
+        <p className="hint">如需檢視各卡片明細、官方狀態分佈與沙盒 API 路徑，請切換到專家模式。</p>
+      </section>
+    );
+  }
 
   const navItems = useMemo(
     () => [
