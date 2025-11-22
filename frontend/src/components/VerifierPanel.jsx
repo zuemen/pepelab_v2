@@ -16,7 +16,7 @@ function generateTransactionId() {
   return `tx-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
-export function VerifierPanel({ client, verifierToken }) {
+export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
   const [scope, setScope] = useState('MEDICAL_RECORD');
   const [verifierRef, setVerifierRef] = useState(VP_SCOPE_TO_REF.MEDICAL_RECORD);
   const [transactionId, setTransactionId] = useState('');
@@ -136,6 +136,11 @@ export function VerifierPanel({ client, verifierToken }) {
       <div className="alert info">
         驗證端呼叫政府沙盒 API 產生授權 QR Code。請先在驗證端後台建立 VP 範本並取得 ref 代碼。
       </div>
+      {!isExpertMode ? (
+        <div className="alert muted">
+          基本模式僅呈現建立與查詢 Session 的必要欄位，若需檢視政府回應原始 JSON 或調校細節，請切換到專家模式。
+        </div>
+      ) : null}
 
       <div className="grid two">
         <div className="card">
@@ -189,7 +194,7 @@ export function VerifierPanel({ client, verifierToken }) {
             </p>
           ) : null}
           {transactionId ? <p>Transaction ID：{transactionId}</p> : null}
-          {rawSession ? <pre>{JSON.stringify(rawSession, null, 2)}</pre> : null}
+          {isExpertMode && rawSession ? <pre>{JSON.stringify(rawSession, null, 2)}</pre> : null}
         </div>
       </div>
 
@@ -212,9 +217,7 @@ export function VerifierPanel({ client, verifierToken }) {
           </label>
         </div>
         {resultError ? <div className="alert warning">{resultError}</div> : null}
-        {result ? (
-          <pre>{JSON.stringify(result, null, 2)}</pre>
-        ) : null}
+        {isExpertMode && result ? <pre>{JSON.stringify(result, null, 2)}</pre> : null}
       </div>
     </section>
   );

@@ -81,6 +81,34 @@ body {
   position: relative;
 }
 
+.mode-toggle {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.mode-toggle button {
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-toggle button.active {
+  background: #fff;
+  color: #17427d;
+  box-shadow: 0 10px 24px rgba(13, 50, 105, 0.25);
+}
+
+.mode-note {
+  margin-top: 0.5rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+}
+
 .sandbox-hero__config {
   display: flex;
   align-items: stretch;
@@ -378,6 +406,12 @@ pre {
 .alert.success {
   background: #e3f9eb;
   color: #1f7a43;
+}
+
+.alert.muted {
+  background: #f4f6fb;
+  color: #3b4a63;
+  border: 1px dashed rgba(23, 66, 125, 0.35);
 }
 
 .qr-container {
