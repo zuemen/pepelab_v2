@@ -742,17 +742,18 @@ function convertToGovFormat({
   identity,
   identifiers = {},
 }) {
+  const cardScope = scope;
   const issuanceDate = dayjs().format('YYYYMMDD');
-  const resolvedScope = resolveDisclosureScope(scope);
-  const expiry = resolveExpiry(scope, consentExpiry, medication);
+  const expiry = resolveExpiry(cardScope, consentExpiry, medication);
   const expiredDate = expiry.isValid()
     ? expiry.format('YYYYMMDD')
     : dayjs().add(90, 'day').format('YYYYMMDD');
 
-  const disclosureScope = resolveDisclosureScope(scope);
+  const disclosureScope = resolveDisclosureScope(cardScope);
+  const requestScope = disclosureScope || cardScope;
 
   const normalizedIdentifiers = {
-    vcUid: identifiers.vcUid || SCOPE_TO_VC_UID[scope] || '00000000_vc_cond',
+    vcUid: identifiers.vcUid || SCOPE_TO_VC_UID[cardScope] || '00000000_vc_cond',
     vcCid: identifiers.vcCid || '',
     vcId: identifiers.vcId || '',
     apiKey: identifiers.apiKey || '',
@@ -771,7 +772,7 @@ function convertToGovFormat({
     fields.push({ type: 'NORMAL', ename, content: trimmed });
   };
 
-  if (scope === 'MEDICAL_RECORD' && payload?.condition) {
+  if (cardScope === 'MEDICAL_RECORD' && payload?.condition) {
     const coding = payload.condition.code?.coding?.[0] ?? {};
     const codeValue = normalizeAlphaNumUpper(coding.code, 'K2970');
     const displayValue = normalizeCnEnText(
@@ -784,7 +785,7 @@ function convertToGovFormat({
     pushField('cond_onset', onsetValue);
   }
 
-  if (scope === 'MEDICATION_PICKUP' && medication) {
+  if (cardScope === 'MEDICATION_PICKUP' && medication) {
     const quantityParts = parseQuantityParts(medication.quantityText);
     const medCode = normalizeAlphaNumUpper(medication.code, 'RX0001');
     const medName = normalizeCnEnText(medication.display, 'Serenitol');
@@ -803,7 +804,7 @@ function convertToGovFormat({
     pushField('qty_unit', qtyUnit);
   }
 
-  if (scope === 'CONSENT_CARD') {
+  if (cardScope === 'CONSENT_CARD') {
     const normalizedScope = normalizeCnEnText(consentScope, 'MEDSSI01');
     const normalizedPurpose = normalizeCnEnText(consentPurpose, 'MEDDATARESEARCH');
     const normalizedEnd = normalizeDate(expiry, expiry);
@@ -814,7 +815,7 @@ function convertToGovFormat({
     pushField('cons_path', normalizedPath);
   }
 
-  if (scope === 'ALLERGY_CARD') {
+  if (cardScope === 'ALLERGY_CARD') {
     const algyCode = normalizeAlphaNumUpper(allergy?.code, 'ALG001');
     const algyName = normalizeCnEnText(allergy?.display, 'PENICILLIN');
     const algySeverity = normalizeDigits(allergy?.severity, { fallback: '2' });
@@ -823,7 +824,7 @@ function convertToGovFormat({
     pushField('algy_severity', algySeverity);
   }
 
-  if (scope === 'IDENTITY_CARD') {
+  if (cardScope === 'IDENTITY_CARD') {
     const pidHash = normalizeDigits(identity?.pidHash, { fallback: '12345678', length: 8 });
     const pidType = normalizeDigits(identity?.pidType, { fallback: '01' });
     const pidIssuer = normalizeDigits(identity?.pidIssuer, { fallback: '886' });
@@ -860,8 +861,9 @@ function convertToGovFormat({
   assignIfPresent('apiKey', normalizedIdentifiers.apiKey);
 
   return {
-    scope,
-    primaryScope: scope,
+    scope: requestScope,
+    primaryScope: cardScope,
+    cardScope,
     disclosureScope,
     ...payloadBase,
     fields: filtered,
@@ -940,8 +942,10 @@ export function IssuerPanel({
       return null;
     }
 
-    const scope = entry.scope && PRIMARY_SCOPE_LABEL[entry.scope] ? entry.scope : null;
-    const normalizedScope = scope || entry.scope || 'MEDICAL_RECORD';
+    const rawCardScope = entry.cardScope || entry.primaryScope || null;
+    const normalizedCardScope = rawCardScope || (entry.scope && PRIMARY_SCOPE_LABEL[entry.scope] ? entry.scope : null);
+    const normalizedScope =
+      entry.scope || (normalizedCardScope ? resolveDisclosureScope(normalizedCardScope) : null) || 'MEDICAL_RECORD';
     const normalizedJti = entry.credentialJti
       ? String(entry.credentialJti).trim()
       : entry.jti
@@ -1011,7 +1015,17 @@ export function IssuerPanel({
       cidRevocationDisplayUrl: revocationDetails.displayUrl,
       hasCredential: Boolean(entry.hasCredential || normalizedCid),
       scope: normalizedScope,
-      scopeLabel: PRIMARY_SCOPE_LABEL[normalizedScope] || entry.scopeLabel || normalizedScope,
+      scopeLabel:
+        entry.scopeLabel ||
+        (normalizedCardScope && PRIMARY_SCOPE_LABEL[normalizedCardScope]) ||
+        PRIMARY_SCOPE_LABEL[normalizedScope] ||
+        normalizedScope,
+      cardScope: normalizedCardScope || normalizedScope,
+      cardScopeLabel:
+        (normalizedCardScope && PRIMARY_SCOPE_LABEL[normalizedCardScope]) ||
+        entry.scopeLabel ||
+        PRIMARY_SCOPE_LABEL[normalizedScope] ||
+        normalizedScope,
       status: normalizedStatus,
       collected: combinedCollected,
       collectedAt,
@@ -1624,6 +1638,8 @@ export function IssuerPanel({
       hasCredential: Boolean(hasCredential || normalizedCid || normalizedJti),
       scope: resolvedScope,
       scopeLabel,
+      cardScope: primaryScope,
+      cardScopeLabel: scopeLabel,
       status: normalizedStatus,
       collected: combinedCollected,
       collectedAt: combinedCollectedAt,
@@ -1783,6 +1799,7 @@ export function IssuerPanel({
         transactionId,
         cid,
         credentialJti: resolvedCredentialJti,
+        cardScope: manualEntry.scope,
         scope: manualEntry.scope,
         scopeLabel: PRIMARY_SCOPE_LABEL[manualEntry.scope] || manualEntry.scope,
         status: normalizedStatus,
@@ -1984,6 +2001,7 @@ export function IssuerPanel({
         '',
       cid,
       credentialJti,
+      cardScope: credential.primary_scope || credential.scope || 'MEDICAL_RECORD',
       scope: credential.primary_scope || credential.scope || 'MEDICAL_RECORD',
       scopeLabel:
         PRIMARY_SCOPE_LABEL[credential.primary_scope] ||
