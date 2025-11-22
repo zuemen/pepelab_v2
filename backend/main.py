@@ -344,6 +344,30 @@ def _call_remote_api(
         )
 
 
+def _fetch_remote_nonce(transaction_id: str, token: str) -> Dict[str, Any]:
+    paths = [
+        f"/v2/api/credential/nonce/{transaction_id}",
+        f"/api/credential/nonce/{transaction_id}",
+    ]
+    last_exc: Optional[HTTPException] = None
+    for path in paths:
+        try:
+            return _call_remote_api(
+                method="GET",
+                base_url=GOV_ISSUER_BASE,
+                path=path,
+                token=token,
+            )
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                last_exc = exc
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    return {}
+
+
 def _resolve_verifier_ref(
     scope: Optional[DisclosureScope], ref: Optional[str]
 ) -> str:
@@ -354,6 +378,26 @@ def _resolve_verifier_ref(
         if mapped:
             return mapped
     return DEFAULT_VERIFIER_REF
+
+
+def _resolve_allowed_fields(
+    scope: Optional[DisclosureScope], provided: Optional[List[str]]
+) -> List[str]:
+    if provided:
+        normalized: List[str] = []
+        for field in provided:
+            text = str(field or "").strip()
+            if not text:
+                continue
+            if text not in normalized:
+                normalized.append(text)
+        if normalized:
+            return normalized
+
+    if scope and scope in MODA_SCOPE_DEFAULT_FIELDS:
+        return list(MODA_SCOPE_DEFAULT_FIELDS[scope])
+
+    return []
 
 
 def _format_gov_date(value: Optional[Union[str, date, datetime]]) -> Optional[str]:
@@ -1986,6 +2030,9 @@ def _forward_oidvp_qrcode(
     tx_id = tx_id or str(uuid.uuid4())
     resolved_scope = resolved_scope or DisclosureScope.MEDICAL_RECORD
     resolved_ref = _resolve_verifier_ref(resolved_scope, ref)
+    allowed_fields = _resolve_allowed_fields(
+        resolved_scope, payload.fields if payload else None
+    )
     params = {
         "ref": resolved_ref,
         "transactionId": tx_id,
@@ -2000,6 +2047,29 @@ def _forward_oidvp_qrcode(
     if isinstance(response, dict):
         response.setdefault("transactionId", tx_id)
         response.setdefault("ref", resolved_ref)
+
+        expires_at = _parse_iso_datetime(response.get("expiresAt"))
+        valid_minutes = payload.valid_minutes if payload else None
+        if expires_at is None:
+            fallback_minutes = valid_minutes if valid_minutes is not None else 5
+            expires_at = datetime.utcnow() + timedelta(minutes=fallback_minutes)
+
+        session = VerificationSession(
+            session_id=f"sess-{uuid.uuid4().hex}",
+            transaction_id=tx_id,
+            verifier_id=payload.verifier_id if payload else "did:example:verifier",
+            verifier_name=payload.verifier_name if payload else "驗證端",
+            purpose=payload.purpose if payload else "憑證驗證",
+            required_ial=payload.ial if payload else IdentityAssuranceLevel.NHI_CARD_PIN,
+            scope=resolved_scope,
+            allowed_fields=allowed_fields,
+            qr_token=response.get("token") or f"oidvp-{tx_id}",
+            created_at=datetime.utcnow(),
+            expires_at=expires_at,
+            last_polled_at=datetime.utcnow(),
+            template_ref=resolved_ref,
+        )
+        store.persist_verification_session(session)
     return response
 
 
@@ -2064,6 +2134,8 @@ def gov_get_medical_verification_code(
     # track verifier metadata.
     transaction = transaction_id or str(uuid.uuid4())
     resolved_ref = _resolve_verifier_ref(scope, ref)
+    resolved_scope = scope or DisclosureScope.MEDICAL_RECORD
+    fields = _resolve_allowed_fields(resolved_scope, allowed_fields)
     params = {
         "ref": resolved_ref,
         "transactionId": transaction,
@@ -2079,6 +2151,26 @@ def gov_get_medical_verification_code(
     if isinstance(response, dict):
         response.setdefault("transactionId", transaction)
         response.setdefault("ref", resolved_ref)
+        expires_at = _parse_iso_datetime(response.get("expiresAt"))
+        if expires_at is None:
+            expires_at = datetime.utcnow() + timedelta(minutes=valid_for_minutes)
+
+        session = VerificationSession(
+            session_id=f"sess-{uuid.uuid4().hex}",
+            transaction_id=transaction,
+            verifier_id=verifier_id,
+            verifier_name=verifier_name,
+            purpose=purpose or "憑證驗證",
+            required_ial=ial or IdentityAssuranceLevel.NHI_CARD_PIN,
+            scope=resolved_scope,
+            allowed_fields=fields,
+            qr_token=response.get("token") or f"oidvp-{transaction}",
+            created_at=datetime.utcnow(),
+            expires_at=expires_at,
+            last_polled_at=datetime.utcnow(),
+            template_ref=resolved_ref,
+        )
+        store.persist_verification_session(session)
     return response
 
 
@@ -2092,13 +2184,47 @@ def gov_fetch_oidvp_result(
 ) -> Dict[str, Any]:
     token = _extract_token_from_request(request)
     body = payload.dict(by_alias=True)
-    return _call_remote_api(
-        method="POST",
-        base_url=GOV_VERIFIER_BASE,
-        path="/api/oidvp/result",
-        token=token,
-        payload=body,
-    )
+    try:
+        return _call_remote_api(
+            method="POST",
+            base_url=GOV_VERIFIER_BASE,
+            path="/api/oidvp/result",
+            token=token,
+            payload=body,
+        )
+    except HTTPException as exc:
+        # If the government sandbox returns a “not ready” or “not found” style
+        # error, fall back to the local verification cache so developers can
+        # still retrieve uploads submitted through the v2 VP endpoints.
+        if exc.status_code not in {400, 404}:
+            raise
+
+        session = store.get_verification_session_by_transaction(payload.transaction_id)
+        if not session:
+            raise
+
+        cached_result = store.latest_result_for_session(session.session_id)
+        if not cached_result:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "RESULT_PENDING",
+                    "message": "Presentation has not been uploaded yet.",
+                    "transactionId": payload.transaction_id,
+                },
+            )
+
+        presentation = cached_result.presentation
+        data = [
+            {"key": key, "value": value}
+            for key, value in presentation.disclosed_fields.items()
+        ]
+        return {
+            "verifyResult": cached_result.verified,
+            "resultDescription": "Local sandbox result",
+            "transactionId": payload.transaction_id,
+            "data": data,
+        }
 
 
 @api_public.post(
@@ -2438,12 +2564,7 @@ def _resolve_nonce_response(
     if not offer:
         if request is not None:
             token = _extract_token_from_request(request)
-            remote_payload = _call_remote_api(
-                method="GET",
-                base_url=GOV_ISSUER_BASE,
-                path=f"/api/credential/nonce/{transaction_id}",
-                token=token,
-            )
+            remote_payload = _fetch_remote_nonce(transaction_id, token)
             if isinstance(remote_payload, dict):
                 imported = _import_remote_nonce(transaction_id, remote_payload)
                 if imported:
@@ -2672,9 +2793,12 @@ def get_verification_code(
             detail="Provide at least one selective disclosure field.",
         )
 
+    transaction_id = secrets.token_urlsafe(12)
+
     now = datetime.utcnow()
     session = VerificationSession(
         session_id=f"sess-{uuid.uuid4().hex}",
+        transaction_id=transaction_id,
         verifier_id=verifierId,
         verifier_name=verifierName,
         purpose=purpose,
@@ -2685,6 +2809,7 @@ def get_verification_code(
         created_at=now,
         expires_at=now + timedelta(minutes=validMinutes),
         last_polled_at=now,
+        template_ref=_resolve_verifier_ref(scope, None),
     )
     store.persist_verification_session(session)
     qr_payload = _build_qr_payload(
