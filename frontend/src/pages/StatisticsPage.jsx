@@ -645,7 +645,19 @@ export function StatisticsPage({ isExpertMode = true }) {
     [scopeSummaries, overallSummary.total]
   );
 
-  const defaultRoute = scopeSummaries.length ? scopeSummaries[0].route : 'records';
+  const defaultRoute = useMemo(() => (scopeSummaries.length ? scopeSummaries[0].route : 'records'), [
+    scopeSummaries,
+  ]);
+
+  if (!isExpertMode) {
+    return (
+      <section>
+        <h2>發卡統計（基本模式）</h2>
+        <StatsSummaryBanner overallSummary={overallSummary} />
+        <p className="hint">如需檢視各卡片明細、官方狀態分佈與沙盒 API 路徑，請切換到專家模式。</p>
+      </section>
+    );
+  }
 
   return (
     <section>
