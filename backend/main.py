@@ -380,6 +380,26 @@ def _resolve_verifier_ref(
     return DEFAULT_VERIFIER_REF
 
 
+def _resolve_allowed_fields(
+    scope: Optional[DisclosureScope], provided: Optional[List[str]]
+) -> List[str]:
+    if provided:
+        normalized: List[str] = []
+        for field in provided:
+            text = str(field or "").strip()
+            if not text:
+                continue
+            if text not in normalized:
+                normalized.append(text)
+        if normalized:
+            return normalized
+
+    if scope and scope in MODA_SCOPE_DEFAULT_FIELDS:
+        return list(MODA_SCOPE_DEFAULT_FIELDS[scope])
+
+    return []
+
+
 def _format_gov_date(value: Optional[Union[str, date, datetime]]) -> Optional[str]:
     if value is None:
         return None
@@ -2010,6 +2030,9 @@ def _forward_oidvp_qrcode(
     tx_id = tx_id or str(uuid.uuid4())
     resolved_scope = resolved_scope or DisclosureScope.MEDICAL_RECORD
     resolved_ref = _resolve_verifier_ref(resolved_scope, ref)
+    allowed_fields = _resolve_allowed_fields(
+        resolved_scope, payload.fields if payload else None
+    )
     params = {
         "ref": resolved_ref,
         "transactionId": tx_id,
@@ -2024,6 +2047,29 @@ def _forward_oidvp_qrcode(
     if isinstance(response, dict):
         response.setdefault("transactionId", tx_id)
         response.setdefault("ref", resolved_ref)
+
+        expires_at = _parse_iso_datetime(response.get("expiresAt"))
+        valid_minutes = payload.valid_minutes if payload else None
+        if expires_at is None:
+            fallback_minutes = valid_minutes if valid_minutes is not None else 5
+            expires_at = datetime.utcnow() + timedelta(minutes=fallback_minutes)
+
+        session = VerificationSession(
+            session_id=f"sess-{uuid.uuid4().hex}",
+            transaction_id=tx_id,
+            verifier_id=payload.verifier_id if payload else "did:example:verifier",
+            verifier_name=payload.verifier_name if payload else "驗證端",
+            purpose=payload.purpose if payload else "憑證驗證",
+            required_ial=payload.ial if payload else IdentityAssuranceLevel.NHI_CARD_PIN,
+            scope=resolved_scope,
+            allowed_fields=allowed_fields,
+            qr_token=response.get("token") or f"oidvp-{tx_id}",
+            created_at=datetime.utcnow(),
+            expires_at=expires_at,
+            last_polled_at=datetime.utcnow(),
+            template_ref=resolved_ref,
+        )
+        store.persist_verification_session(session)
     return response
 
 
@@ -2088,6 +2134,8 @@ def gov_get_medical_verification_code(
     # track verifier metadata.
     transaction = transaction_id or str(uuid.uuid4())
     resolved_ref = _resolve_verifier_ref(scope, ref)
+    resolved_scope = scope or DisclosureScope.MEDICAL_RECORD
+    fields = _resolve_allowed_fields(resolved_scope, allowed_fields)
     params = {
         "ref": resolved_ref,
         "transactionId": transaction,
@@ -2103,6 +2151,26 @@ def gov_get_medical_verification_code(
     if isinstance(response, dict):
         response.setdefault("transactionId", transaction)
         response.setdefault("ref", resolved_ref)
+        expires_at = _parse_iso_datetime(response.get("expiresAt"))
+        if expires_at is None:
+            expires_at = datetime.utcnow() + timedelta(minutes=valid_for_minutes)
+
+        session = VerificationSession(
+            session_id=f"sess-{uuid.uuid4().hex}",
+            transaction_id=transaction,
+            verifier_id=verifier_id,
+            verifier_name=verifier_name,
+            purpose=purpose or "憑證驗證",
+            required_ial=ial or IdentityAssuranceLevel.NHI_CARD_PIN,
+            scope=resolved_scope,
+            allowed_fields=fields,
+            qr_token=response.get("token") or f"oidvp-{transaction}",
+            created_at=datetime.utcnow(),
+            expires_at=expires_at,
+            last_polled_at=datetime.utcnow(),
+            template_ref=resolved_ref,
+        )
+        store.persist_verification_session(session)
     return response
 
 
@@ -2725,9 +2793,12 @@ def get_verification_code(
             detail="Provide at least one selective disclosure field.",
         )
 
+    transaction_id = secrets.token_urlsafe(12)
+
     now = datetime.utcnow()
     session = VerificationSession(
         session_id=f"sess-{uuid.uuid4().hex}",
+        transaction_id=transaction_id,
         verifier_id=verifierId,
         verifier_name=verifierName,
         purpose=purpose,
@@ -2738,6 +2809,7 @@ def get_verification_code(
         created_at=now,
         expires_at=now + timedelta(minutes=validMinutes),
         last_polled_at=now,
+        template_ref=_resolve_verifier_ref(scope, None),
     )
     store.persist_verification_session(session)
     qr_payload = _build_qr_payload(
