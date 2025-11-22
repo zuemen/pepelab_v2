@@ -1,4 +1,3 @@
-
 // src/demo/scenes/Scene08_Insurance.jsx
 import { useNavigate } from "../../router.jsx";
 import PageShell from "../components/PageShell";
@@ -21,6 +20,9 @@ export default function Scene08_Insurance() {
             <li>不揭露：完整病歷、醫囑全文、PHQ-9 問題與逐題分數</li>
             <li>權限控管：一次性授權、可稽核、用畢即刪（目的限定）</li>
           </ul>
+          <p>
+            新增選擇性揭露卡片，讓理賠人員清楚看到僅能驗證必要欄位，避免超出目的的資料調閱。
+          </p>
           <div className="navs">
             <button className="cta" onClick={() => navigate("page4")}>
               送出理賠 VP
@@ -41,6 +43,21 @@ export default function Scene08_Insurance() {
           <div className="insight">選擇性揭露：僅供理賠核驗，不包含病程與量表細節</div>
           <div className="tag good" style={{ display: "inline-block", marginTop: 8 }}>
             用畢即刪・可稽核
+          </div>
+          <div className="disclosure-card" style={{ marginTop: 16 }}>
+            <div className="disclosure-label">選擇性揭露（INSURANCE_CLAIM）</div>
+            <div className="pill pill-green">揭露欄位</div>
+            <ul className="disclosure-list">
+              <li>Condition.code（理賠診斷碼）</li>
+              <li>Encounter.period、就診醫院</li>
+              <li>Claim.total + receipt number</li>
+            </ul>
+            <div className="pill pill-gray">不揭露</div>
+            <ul className="disclosure-list muted">
+              <li>完整 SOAP 記錄、影像檢查</li>
+              <li>心理測驗逐題內容</li>
+              <li>家屬聯絡資料</li>
+            </ul>
           </div>
         </div>
       }
