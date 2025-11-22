@@ -344,6 +344,30 @@ def _call_remote_api(
         )
 
 
+def _fetch_remote_nonce(transaction_id: str, token: str) -> Dict[str, Any]:
+    paths = [
+        f"/v2/api/credential/nonce/{transaction_id}",
+        f"/api/credential/nonce/{transaction_id}",
+    ]
+    last_exc: Optional[HTTPException] = None
+    for path in paths:
+        try:
+            return _call_remote_api(
+                method="GET",
+                base_url=GOV_ISSUER_BASE,
+                path=path,
+                token=token,
+            )
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                last_exc = exc
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    return {}
+
+
 def _resolve_verifier_ref(
     scope: Optional[DisclosureScope], ref: Optional[str]
 ) -> str:
@@ -2438,12 +2462,7 @@ def _resolve_nonce_response(
     if not offer:
         if request is not None:
             token = _extract_token_from_request(request)
-            remote_payload = _call_remote_api(
-                method="GET",
-                base_url=GOV_ISSUER_BASE,
-                path=f"/api/credential/nonce/{transaction_id}",
-                token=token,
-            )
+            remote_payload = _fetch_remote_nonce(transaction_id, token)
             if isinstance(remote_payload, dict):
                 imported = _import_remote_nonce(transaction_id, remote_payload)
                 if imported:
