@@ -7,6 +7,30 @@ const VP_SCOPE_TO_REF = {
   RESEARCH_ANALYTICS: '00000000_vp_research',
 };
 
+const BASIC_VERIFIER_SCENARIOS = [
+  {
+    key: 'record',
+    label: '門診授權',
+    description: '驗證診斷摘要與同意卡，適合看診後的授權流程。',
+    scope: 'MEDICAL_RECORD',
+    ref: VP_SCOPE_TO_REF.MEDICAL_RECORD,
+  },
+  {
+    key: 'pickup',
+    label: '領藥取藥',
+    description: '使用領藥卡與過敏卡驗證，完成處方領藥／代領。',
+    scope: 'MEDICATION_PICKUP',
+    ref: VP_SCOPE_TO_REF.MEDICATION_PICKUP,
+  },
+  {
+    key: 'research',
+    label: '研究揭露',
+    description: '檢驗研究用途的資料揭露，同時呈現診斷與同意資訊。',
+    scope: 'RESEARCH_ANALYTICS',
+    ref: VP_SCOPE_TO_REF.RESEARCH_ANALYTICS,
+  },
+];
+
 const POLL_INTERVAL_MS = 5000;
 
 function generateTransactionId() {
@@ -28,10 +52,21 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
   const [autoPoll, setAutoPoll] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [rawSession, setRawSession] = useState(null);
+  const [basicScenario, setBasicScenario] = useState('record');
 
   useEffect(() => {
     setVerifierRef(VP_SCOPE_TO_REF[scope]);
   }, [scope]);
+
+  useEffect(() => {
+    if (!isExpertMode) {
+      const matched = BASIC_VERIFIER_SCENARIOS.find((item) => item.key === basicScenario);
+      if (matched) {
+        setScope(matched.scope);
+        setVerifierRef(matched.ref);
+      }
+    }
+  }, [basicScenario, isExpertMode]);
 
   useEffect(() => {
     if (!autoPoll || !transactionId) {
@@ -44,16 +79,30 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoPoll, transactionId]);
 
+  function applyBasicVerifierScenario(key) {
+    const matched = BASIC_VERIFIER_SCENARIOS.find((item) => item.key === key);
+    if (!matched) {
+      return;
+    }
+
+    if (!isExpertMode) {
+      setScope(matched.scope);
+      setVerifierRef(matched.ref);
+    }
+    setBasicScenario(key);
+  }
+
   async function createSession() {
     setSessionError(null);
     setResult(null);
     setResultError(null);
     const tid = generateTransactionId();
-    const ref = verifierRef || VP_SCOPE_TO_REF[scope];
+    const effectiveScope = scope || 'MEDICAL_RECORD';
+    const ref = verifierRef || VP_SCOPE_TO_REF[effectiveScope];
 
     try {
       const response = await client.createVerificationCode(
-        { ref, transactionId: tid },
+        { ref, transactionId: tid, scope: effectiveScope },
         verifierToken
       );
 
@@ -97,7 +146,7 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
       if (!response.ok) {
         if (response.status === 400) {
           if (showWaitingMessage) {
-            setResultError('錢包尚未回傳資料，請稍後重試。');
+            setResultError('皮夾尚未回傳資料，請稍後重試。');
           } else {
             setResultError(null);
           }
@@ -129,6 +178,121 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
 
   const qrSource = qrCodeImage || authUri;
   const renderAsImage = qrCodeImage && qrCodeImage.startsWith('data:image');
+
+  if (!isExpertMode) {
+    const activeScenario =
+      BASIC_VERIFIER_SCENARIOS.find((scenario) => scenario.key === basicScenario) ||
+      BASIC_VERIFIER_SCENARIOS[0];
+
+    return (
+      <section aria-labelledby="verifier-heading">
+        <h2 id="verifier-heading">Step 3 – 驗證端（基本模式）</h2>
+        <div className="alert info">
+          預設好驗證範圍與 ref，點擊即可產生授權 QR Code。其他診斷欄位與 JSON 細節保留在專家模式。
+        </div>
+
+        <div className="basic-grid">
+          <div className="card basic-card">
+            <div className="basic-card__header">
+              <h3>選擇驗證情境</h3>
+              <span className="pill-icon" aria-hidden="true">🛡️</span>
+            </div>
+            <p className="hint">系統會自動套用範例的驗證範圍與服務代碼。</p>
+            <div className="scenario-pills" role="group" aria-label="驗證情境">
+              {BASIC_VERIFIER_SCENARIOS.map((scenario) => (
+                <button
+                  key={scenario.key}
+                  type="button"
+                  className={`scenario-pill${basicScenario === scenario.key ? ' active' : ''}`}
+                  onClick={() => applyBasicVerifierScenario(scenario.key)}
+                >
+                  <span className="scenario-pill__label">{scenario.label}</span>
+                  <span className="scenario-pill__desc">{scenario.description}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card basic-card">
+            <div className="basic-card__header">
+              <h3>建立授權 QR</h3>
+              <span className="pill-icon" aria-hidden="true">🔐</span>
+            </div>
+            <p className="hint">
+              使用 {activeScenario.label} 預設 ref：<strong>{activeScenario.ref}</strong>
+            </p>
+            <div className="token-chip" aria-label="預設 Access Token">
+              Access Token：<code>{verifierToken}</code>
+            </div>
+            <div className="stack">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => applyBasicVerifierScenario(basicScenario)}
+              >
+                重新套用情境預設
+              </button>
+              <button type="button" onClick={createSession} disabled={!verifierToken}>
+                產生授權 QR Code
+              </button>
+              <button type="button" className="secondary" onClick={resetSession}>
+                重設 Session
+              </button>
+            </div>
+            {sessionError ? <div className="alert error">{sessionError}</div> : null}
+            {transactionId ? <p className="hint">Transaction ID：{transactionId}</p> : null}
+          </div>
+
+          <div className="card basic-card">
+            <div className="basic-card__header">
+              <h3>掃碼與結果</h3>
+              <span className="pill-icon" aria-hidden="true">📲</span>
+            </div>
+            {qrSource ? (
+              renderAsImage ? (
+                <div className="qr-container" aria-label="驗證 QR Code">
+                  <img src={qrCodeImage} alt="驗證 QR Code" width={192} height={192} />
+                </div>
+              ) : (
+                <div className="qr-container" aria-label="驗證 QR Code">
+                  <QRCodeCanvas value={qrSource} size={192} includeMargin />
+                </div>
+              )
+            ) : (
+              <div className="placeholder">尚未建立 Session，請先產生授權 QR Code。</div>
+            )}
+            {authUri ? (
+              <p>
+                Deep Link：<a href={authUri}>{authUri}</a>
+              </p>
+            ) : null}
+            <div className="stack" style={{ marginTop: '0.5rem' }}>
+              <button type="button" onClick={() => pollResult(true)} disabled={!transactionId || isPolling}>
+                {isPolling ? '查詢中…' : '查詢驗證結果'}
+              </button>
+              <label htmlFor="auto-poll-basic" className="inline">
+                <input
+                  id="auto-poll-basic"
+                  type="checkbox"
+                  checked={autoPoll}
+                  onChange={(event) => setAutoPoll(event.target.checked)}
+                  disabled={!transactionId}
+                />
+                自動輪詢（5 秒）
+              </label>
+            </div>
+            {resultError ? <div className="alert warning">{resultError}</div> : null}
+            {result ? (
+              <div className="alert success">
+                <p>已取得驗證結果，Transaction ID：{transactionId || '未知'}。</p>
+                <p className="helper">完整 VP/VC JSON 與欄位細節請切換至專家模式查看。</p>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section aria-labelledby="verifier-heading">
@@ -201,7 +365,7 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
 
       <div className="card">
         <h3>查詢驗證結果</h3>
-        <p>請在錢包 App 完成授權後點擊「查詢結果」。若啟用自動輪詢會每 5 秒更新一次。</p>
+        <p>請在皮夾 App 完成授權後點擊「查詢結果」。若啟用自動輪詢會每 5 秒更新一次。</p>
         <div className="stack">
           <button type="button" onClick={() => pollResult(true)} disabled={!transactionId || isPolling}>
             {isPolling ? '查詢中…' : '查詢結果'}

@@ -112,7 +112,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label htmlFor="wallet-token-input">錢包 Access Token</label>
+                      <label htmlFor="wallet-token-input">皮夾 Access Token</label>
                       <input
                         id="wallet-token-input"
                         value={walletToken}

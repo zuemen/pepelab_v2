@@ -2037,6 +2037,14 @@ def _forward_oidvp_qrcode(
         "ref": resolved_ref,
         "transactionId": tx_id,
     }
+    if resolved_scope:
+        params["scope"] = (
+            resolved_scope.value
+            if isinstance(resolved_scope, DisclosureScope)
+            else resolved_scope
+        )
+    if allowed_fields:
+        params["allowed_fields"] = allowed_fields
     response = _call_remote_api(
         method="GET",
         base_url=GOV_VERIFIER_BASE,
