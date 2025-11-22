@@ -420,6 +420,39 @@ const DEFAULT_CARD_IDENTIFIERS = {
   },
 };
 
+const BASIC_SCENARIOS = [
+  {
+    key: 'record',
+    label: '門診授權',
+    description: '只送出診斷代碼與同意卡，其他欄位預設保留為選擇性揭露。',
+    scope: 'MEDICAL_RECORD',
+  },
+  {
+    key: 'pickup',
+    label: '領藥取藥',
+    description: '帶入處方領藥資訊並預設 3 天有效的領藥卡。',
+    scope: 'MEDICATION_PICKUP',
+  },
+  {
+    key: 'research',
+    label: '研究揭露',
+    description: '預設研究用途的同意書欄位，搭配診斷摘要供研究單位驗證。',
+    scope: 'CONSENT_CARD',
+  },
+  {
+    key: 'allergy',
+    label: '過敏資訊',
+    description: '僅揭露過敏代碼與嚴重程度，預設 3 年效期的過敏資訊卡。',
+    scope: 'ALLERGY_CARD',
+  },
+  {
+    key: 'identity',
+    label: '匿名身分',
+    description: '產生 PID 雜湊與錢包識別碼，預設 10 年效期的匿名身分卡。',
+    scope: 'IDENTITY_CARD',
+  },
+];
+
 const INITIAL_MANUAL_LOOKUP_STATE = {
   loading: false,
   transactionId: null,
@@ -864,6 +897,7 @@ export function IssuerPanel({
   const [holderInventoryFetchedAt, setHolderInventoryFetchedAt] = useState(null);
   const [holderInventoryActions, setHolderInventoryActions] = useState({});
   const [forgetState, setForgetState] = useState({ loading: false, error: null, message: null });
+  const [basicScenario, setBasicScenario] = useState('pickup');
   const sanitizedBaseUrl = useMemo(() => {
     if (!baseUrl) {
       return '';
@@ -874,6 +908,17 @@ export function IssuerPanel({
     () => resolveSandboxPrefix(sanitizedBaseUrl),
     [sanitizedBaseUrl],
   );
+
+  useEffect(() => {
+    if (!isExpertMode) {
+      loadSample();
+      const matched = BASIC_SCENARIOS.find((scenario) => scenario.key === basicScenario);
+      if (matched) {
+        setPrimaryScope(matched.scope);
+      }
+      applyBasicTemplate(basicScenario);
+    }
+  }, [basicScenario, isExpertMode]);
   const normalizeIssueEntry = (entry) => {
     if (!entry || typeof entry !== 'object') {
       return null;
@@ -2468,11 +2513,42 @@ export function IssuerPanel({
       return;
     }
 
+    if (templateKey === 'allergy') {
+      setIncludeMedication(false);
+      setConsentPurpose('MEDRECACCESS');
+      setMedicalFields('');
+      setMedicationFields('');
+      setConsentFields(DEFAULT_DISCLOSURES.ALLERGY_CARD.join(', '));
+      return;
+    }
+
+    if (templateKey === 'identity') {
+      setIncludeMedication(false);
+      setConsentPurpose('MEDRECACCESS');
+      setMedicalFields('');
+      setMedicationFields('');
+      setConsentFields(DEFAULT_DISCLOSURES.IDENTITY_CARD.join(', '));
+      return;
+    }
+
     setIncludeMedication(false);
     setConsentPurpose('MEDRECACCESS');
     setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
     setMedicationFields('');
     setConsentFields(DEFAULT_DISCLOSURES.CONSENT_CARD.join(', '));
+  }
+
+  function applyBasicScenario(templateKey) {
+    if (basicScenario === templateKey && !isExpertMode) {
+      const matched = BASIC_SCENARIOS.find((scenario) => scenario.key === templateKey);
+      loadSample();
+      if (matched) {
+        setPrimaryScope(matched.scope);
+      }
+      applyBasicTemplate(templateKey);
+      return;
+    }
+    setBasicScenario(templateKey);
   }
 
   const qrSource = success?.qrCode || success?.deepLink || '';
@@ -2484,6 +2560,115 @@ export function IssuerPanel({
   const manualStatusBadgeClass = manualStatusInfo.tone
     ? `status-badge ${manualStatusInfo.tone}`
     : 'status-badge';
+
+  if (!isExpertMode) {
+    const activeScenario = BASIC_SCENARIOS.find((item) => item.key === basicScenario) ||
+      BASIC_SCENARIOS[0];
+
+    return (
+      <section aria-labelledby="issuer-heading">
+        <h2 id="issuer-heading">Step 1 – 醫院發行端（基本模式）</h2>
+        <p className="badge">API Base URL：{baseUrl}</p>
+        <div className="alert info">
+          使用預設 Access Token 與示範欄位，一鍵產生含資料 QR Code。欲查看完整欄位與發卡紀錄，請切換到專家模式。
+        </div>
+
+        <div className="basic-grid">
+          <div className="card basic-card">
+            <div className="basic-card__header">
+              <h3>選擇情境</h3>
+              <span className="pill-icon" aria-hidden="true">⚡️</span>
+            </div>
+            <p className="hint">點選情境會自動載入預設欄位與選擇性揭露設定。</p>
+            <div className="scenario-pills" role="group" aria-label="發卡情境">
+              {BASIC_SCENARIOS.map((scenario) => (
+                <button
+                  key={scenario.key}
+                  type="button"
+                  className={`scenario-pill${basicScenario === scenario.key ? ' active' : ''}`}
+                  onClick={() => applyBasicScenario(scenario.key)}
+                >
+                  <span className="scenario-pill__label">{scenario.label}</span>
+                  <span className="scenario-pill__desc">{scenario.description}</span>
+                </button>
+              ))}
+            </div>
+            <p className="helper">目前使用預設欄位與 Token，如需客製卡片或多憑證組合，請切換到專家模式。</p>
+          </div>
+
+          <div className="card basic-card">
+            <div className="basic-card__header">
+              <h3>快速發卡</h3>
+              <span className="pill-icon" aria-hidden="true">💳</span>
+            </div>
+            <p className="hint">使用 {activeScenario.label} 模式，立即帶入示例欄位並產生 QR Code。</p>
+            <div className="token-chip" aria-label="預設 Access Token">
+              Access Token：<code>{issuerToken}</code>
+            </div>
+            <div className="quick-select basic-quick-select">
+              <span className="quick-select-label">持卡者：</span>
+              {HOLDER_PROFILES.map((profile) => (
+                <button
+                  key={profile.did}
+                  type="button"
+                  className={`secondary quick-select-button${
+                    holderDid === profile.did ? ' active' : ''
+                  }`}
+                  onClick={() => {
+                    setHolderDid(profile.did);
+                    setHolderHint(profile.hint);
+                    setCondition((prev) => ({ ...prev, subject: profile.did }));
+                  }}
+                >
+                  {profile.label}
+                </button>
+              ))}
+            </div>
+            <div className="stack">
+              <button type="button" className="secondary" onClick={() => applyBasicScenario(basicScenario)}>
+                重新套用預設資料
+              </button>
+              <button type="button" onClick={submit} disabled={loading}>
+                {loading ? '發卡中…' : '產生發卡 QR Code'}
+              </button>
+            </div>
+            {error ? <div className="alert error">{error}</div> : null}
+          </div>
+
+          <div className="card basic-card">
+            <div className="basic-card__header">
+              <h3>掃描領卡</h3>
+              <span className="pill-icon" aria-hidden="true">📱</span>
+            </div>
+            {success ? (
+              <>
+                <p className="hint">交易序號：{success.transactionId || '未知'}</p>
+                {qrSource ? (
+                  shouldRenderImage ? (
+                    <div className="qr-container" aria-label="發卡 QR Code">
+                      <img src={success.qrCode} alt="發卡 QR Code" width={192} height={192} />
+                    </div>
+                  ) : (
+                    <div className="qr-container" aria-label="發卡 QR Code">
+                      <QRCodeCanvas value={qrSource} size={192} includeMargin />
+                    </div>
+                  )
+                ) : null}
+                {success.deepLink ? (
+                  <p>
+                    Deep Link：<a href={success.deepLink}>{success.deepLink}</a>
+                  </p>
+                ) : null}
+                <p className="helper">請以錢包 App 掃描，完成授權後再到驗證頁查詢結果。</p>
+              </>
+            ) : (
+              <div className="placeholder">尚未建立 QR Code，請點擊「產生發卡 QR Code」。</div>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section aria-labelledby="issuer-heading">
@@ -2511,6 +2696,12 @@ export function IssuerPanel({
                 </button>
                 <button type="button" className="pill" onClick={() => applyBasicTemplate('research')}>
                   📊 研究揭露
+                </button>
+                <button type="button" className="pill" onClick={() => applyBasicTemplate('allergy')}>
+                  ⚠️ 過敏資訊
+                </button>
+                <button type="button" className="pill" onClick={() => applyBasicTemplate('identity')}>
+                  🪪 匿名身分
                 </button>
               </div>
               <p className="hint">
