@@ -439,6 +439,18 @@ const BASIC_SCENARIOS = [
     description: '預設研究用途的同意書欄位，搭配診斷摘要供研究單位驗證。',
     scope: 'CONSENT_CARD',
   },
+  {
+    key: 'allergy',
+    label: '過敏資訊',
+    description: '僅揭露過敏代碼與嚴重程度，預設 3 年效期的過敏資訊卡。',
+    scope: 'ALLERGY_CARD',
+  },
+  {
+    key: 'identity',
+    label: '匿名身分',
+    description: '產生 PID 雜湊與錢包識別碼，預設 10 年效期的匿名身分卡。',
+    scope: 'IDENTITY_CARD',
+  },
 ];
 
 const INITIAL_MANUAL_LOOKUP_STATE = {
@@ -2501,6 +2513,24 @@ export function IssuerPanel({
       return;
     }
 
+    if (templateKey === 'allergy') {
+      setIncludeMedication(false);
+      setConsentPurpose('MEDRECACCESS');
+      setMedicalFields('');
+      setMedicationFields('');
+      setConsentFields(DEFAULT_DISCLOSURES.ALLERGY_CARD.join(', '));
+      return;
+    }
+
+    if (templateKey === 'identity') {
+      setIncludeMedication(false);
+      setConsentPurpose('MEDRECACCESS');
+      setMedicalFields('');
+      setMedicationFields('');
+      setConsentFields(DEFAULT_DISCLOSURES.IDENTITY_CARD.join(', '));
+      return;
+    }
+
     setIncludeMedication(false);
     setConsentPurpose('MEDRECACCESS');
     setMedicalFields(DEFAULT_DISCLOSURES.MEDICAL_RECORD.join(', '));
@@ -2666,6 +2696,12 @@ export function IssuerPanel({
                 </button>
                 <button type="button" className="pill" onClick={() => applyBasicTemplate('research')}>
                   📊 研究揭露
+                </button>
+                <button type="button" className="pill" onClick={() => applyBasicTemplate('allergy')}>
+                  ⚠️ 過敏資訊
+                </button>
+                <button type="button" className="pill" onClick={() => applyBasicTemplate('identity')}>
+                  🪪 匿名身分
                 </button>
               </div>
               <p className="hint">
