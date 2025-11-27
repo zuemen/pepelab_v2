@@ -1,3 +1,6 @@
+const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const express = require('express');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
@@ -83,8 +86,43 @@ app.use((req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+const TLS_KEY_PATH = process.env.TLS_KEY_PATH;
+const TLS_CERT_PATH = process.env.TLS_CERT_PATH;
+const ALLOW_INSECURE_HTTP = process.env.ALLOW_INSECURE_HTTP === 'true';
 
-module.exports = { app, record };
+function createServer() {
+  if (TLS_KEY_PATH && TLS_CERT_PATH) {
+    try {
+      const credentials = {
+        key: fs.readFileSync(TLS_KEY_PATH),
+        cert: fs.readFileSync(TLS_CERT_PATH)
+      };
+      const server = https.createServer(credentials, app);
+      server.listen(PORT, () => {
+        console.log(`HTTPS server listening on port ${PORT}`);
+      });
+      return server;
+    } catch (error) {
+      console.error('Failed to start HTTPS server:', error.message);
+      if (!ALLOW_INSECURE_HTTP) {
+        throw error;
+      }
+    }
+  }
+
+  if (!ALLOW_INSECURE_HTTP) {
+    throw new Error(
+      'TLS credentials are required. Provide TLS_KEY_PATH and TLS_CERT_PATH or explicitly opt in to ALLOW_INSECURE_HTTP for development.'
+    );
+  }
+
+  const server = http.createServer(app);
+  server.listen(PORT, () => {
+    console.warn(`HTTP server listening on port ${PORT}. This should only be used behind a TLS-terminating reverse proxy or for local development.`);
+  });
+  return server;
+}
+
+const server = createServer();
+
+module.exports = { app, record, server };
