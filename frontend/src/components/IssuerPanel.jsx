@@ -58,6 +58,25 @@ function flattenCandidates(...values) {
   return result;
 }
 
+function createSecureId(prefix) {
+  const safePrefix = prefix || 'id';
+
+  if (typeof crypto !== 'undefined') {
+    if (crypto.randomUUID) {
+      return `${safePrefix}-${crypto.randomUUID()}`;
+    }
+
+    if (crypto.getRandomValues) {
+      const buffer = new Uint8Array(16);
+      crypto.getRandomValues(buffer);
+      const hex = Array.from(buffer, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      return `${safePrefix}-${hex.slice(0, 32)}`;
+    }
+  }
+
+  return `${safePrefix}-${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
 function pickStringCandidate(...values) {
   const candidates = flattenCandidates(values);
   for (const candidate of candidates) {
@@ -479,7 +498,7 @@ const INITIAL_MANUAL_LOOKUP_STATE = {
 };
 
 const INITIAL_CONDITION = {
-  id: `cond-${Math.random().toString(36).slice(2, 8)}`,
+  id: createSecureId('cond'),
   system: 'http://hl7.org/fhir/sid/icd-10',
   code: 'K2970',
   display: 'CHRONICGASTRITIS',
@@ -490,7 +509,7 @@ const INITIAL_CONDITION = {
 };
 
 const INITIAL_MEDICATION = {
-  id: `med-${Math.random().toString(36).slice(2, 8)}`,
+  id: createSecureId('med'),
   system: 'http://www.whocc.no/atc',
   code: 'A02BC05',
   display: 'Serenitol',
@@ -502,7 +521,7 @@ const INITIAL_MEDICATION = {
 };
 
 const INITIAL_ALLERGY = {
-  id: `algy-${Math.random().toString(36).slice(2, 8)}`,
+  id: createSecureId('algy'),
   system: 'http://hl7.org/fhir/sid/icd-10',
   code: 'Z881',
   display: 'PENICILLIN',

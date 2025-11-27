@@ -37,6 +37,12 @@ function generateTransactionId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const buffer = new Uint32Array(4);
+    crypto.getRandomValues(buffer);
+    const hex = Array.from(buffer, (value) => value.toString(16).padStart(8, '0')).join('');
+    return `tx-${hex.slice(0, 24)}`;
+  }
   return `tx-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
