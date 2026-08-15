@@ -1,4 +1,47 @@
-# MedSSI Sandbox v2 – FHIR 病歷授權與領藥流程
+# MedSSI Sandbox v2 — Selective disclosure of health credentials
+
+> Merit Award (學生組優選), Digital Credential Scenario Innovation Challenge,
+> Ministry of Digital Affairs, Taiwan — November 2025.
+> Case study: [zuemen.net/projects/pepelab](https://zuemen.net/projects/pepelab)
+
+A three-party Self-Sovereign Identity system for health records. A hospital
+issues a verifiable credential once; the patient holds it in a wallet; each
+verifier receives only the fields its scope permits.
+
+The problem it addresses is over-disclosure. A patient collecting medication,
+joining a research study, or filing an insurance claim would normally hand over
+far more of their record than any of those three actually needs. Here,
+disclosure policies address individual fields by **FHIR path**, so
+`MEDICATION_PICKUP`, `RESEARCH_ANALYTICS` and `MEDICAL_RECORD` resolve to
+different subsets of the same credential — each gated behind its own minimum
+identity assurance level (`MYDATA_LIGHT`, `NHI_CARD_PIN`, `MOICA_CERT`).
+
+Credentials are not a private scheme: the backend speaks the protocol of
+Taiwan's official digital credential wallet sandbox and calls
+`issuer-sandbox.wallet.gov.tw` and `verifier-sandbox.wallet.gov.tw` directly,
+so what is issued here stays interoperable outside the demo.
+
+**Stack** — FastAPI (Python) backend with an in-memory session store, React +
+Vite frontend, W3C Verifiable Credentials and DIDs over FHIR payloads.
+
+**Also implemented** — right to erasure (`DELETE /v2/api/wallet/{did}/forget`),
+issuer-initiated revocation, a 5-minute QR expiry, and an accessibility-oriented
+console (stepped panels, large type, ARIA live regions) intended for older
+patients and accompanying family.
+
+### Getting started
+
+```bash
+cp .env.example .env       # then fill in your sandbox tokens
+uvicorn backend.main:app --reload
+cd frontend && npm install && npm run dev
+```
+
+Tokens are read from the environment only — there are no defaults in the source.
+
+---
+
+## 系統說明（中文）
 
 本版本依照最新需求重構了 API 與前端介面：
 
@@ -68,7 +111,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
   - **vc_rx**：產生 `med_code`、`med_name`、`dose_text`、`qty_value`、`qty_unit` 等處方資訊，藥品代碼與名稱會轉成大寫英數，`qty_value` 僅保留數字、`qty_unit` 允許中英文單位。
   - **vc_pid**：整理 `pid_hash`、`pid_type`、`pid_ver`、`pid_issuer`、`pid_valid_to`、`wallet_id` 等欄位，會強制僅保留數字並確保日期符合 `YYYY-MM-DD` 格式，避免官方沙盒回傳 `400`。
 
-> ℹ️ 發行端端點需附帶 `Authorization: Bearer koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy`（可用環境變數 `MEDSSI_ISSUER_TOKEN` 覆寫）；錢包端使用 `wallet-sandbox-token`；驗證端則使用 `J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC`。若需暫時允許多組 Token，可在環境變數中以逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會自動接受其中任一值。若沿用官方 sandbox 範例以 `access-token` header 傳遞，也會自動轉換為 Bearer Token 無須修改程式。
+> ℹ️ 三個角色的 access token 一律由環境變數提供，程式中不保留任何預設值：發行端 `MEDSSI_ISSUER_TOKEN`、錢包端 `MEDSSI_WALLET_TOKEN`、驗證端 `MEDSSI_VERIFIER_TOKEN`。請複製 `.env.example` 為 `.env` 後填入沙盒後台核發的值；未設定時該角色的請求一律會被拒絕。若需同時允許多組 Token，可用逗號分隔（例如 `MEDSSI_ISSUER_TOKEN="tokenA,tokenB"`），FastAPI 會接受其中任一值。若沿用官方 sandbox 範例以 `access-token` header 傳遞，也會自動轉換為 Bearer Token 無須修改程式。
 
 > 📡 驗證端會依 `DisclosureScope` 自動對應政府沙盒的 VP 範本：`MEDICAL_RECORD` → `00000000_vp_consent`（授權驗證，聚焦 `vc_cond` + `vc_cons`）、`RESEARCH_ANALYTICS` → `00000000_vp_research`（研究揭露）、`MEDICATION_PICKUP` → `00000000_vp_rx_pickup`（領藥驗證）。若需替換，可設定 `MEDSSI_VERIFIER_REF_DEFAULT` 與 `MEDSSI_VERIFIER_REF_CONSENT`／`MEDSSI_VERIFIER_REF_RESEARCH`／`MEDSSI_VERIFIER_REF_RX`，或在 `node-server/config.js` 的 `verifier_refs` 指定不同 `ref`。
 

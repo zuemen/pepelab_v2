@@ -6,9 +6,9 @@ const DemoCtx = createContext(null);
 export function DemoProvider({ children }) {
   const [scope, setScope] = useState("MEDICATION_PICKUP");
   const [baseUrl, setBaseUrl] = useState("http://localhost:8000");
-  const [issuerToken, setIssuerToken] = useState("koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy");
-  const [walletToken, setWalletToken] = useState("wallet-sandbox-token");
-  const [verifierToken, setVerifierToken] = useState("J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC");
+  const [issuerToken, setIssuerToken] = useState(import.meta.env.VITE_ISSUER_TOKEN ?? "");
+  const [walletToken, setWalletToken] = useState(import.meta.env.VITE_WALLET_TOKEN ?? "");
+  const [verifierToken, setVerifierToken] = useState(import.meta.env.VITE_VERIFIER_TOKEN ?? "");
   const [mode, setMode] = useState("preview"); // 先不串 API，用來切換預覽/Live
 
   const value = {

@@ -9,9 +9,9 @@ const DEFAULT_BASE_URL = import.meta.env.VITE_MEDSSI_API || 'http://localhost:80
 
 export default function App() {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
-  const [issuerToken, setIssuerToken] = useState('koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy');
-  const [walletToken, setWalletToken] = useState('wallet-sandbox-token');
-  const [verifierToken, setVerifierToken] = useState('J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC');
+  const [issuerToken, setIssuerToken] = useState(import.meta.env.VITE_ISSUER_TOKEN ?? "");
+  const [walletToken, setWalletToken] = useState(import.meta.env.VITE_WALLET_TOKEN ?? "");
+  const [verifierToken, setVerifierToken] = useState(import.meta.env.VITE_VERIFIER_TOKEN ?? "");
   const [resetMessage, setResetMessage] = useState(null);
   const [mode, setMode] = useState('basic');
 

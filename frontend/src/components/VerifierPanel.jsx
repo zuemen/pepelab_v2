@@ -317,7 +317,7 @@ export function VerifierPanel({ client, verifierToken, isExpertMode = true }) {
         <div className="card">
           <label htmlFor="verifier-token">驗證端 Access Token</label>
           <input id="verifier-token" type="text" value={verifierToken} readOnly aria-readonly="true" />
-          <small className="helper">沙盒預設 J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC。</small>
+          <small className="helper">請填入驗證端沙盒核發的 access token。</small>
 
           <label htmlFor="scope">驗證範圍</label>
           <select id="scope" value={scope} onChange={(event) => setScope(event.target.value)}>

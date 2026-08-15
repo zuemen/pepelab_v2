@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import logging
 import os
 import re
 import secrets
@@ -92,18 +93,28 @@ app.add_middleware(
 api_v2 = APIRouter(prefix="/v2", tags=["MedSSI v2"])
 
 
-def _load_tokens(env_name: str, default: str) -> List[str]:
-    raw = os.getenv(env_name, default)
+def _load_tokens(env_name: str) -> List[str]:
+    """Read a comma-separated token list from the environment.
+
+    Deliberately has no fallback value. These used to default to the real
+    sandbox tokens, which meant the credentials lived in the source tree of a
+    public repository. With no default, an unset variable yields an empty list
+    and every request against that role is rejected — see .env.example.
+    """
+    raw = os.getenv(env_name, "")
     return [token.strip() for token in raw.split(",") if token.strip()]
 
 
-ISSUER_ACCESS_TOKENS = _load_tokens(
-    "MEDSSI_ISSUER_TOKEN", "koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy"
-)
-VERIFIER_ACCESS_TOKENS = _load_tokens(
-    "MEDSSI_VERIFIER_TOKEN", "J3LdHEiVxmHBYJ6iStnmATLblzRkz2AC"
-)
-WALLET_ACCESS_TOKENS = _load_tokens("MEDSSI_WALLET_TOKEN", "wallet-sandbox-token")
+ISSUER_ACCESS_TOKENS = _load_tokens("MEDSSI_ISSUER_TOKEN")
+VERIFIER_ACCESS_TOKENS = _load_tokens("MEDSSI_VERIFIER_TOKEN")
+WALLET_ACCESS_TOKENS = _load_tokens("MEDSSI_WALLET_TOKEN")
+
+if not (ISSUER_ACCESS_TOKENS and VERIFIER_ACCESS_TOKENS and WALLET_ACCESS_TOKENS):
+    logging.getLogger(__name__).warning(
+        "One or more of MEDSSI_ISSUER_TOKEN / MEDSSI_VERIFIER_TOKEN / "
+        "MEDSSI_WALLET_TOKEN is unset; requests for those roles will be "
+        "rejected. Copy .env.example to .env and fill in your sandbox tokens."
+    )
 DEFAULT_ISSUER_ID = os.getenv(
     "MEDSSI_DEFAULT_ISSUER_ID", "did:example:moda-issuer"
 )

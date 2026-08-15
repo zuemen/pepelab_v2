@@ -6,7 +6,7 @@ Usage:
 
 Defaults:
     base_url: http://localhost:8000
-    issuer_token: koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy
+    issuer_token: read from MEDSSI_ISSUER_TOKEN
 
 The script issues a POST /v2/api/system/reset request with the supplied token
 so developers can quickly start from a clean slate before each demo.
@@ -14,6 +14,7 @@ so developers can quickly start from a clean slate before each demo.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -22,7 +23,14 @@ from datetime import datetime
 
 def main() -> int:
     base_url = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
-    token = sys.argv[2] if len(sys.argv) > 2 else "koreic2ZEFZ2J4oo2RaZu58yGVXiqDQy"
+    token = sys.argv[2] if len(sys.argv) > 2 else os.getenv("MEDSSI_ISSUER_TOKEN", "")
+    if not token:
+        print(
+            "No issuer token. Pass one as the second argument or set "
+            "MEDSSI_ISSUER_TOKEN (see .env.example).",
+            file=sys.stderr,
+        )
+        return 2
     url = base_url.rstrip("/") + "/v2/api/system/reset"
 
     request = urllib.request.Request(url, method="POST")
