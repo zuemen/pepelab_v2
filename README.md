@@ -3,6 +3,8 @@
 > Merit Award (學生組優選), Digital Credential Scenario Innovation Challenge,
 > Ministry of Digital Affairs, Taiwan — November 2025.
 > Case study: [zuemen.net/projects/pepelab](https://zuemen.net/projects/pepelab)
+>
+> Demo video (about 90 s, animated explainer with real 2025 sandbox recordings): [zuemen.net/projects#pepelab](https://zuemen.net/projects#pepelab)
 
 A three-party Self-Sovereign Identity system for health records. A hospital
 issues a verifiable credential once; the patient holds it in a wallet; each
@@ -16,10 +18,14 @@ disclosure policies address individual fields by **FHIR path**, so
 different subsets of the same credential — each gated behind its own minimum
 identity assurance level (`MYDATA_LIGHT`, `NHI_CARD_PIN`, `MOICA_CERT`).
 
-Credentials are not a private scheme: the backend speaks the protocol of
-Taiwan's official digital credential wallet sandbox and calls
-`issuer-sandbox.wallet.gov.tw` and `verifier-sandbox.wallet.gov.tw` directly,
-so what is issued here stays interoperable outside the demo.
+Credentials are not a private scheme: the backend's `/api/*` layer speaks the
+protocol of Taiwan's official digital credential wallet sandbox and forwards
+issuance, verification QR codes and VP results to
+`issuer-sandbox.wallet.gov.tw` and `verifier-sandbox.wallet.gov.tw` directly.
+The actual credential signing and VP signature checks are done by that
+sandbox, so what is issued there stays interoperable outside the demo. The
+local `/v2/*` endpoints are an offline demo layer and do not sign anything
+(see Limitations).
 
 **Stack** — FastAPI (Python) backend with an in-memory session store, React +
 Vite frontend, W3C Verifiable Credentials and DIDs over FHIR payloads.
@@ -38,6 +44,22 @@ cd frontend && npm install && npm run dev
 ```
 
 Tokens are read from the environment only — there are no defaults in the source.
+
+### Limitations
+
+- **Local `/v2/*` credentials are not cryptographically signed.** They live in
+  the in-memory store, and the local VP check compares fields, scope and IAL
+  against that store; it verifies no signature. The `_mock_credential_jwt`
+  helper in `backend/main.py` builds a JWT whose header says `alg: ES256` but
+  whose signature segment is only the base64 of `sig:<credential_id>`. Real
+  signing and VP verification happen only on the `/api/*` path, inside the
+  MODA sandbox.
+- The `/demo` story mode is a scripted walkthrough: it calls no API and its
+  QR codes are static images. The patient in it (小朱 / Xiao Zhu) is
+  fictional.
+- Issuance and verification were exercised against MODA's **test sandbox**
+  (November 2025).
+- A 2025 student prototype, **not a medical product**.
 
 ---
 
@@ -85,13 +107,13 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 ### MODA Sandbox 相容端點
 
-為了在不直接呼叫官方服務的情況下模擬「數位憑證皮夾」沙盒流程，後端新增 `/api/*` 相容層，回傳欄位與官方 Swagger 介面一致（含 `transactionId`、`qrcodeImage` / `qrCode`、`authUri` / `deepLink` 等）。【F:README.md†L52-L72】
+後端的 `/api/*` 相容層把發卡、驗證 QR 與 VP 結果**轉送到政府沙盒**（`issuer-sandbox.wallet.gov.tw`／`verifier-sandbox.wallet.gov.tw`），回傳欄位與官方 Swagger 介面一致（含 `transactionId`、`qrcodeImage` / `qrCode`、`authUri` / `deepLink` 等）；真正的憑證簽章與 VP 驗章由沙盒負責。本地 `/v2/*` 端點是離線示範用：憑證存在記憶體中、不做密碼學簽章，本地 VP 驗證也不驗簽。程式中的 `_mock_credential_jwt` 產生的 JWT header 標 `alg: ES256`，但簽章欄位只是 `sig:<credential_id>` 的 base64 字串，**不是密碼學簽章**。
 
 | Method | Path | 說明 |
 | --- | --- | --- |
 | `POST` | `/api/qrcode/data`、`/api/medical/card/issue` | 發卡並回傳可直接放入 `<img>` 的 QR Code Data URI、`deepLink` 與 `qrPayload`。 |
-| `POST` | `/api/qrcode/nodata` | 本地模擬無個資 QR（官方沙盒尚未提供）；若呼叫政府端將回傳 `400`。 |
-| `GET` | `/api/credential/nonce/{transactionId}` | 依交易序號取得 nonce、選擇性揭露欄位與模擬的 VC JWT。 |
+| `POST` | `/api/qrcode/nodata` | 轉送政府沙盒的無個資發卡端點；官方沙盒尚未開放，政府端會回傳 `400`（本地測試請用 `/v2/api/qrcode/nodata`）。 |
+| `GET` | `/api/credential/nonce/{transactionId}` | 轉送政府沙盒，依交易序號查詢 nonce 與領卡狀態。 |
 | `PUT` | `/api/credential/{cid}/revocation` | 將電子卡狀態更新為撤銷。 |
 | `GET` / `POST` | `/api/oidvp/qrcode` | 生成驗證 QR Code，支援自訂 `transactionId`（預設為 UUIDv4），GET 版本遵循官方沙盒參數格式。 |
 | `GET` | `/api/medical/verification/code` | 與官方 `qr-code` 端點對齊的查詢式參數（`ref`、`transactionId`、`allowed_fields`）。 |
@@ -100,7 +122,7 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 
 > 📋 若需要逐項確認環境是否符合政府沙盒要求，可參考 [`docs/SANDBOX_CHECKLIST.md`](docs/SANDBOX_CHECKLIST.md) 取得申請 Token、設定專案機密與常見錯誤排查的完整清單。
 
-這些相容端點仍套用相同的 Bearer token、5 分鐘有效期限與 IAL 驗證，方便與 React 示範介面或外部測試工具（Postman、Swagger UI）串接。【F:README.md†L52-L90】
+這些相容端點仍套用相同的 Bearer token、5 分鐘有效期限與 IAL 驗證，方便與 React 示範介面或外部測試工具（Postman、Swagger UI）串接。
 
 - `vcUid` / `fields` 結構會自動轉換為 FHIR VC payload，同時保留 MODA 欄位別名（例如 `cond_code`、`cons_scope`），錢包與驗證端可直接沿用官方沙盒的欄位設定。
 - 內建 `vc_cons`、`vc_cond`、`vc_algy`、`vc_rx`、`vc_pid` 等樣板欄位與範例值（依官方截圖整理），若呼叫端未傳入 `fields` 也會自動補齊對應欄位與內容，避免掃描後顯示「資料格式錯誤」。
@@ -185,9 +207,9 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 - `scripts/reset_sandbox.py`：簡單 CLI，可快速呼叫 `/v2/api/system/reset` 重新整理沙盒狀態。
 
 ## 身分驗證與授權對應（健保快易通 vs. MyData）
-- **雙軌身分驗證**：健保快易通提供「本人月租型手機門號 + 健保卡號末四碼」或「健保卡 / 自然人憑證裝置綁定」兩種路徑，分別對應遠端 IAL2 與接近 IAL3 的強度，呼應本系統的 `MYDATA_LIGHT` 與 `NHI_CARD_PIN` 等級設計。【F:README.md†L66-L74】
-- **MyData 雙因素註冊**：首次使用 MyData 需選擇兩種不同實名驗證工具（例如健保 IC 卡 + 簡訊 OTP 或自然人憑證 + 行動化驗證），達到政府規範的 IAL2 要求，也與 `MOICA_CERT` 等級相呼應。【F:README.md†L75-L83】
-- **授權最小化**：兩平台皆遵循「最小必要」原則，使用者僅授權本次必要欄位，本原型亦限制每個 disclosure scope 的欄位並提供一次性 VP 驗證流程。【F:README.md†L84-L90】
+- **雙軌身分驗證**：健保快易通提供「本人月租型手機門號 + 健保卡號末四碼」或「健保卡 / 自然人憑證裝置綁定」兩種路徑，分別對應遠端 IAL2 與接近 IAL3 的強度，呼應本系統的 `MYDATA_LIGHT` 與 `NHI_CARD_PIN` 等級設計。
+- **MyData 雙因素註冊**：首次使用 MyData 需選擇兩種不同實名驗證工具（例如健保 IC 卡 + 簡訊 OTP 或自然人憑證 + 行動化驗證），達到政府規範的 IAL2 要求，也與 `MOICA_CERT` 等級相呼應。
+- **授權最小化**：兩平台皆遵循「最小必要」原則，使用者僅授權本次必要欄位，本原型亦限制每個 disclosure scope 的欄位並提供一次性 VP 驗證流程。
 
 | IAL 等級 | 實務對應 | 強度說明 |
 | --- | --- | --- |
@@ -196,25 +218,25 @@ Issuer (Hospital) ──QR──> Wallet (Patient) ──VP──> Verifier (Res
 | `MOICA_CERT` | 自然人憑證 / 醫事人員卡臨櫃核發 | IAL3，高度身分保證 |
 
 ## FHIR 可驗證憑證模型
-- **FHIR Bundle 作為 VC 主體**：Credential payload 以 FHIR Bundle（type `collection`）封裝 Patient、Condition、MedicationDispense 等資源，維持跨院互通性。【F:README.md†L94-L99】
-- **最小資料集**：每張 VC 僅包含該用途必要的臨床與身份欄位，例如診斷碼、紀錄日期與院所代碼，避免曝露額外資訊。【F:README.md†L99-L103】
-- **簽章與來源驗證**：Credential 透過發行端私鑰簽署，驗證端可比對 FHIR 欄位與 VP 中的選擇性揭露欄位，確保內容未被竄改並符合病患授權範圍。【F:README.md†L103-L108】
+- **FHIR Bundle 作為 VC 主體**：Credential payload 以 FHIR Bundle（type `collection`）封裝 Patient、Condition、MedicationDispense 等資源，維持跨院互通性。
+- **最小資料集**：每張 VC 僅包含該用途必要的臨床與身份欄位，例如診斷碼、紀錄日期與院所代碼，避免曝露額外資訊。
+- **簽章與來源驗證**：走 `/api/*` 政府沙盒路徑時，Credential 由沙盒以發行端金鑰簽署、VP 由驗證端沙盒驗章；本原型在此之上比對 FHIR 欄位與 VP 中的選擇性揭露欄位是否符合病患授權範圍。本地 `/v2/*` 示範路徑不做簽章（見上方「MODA Sandbox 相容端點」說明）。
 
 ## 法規遵循重點
-- **電子簽章法**：新版電子簽章法承認數位簽章與電子同意的法律效力，發行端簽章的 VC 與錢包中的授權操作視同紙本簽名。【F:README.md†L112-L117】
-- **醫療法第72條**：跨院分享病歷資料必須取得病患明示授權，本原型以 VP 產出記錄病患同意，並提供可稽核的交易 ID 與撤銷機制。【F:README.md†L117-L122】
-- **個資法最小蒐集**：系統限制欄位範圍、採一次性傳輸、不長期留存原始 VC，並提供遺忘權 API，符合目的限定與資料刪除要求。【F:README.md†L122-L127】
+- **電子簽章法**：新版電子簽章法承認數位簽章與電子同意的法律效力，發行端簽章的 VC 與錢包中的授權操作視同紙本簽名。
+- **醫療法第72條**：跨院分享病歷資料必須取得病患明示授權，本原型以 VP 產出記錄病患同意，並提供可稽核的交易 ID 與撤銷機制。
+- **個資法最小蒐集**：系統限制欄位範圍、採一次性傳輸、不長期留存原始 VC，並提供遺忘權 API，符合目的限定與資料刪除要求。
 
 ## 驗證端實務守則
-- **資料用畢即刪**：驗證端僅保留驗證結果與必要稽核紀錄，不保存完整 VC 檔案，並在日誌中紀錄查閱者與時間以備稽核。【F:README.md†L131-L136】
-- **信任鍊管理**：建議定期同步發行端公鑰、檢查 VC 有效期與吊銷狀態，必要時啟動金鑰輪替或撤銷流程。【F:README.md†L136-L141】
-- **零信任控制**：透過角色權限、TLS、速率限制與異常偵測落實「Never Trust, Always Verify」，並提醒前端使用者勿在公開場域暴露 Access Token 或 QR 字串。【F:README.md†L141-L146】
+- **資料用畢即刪**：驗證端僅保留驗證結果與必要稽核紀錄，不保存完整 VC 檔案，並在日誌中紀錄查閱者與時間以備稽核。
+- **信任鍊管理**：建議定期同步發行端公鑰、檢查 VC 有效期與吊銷狀態，必要時啟動金鑰輪替或撤銷流程。
+- **零信任控制**：透過角色權限、TLS、速率限制與異常偵測落實「Never Trust, Always Verify」，並提醒前端使用者勿在公開場域暴露 Access Token 或 QR 字串。
 
 ## QR Code 產製提醒
 後端現在直接回傳符合數位憑證皮夾格式的 Deep Link（例如 `modadigitalwallet://credential_offer?...`、`modadigitalwallet://authorize?...`），React 介面以 `qrcode.react` 即時轉換為可掃描圖像，方便於手機或藥局實機示範。
 
 ## 安全性對齊重點
-- **Bearer Access Token**：模擬數位發展部沙盒流程，需先在 Swagger Authorize 中輸入發行端或驗證端 Access Token 才能呼叫對應 API，可透過環境變數替換預設值。
+- **Bearer Access Token**：模擬數位發展部沙盒流程，需先在 Swagger Authorize 中輸入發行端或驗證端 Access Token 才能呼叫對應 API。Access Token 一律由環境變數提供（`MEDSSI_ISSUER_TOKEN`、`MEDSSI_WALLET_TOKEN`、`MEDSSI_VERIFIER_TOKEN`），程式內沒有預設值；未設定時該角色的請求一律拒絕。
 - **TLS 與速率限制建議**：原型以 FastAPI 本地執行；實務部署時應透過 API Gateway 提供 TLS 1.3、每小時 3600 次限流與異常偵測。
 - **QR 有效 5 分鐘**：Credential offer 與 verification session 均限定 5 分鐘內使用，逾時需重新產生，以符合沙盒規範。
 - **UUIDv4 交易序號**：`transaction_id` 採標準 UUIDv4，方便稽核與跨系統追蹤。
